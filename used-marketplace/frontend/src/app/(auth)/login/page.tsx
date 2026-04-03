@@ -52,6 +52,7 @@ export default function LoginPage() {
   const [formData, setFormData] = useState<LoginFormData>({ email: '', password: '' });
   const [errors, setErrors] = useState<LoginFormErrors>({});
   const [loading, setLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
 
   const handleChange = (field: keyof LoginFormData) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData((prev) => ({ ...prev, [field]: e.target.value }));
@@ -66,7 +67,7 @@ export default function LoginPage() {
     if (hasErrors(v)) { setErrors(v); return; }
 
     setLoading(true);
-    const result = await signIn(trimmed.email, trimmed.password);
+    const result = await signIn(trimmed.email, trimmed.password, rememberMe);
     setLoading(false);
 
     if (!result.success) {
@@ -151,13 +152,18 @@ export default function LoginPage() {
               />
 
               <div className={styles.forgotRow}>
-                <Link href="#" className={styles.forgotLink}>
+                <Link href={ROUTES.FORGOT_PASSWORD} className={styles.forgotLink}>
                   Forgot password?
                 </Link>
               </div>
 
               <label className={styles.rememberRow}>
-                <input type="checkbox" className={styles.rememberCheckbox} />
+                <input 
+                  type="checkbox" 
+                  className={styles.rememberCheckbox} 
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                />
                 <span className={styles.rememberLabel}>Keep me signed in for 30 days</span>
               </label>
 
