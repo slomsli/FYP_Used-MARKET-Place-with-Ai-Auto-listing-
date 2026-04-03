@@ -48,9 +48,7 @@ export function validateLoginForm(data: LoginFormData): LoginFormErrors {
   const errors: LoginFormErrors = {};
 
   if (!data.email) {
-    errors.email = 'Email is required';
-  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
-    errors.email = 'Please enter a valid email address';
+    errors.email = 'Email or username is required';
   }
 
   if (!data.password) {
@@ -62,16 +60,28 @@ export function validateLoginForm(data: LoginFormData): LoginFormErrors {
 
 export function mapAuthError(error: string): string {
   const map: Record<string, string> = {
-    'invalid login credentials': 'The email or password you entered is incorrect',
+    'invalid login credentials': 'The email, username, or password you entered is incorrect',
     'email not confirmed': 'Please verify your email address before signing in',
     'user already registered': 'An account with this email already exists',
-    'signup requires a valid password': 'Please enter a valid password',
-    'email rate limit exceeded': 'Too many attempts. Please try again later',
+    'an account with this email already exists': 'An account with this email already exists',
+    'username is already taken': 'This username is already taken',
+    'signup requires a valid password': 'Please enter a valid password',        
+    'email rate limit exceeded': 'Too many attempts. Please try again later',   
   };
 
   const lower = error.toLowerCase();
   for (const [key, message] of Object.entries(map)) {
     if (lower.includes(key)) return message;
+  }
+
+  // Pass through pre-mapped backend errors
+  if (lower.includes('please verify your email')) {
+    return 'Please verify your email address before signing in';
+  }
+
+  // If the error seems readable and not a raw technical string, return it directly
+  if (error && error.length < 100 && !error.includes('duplicate key') && !error.includes('_')) {
+    return error;
   }
 
   return 'Something went wrong. Please try again.';

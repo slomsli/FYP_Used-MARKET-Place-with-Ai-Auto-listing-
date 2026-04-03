@@ -4,7 +4,7 @@ import type { LoginBody, ServiceResult } from '../../types/auth';
 function mapAuthError(error: string): string {
   const lower = error.toLowerCase();
   if (lower.includes('invalid login credentials'))
-    return 'The email or password you entered is incorrect';
+    return 'The email, username, or password you entered is incorrect';
   if (lower.includes('email not confirmed'))
     return 'Please verify your email address before signing in';
   if (lower.includes('user already registered'))
@@ -16,9 +16,32 @@ function mapAuthError(error: string): string {
 
 export async function loginUser(body: LoginBody): Promise<ServiceResult> {
   const { email, password } = body;
+  
+  let finalEmail = email.trim().toLowerCase();
+
+  // If it does not contain '@', it might be a username.
+  if (!finalEmail.includes('@')) {
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('username', finalEmail)
+      .maybeSingle();
+
+    if (profile && profile.id) {
+      const { data: userData } = await supabaseAdmin.auth.admin.getUserById(profile.id);
+      
+      if (userData?.user?.email) {
+        finalEmail = userData.user.email;
+      } else {
+        return { success: false, error: 'User not found or invalid username', status: 404 };
+      }
+    } else {
+      return { success: false, error: 'User not found or invalid username', status: 404 };
+    }
+  }
 
   const { data, error } = await supabaseAdmin.auth.signInWithPassword({
-    email: email.trim().toLowerCase(),
+    email: finalEmail,
     password,
   });
 

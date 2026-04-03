@@ -26,6 +26,7 @@ export async function registerUser(body: RegisterBody): Promise<ServiceResult> {
       data: {
         full_name: trimmedFullName,
         username: trimmedUsername,
+        role: 'user', // Passing this in case the trigger expects it
       },
       emailRedirectTo: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/callback`,
     },
@@ -45,24 +46,8 @@ export async function registerUser(body: RegisterBody): Promise<ServiceResult> {
     return { success: false, error: 'An account with this email already exists', status: 409 };
   }
 
-  // 4 — Create profile row
-  const { error: profileError } = await supabaseAdmin.from('profiles').insert({
-    id: authData.user.id,
-    username: trimmedUsername,
-    full_name: trimmedFullName,
-    role: 'user',
-  });
-
-  if (profileError) {
-    // Rollback: delete the orphaned auth user
-    console.error('[Register] Profile insert failed, rolling back auth user:', profileError.message);
-    await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
-    return {
-      success: false,
-      error: 'Failed to create user profile. Please try again.',
-      status: 500,
-    };
-  }
+  // NOTE: Profile row creation is handled automatically by a Postgres trigger in Supabase
+  // when an auth.users record is created. We do not insert it manually here.
 
   return {
     success: true,

@@ -5,11 +5,7 @@ export function validateLogin(req: Request, res: Response, next: NextFunction): 
   const { email, password } = req.body;
 
   if (!email?.trim()) {
-    sendError(res, 'Email is required', 422);
-    return;
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-    sendError(res, 'Please provide a valid email address', 422);
+    sendError(res, 'Email or username is required', 422);
     return;
   }
 

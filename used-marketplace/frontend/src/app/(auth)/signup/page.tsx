@@ -94,7 +94,7 @@ export default function SignupPage() {
       setErrors({ general: mapAuthError(result.error || '') });
       return;
     }
-    router.push(ROUTES.VERIFY_EMAIL);
+    router.push(`${ROUTES.VERIFY_EMAIL}?email=${encodeURIComponent(trimmed.email)}`);
   };
 
   return (

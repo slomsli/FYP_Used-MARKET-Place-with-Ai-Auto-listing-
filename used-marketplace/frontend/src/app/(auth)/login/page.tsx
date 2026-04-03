@@ -120,16 +120,24 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit}>
             <div className={styles.formFields}>
               <FormError message={errors.general} />
+              
+              {errors.general === 'Please verify your email address before signing in' && (
+                <div style={{ marginTop: '-0.75rem', marginBottom: '1rem', textAlign: 'center', fontSize: '0.875rem' }}>
+                  <Link href={`${ROUTES.VERIFY_EMAIL}?email=${encodeURIComponent(formData.email.trim())}`} style={{ color: '#2563EB', fontWeight: 500, textDecoration: 'underline' }}>
+                    Haven't verified your account yet? Click here.
+                  </Link>
+                </div>
+              )}
 
               <AuthInput
-                label="Email address"
+                label="Email or Username"
                 icon={<MailIcon />}
-                type="email"
-                placeholder="alex@example.com"
+                type="text"
+                placeholder="alex@example.com or alex123"
                 value={formData.email}
                 onChange={handleChange('email')}
                 error={errors.email}
-                autoComplete="email"
+                autoComplete="username"
               />
 
               <PasswordInput

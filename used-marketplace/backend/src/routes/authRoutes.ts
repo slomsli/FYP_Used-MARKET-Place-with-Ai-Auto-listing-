@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { register } from '../controllers/auth/register';
 import { login } from '../controllers/auth/login';
 import { getMe } from '../controllers/auth/me';
+import { checkStatus } from '../controllers/auth/status';
 import { validateRegister } from '../middleware/auth/validateRegister';
 import { validateLogin } from '../middleware/auth/validateLogin';
 import { authenticate } from '../middleware/authenticate';
@@ -11,6 +12,7 @@ const router = Router();
 // Public routes
 router.post('/register', validateRegister, register);
 router.post('/login', validateLogin, login);
+router.post('/check-status', checkStatus);
 
 // Protected routes
 router.get('/me', authenticate, getMe);
