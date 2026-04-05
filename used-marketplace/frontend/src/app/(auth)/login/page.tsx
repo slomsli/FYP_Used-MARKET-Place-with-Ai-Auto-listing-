@@ -39,11 +39,11 @@ const ShieldIcon = () => (
   </svg>
 );
 
-const MarketIcon = () => (
+const AnchorIcon = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9Z" />
-    <path d="m3 9 2.45-4.9A2 2 0 0 1 7.24 3h9.52a2 2 0 0 1 1.8 1.1L21 9" />
-    <path d="M12 3v6" />
+    <circle cx="12" cy="5" r="3" />
+    <line x1="12" y1="22" x2="12" y2="8" />
+    <path d="M5 12H2a10 10 0 0 0 20 0h-3" />
   </svg>
 );
 
@@ -83,17 +83,17 @@ export default function LoginPage() {
       <div className={styles.heroPanel}>
         <div className={styles.heroContent}>
           <div className={styles.heroBrand}>
-            <span className={styles.heroBrandIcon}><MarketIcon /></span>
-            Used Market
+            <img src="/assets/images/remarket_harbor_style_logo_1.png" alt="Harbor Market" style={{ height: '250px', width: 'auto' }} />
           </div>
 
           <div className={styles.heroTagline}>
             <h1 className={styles.heroTitle}>
-              Quality finds,<br />trusted sellers.
+              Curated items,<br />trusted by experts.
             </h1>
             <p className={styles.heroDescription}>
-              Join a community where quality meets security. Every item on Used
-              Market is verified for authenticity and condition.
+              Join a community where quality meets security.<br />
+              Every item on Harbor Market is verified for<br />
+              authenticity and condition.
             </p>
           </div>
         </div>
@@ -121,7 +121,7 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit}>
             <div className={styles.formFields}>
               <FormError message={errors.general} />
-              
+
               {errors.general === 'Please verify your email address before signing in' && (
                 <div style={{ marginTop: '-0.75rem', marginBottom: '1rem', textAlign: 'center', fontSize: '0.875rem' }}>
                   <Link href={`${ROUTES.VERIFY_EMAIL}?email=${encodeURIComponent(formData.email.trim())}`} style={{ color: '#2563EB', fontWeight: 500, textDecoration: 'underline' }}>
@@ -158,9 +158,9 @@ export default function LoginPage() {
               </div>
 
               <label className={styles.rememberRow}>
-                <input 
-                  type="checkbox" 
-                  className={styles.rememberCheckbox} 
+                <input
+                  type="checkbox"
+                  className={styles.rememberCheckbox}
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
                 />

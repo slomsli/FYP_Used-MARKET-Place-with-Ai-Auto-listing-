@@ -48,8 +48,7 @@ export default function DashboardPage() {
       {/* Header */}
       <header className={styles.header}>
         <div className={styles.brand}>
-          <span className={styles.brandIcon}><MarketIcon /></span>
-          Used Market
+          <img src="/assets/images/remarket_harbor_style_logo_1.png" alt="Logo" style={{ height: '250px', width: 'auto' }} />
         </div>
         <button onClick={handleLogout} className={styles.logoutBtn}>
           <LogOutIcon /> Log out

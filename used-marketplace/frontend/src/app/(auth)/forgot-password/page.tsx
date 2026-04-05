@@ -58,8 +58,7 @@ export default function ForgotPasswordPage() {
       <div className={styles.heroPanel}>
         <div className={styles.heroContent}>
           <div className={styles.heroBrand}>
-            <span className={styles.heroBrandIcon}><MarketIcon /></span>
-            Used Market
+            <img src="/assets/images/remarket_harbor_style_logo_1.png" alt="Logo" style={{ height: '250px', width: 'auto' }} />
           </div>
           <div className={styles.heroTagline}>
             <h1 className={styles.heroTitle}>Password Recovery</h1>
