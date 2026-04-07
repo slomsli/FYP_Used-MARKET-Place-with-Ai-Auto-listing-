@@ -94,14 +94,14 @@ export default function SignupPage() {
       setErrors({ general: mapAuthError(result.error || '') });
       return;
     }
-    router.push(ROUTES.VERIFY_EMAIL);
+    router.push(`${ROUTES.VERIFY_EMAIL}?email=${encodeURIComponent(trimmed.email)}`);
   };
 
   return (
     <div className={styles.page}>
       {/* Brand */}
       <div className={styles.brand}>
-        <h1 className={styles.brandName}>Used Market</h1>
+        <img src="/assets/images/remarket_harbor_style_logo_1.png" alt="Logo" style={{ height: '250px', width: 'auto', marginBottom: '0.5rem' }} />
         <p className={styles.brandTagline}>
           Start buying and selling in your local marketplace.
         </p>

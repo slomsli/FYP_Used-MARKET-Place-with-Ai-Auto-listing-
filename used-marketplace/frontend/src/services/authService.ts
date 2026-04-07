@@ -41,7 +41,7 @@ export async function signUp(data: SignupFormData): Promise<AuthResponse> {
    Login — calls the Express backend, then sets the browser session
    ──────────────────────────────────────────────────────────── */
 
-export async function signIn(email: string, password: string): Promise<AuthResponse> {
+export async function signIn(email: string, password: string, rememberMe: boolean = true): Promise<AuthResponse> {
   try {
     const response = await fetch(`${API_BASE}/api/auth/login`, {
       method: 'POST',
@@ -58,7 +58,8 @@ export async function signIn(email: string, password: string): Promise<AuthRespo
     // Establish the browser-side Supabase session with the tokens
     // returned from the backend. This sets the auth cookies so the
     // Next.js middleware and useAuth hook pick up the session.
-    const supabase = createClient();
+    // The rememberMe flag dictates the cookie maxAge!
+    const supabase = createClient(rememberMe);
     const { error: sessionError } = await supabase.auth.setSession({
       access_token: result.data.session.access_token,
       refresh_token: result.data.session.refresh_token,
