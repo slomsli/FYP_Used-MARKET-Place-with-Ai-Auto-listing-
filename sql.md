@@ -1,6 +1,15 @@
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
 
+CREATE TABLE public.areas (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  state_id bigint NOT NULL,
+  name text NOT NULL,
+  slug text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT areas_pkey PRIMARY KEY (id),
+  CONSTRAINT areas_state_id_fkey FOREIGN KEY (state_id) REFERENCES public.states(id)
+);
 CREATE TABLE public.categories (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   name text NOT NULL UNIQUE,
@@ -61,7 +70,6 @@ CREATE TABLE public.listings (
   price numeric NOT NULL CHECK (price >= 0::numeric),
   currency character NOT NULL DEFAULT 'MYR'::bpchar,
   negotiable boolean NOT NULL DEFAULT true,
-  city text,
   status text NOT NULL DEFAULT 'draft'::text CHECK (status = ANY (ARRAY['draft'::text, 'active'::text, 'reserved'::text, 'sold'::text, 'rejected'::text, 'archived'::text])),
   cover_image_path text,
   published_at timestamp with time zone,
@@ -70,10 +78,14 @@ CREATE TABLE public.listings (
   sold_to_user_id uuid,
   sold_at timestamp with time zone,
   views_count integer NOT NULL DEFAULT 0,
+  state_id bigint,
+  area_id bigint,
   CONSTRAINT listings_pkey PRIMARY KEY (id),
   CONSTRAINT listings_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.profiles(id),
   CONSTRAINT listings_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.categories(id),
-  CONSTRAINT listings_sold_to_user_id_fkey FOREIGN KEY (sold_to_user_id) REFERENCES public.profiles(id)
+  CONSTRAINT listings_sold_to_user_id_fkey FOREIGN KEY (sold_to_user_id) REFERENCES public.profiles(id),
+  CONSTRAINT listings_state_id_fkey FOREIGN KEY (state_id) REFERENCES public.states(id),
+  CONSTRAINT listings_area_id_fkey FOREIGN KEY (area_id) REFERENCES public.areas(id)
 );
 CREATE TABLE public.messages (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -119,13 +131,16 @@ CREATE TABLE public.profiles (
   username text NOT NULL UNIQUE,
   full_name text,
   phone text,
-  city text,
   avatar_path text,
   role text NOT NULL DEFAULT 'user'::text CHECK (role = ANY (ARRAY['user'::text, 'admin'::text])),
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  state_id bigint,
+  area_id bigint,
   CONSTRAINT profiles_pkey PRIMARY KEY (id),
-  CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
+  CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id),
+  CONSTRAINT profiles_state_id_fkey FOREIGN KEY (state_id) REFERENCES public.states(id),
+  CONSTRAINT profiles_area_id_fkey FOREIGN KEY (area_id) REFERENCES public.areas(id)
 );
 CREATE TABLE public.reports (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -153,4 +168,10 @@ CREATE TABLE public.reviews (
   CONSTRAINT reviews_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.profiles(id),
   CONSTRAINT reviews_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id),
   CONSTRAINT reviews_reviewer_id_fkey FOREIGN KEY (reviewer_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.states (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  name text NOT NULL UNIQUE,
+  slug text NOT NULL UNIQUE,
+  CONSTRAINT states_pkey PRIMARY KEY (id)
 );
