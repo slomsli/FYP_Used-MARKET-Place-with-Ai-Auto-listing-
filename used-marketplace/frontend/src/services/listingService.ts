@@ -1,0 +1,390 @@
+import type {
+  CreateListingPayload,
+  DeleteListingResult,
+  ListingImageUploadPayload,
+  ListingCondition,
+  ListingMetadata,
+  ListingLookupOption,
+  ListingAreaOption,
+  ListingFilterStatus,
+  ListingSortOption,
+  ListingSummary,
+  MyListingsResponse,
+  UploadedListingImage,
+} from '@/src/types/listing';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
+interface ServiceResponse<T> {
+  data: T | null;
+  error: string | null;
+}
+
+interface ListingMetadataPayload {
+  categories?: unknown;
+  categoryOptions?: unknown;
+  states?: unknown;
+  stateOptions?: unknown;
+  areas?: unknown;
+  areaOptions?: unknown;
+  conditions?: unknown;
+  statuses?: unknown;
+  currencies?: unknown;
+  lookups?: {
+    categories?: unknown;
+    states?: unknown;
+    areas?: unknown;
+  };
+}
+
+async function parseJsonResponse(response: Response) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+function toPositiveInteger(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+
+  if (typeof value === 'string' && /^\d+$/.test(value)) {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  }
+
+  return null;
+}
+
+function normalizeLookupOptions(value: unknown): ListingLookupOption[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') {
+        return null;
+      }
+
+      const typedItem = item as Record<string, unknown>;
+      const id = toPositiveInteger(typedItem.id);
+      const name = typeof typedItem.name === 'string' ? typedItem.name.trim() : '';
+      const slug = typeof typedItem.slug === 'string' ? typedItem.slug.trim() : '';
+
+      if (!id || !name || !slug) {
+        return null;
+      }
+
+      return { id, name, slug };
+    })
+    .filter((item): item is ListingLookupOption => item !== null);
+}
+
+function normalizeAreaOptions(value: unknown): ListingAreaOption[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') {
+        return null;
+      }
+
+      const typedItem = item as Record<string, unknown>;
+      const id = toPositiveInteger(typedItem.id);
+      const name = typeof typedItem.name === 'string' ? typedItem.name.trim() : '';
+      const slug = typeof typedItem.slug === 'string' ? typedItem.slug.trim() : '';
+      const stateId = toPositiveInteger(typedItem.stateId ?? typedItem.state_id);
+
+      if (!id || !name || !slug || !stateId) {
+        return null;
+      }
+
+      return { id, name, slug, stateId };
+    })
+    .filter((item): item is ListingAreaOption => item !== null);
+}
+
+function normalizeConditions(value: unknown): ListingMetadata['conditions'] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const allowedConditions: ListingCondition[] = ['new', 'like_new', 'good', 'fair', 'poor'];
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') {
+        return null;
+      }
+
+      const typedItem = item as Record<string, unknown>;
+      const optionValue = typedItem.value;
+      const label = typeof typedItem.label === 'string' ? typedItem.label.trim() : '';
+
+      if (!allowedConditions.includes(optionValue as ListingCondition) || !label) {
+        return null;
+      }
+
+      return {
+        value: optionValue as ListingCondition,
+        label,
+      };
+    })
+    .filter((item): item is ListingMetadata['conditions'][number] => item !== null);
+}
+
+function normalizeStatuses(value: unknown): ListingMetadata['statuses'] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') {
+        return null;
+      }
+
+      const typedItem = item as Record<string, unknown>;
+      const optionValue = typedItem.value;
+      const label = typeof typedItem.label === 'string' ? typedItem.label.trim() : '';
+
+      if ((optionValue !== 'draft' && optionValue !== 'active') || !label) {
+        return null;
+      }
+
+      return {
+        value: optionValue,
+        label,
+      };
+    })
+    .filter((item): item is ListingMetadata['statuses'][number] => item !== null);
+}
+
+function normalizeCurrencies(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return ['MYR'];
+  }
+
+  const currencies = value
+    .map((item) => (typeof item === 'string' ? item.trim().toUpperCase() : ''))
+    .filter((item) => /^[A-Z]{3}$/.test(item));
+
+  return currencies.length > 0 ? currencies : ['MYR'];
+}
+
+function normalizeListingMetadata(raw: unknown): ListingMetadata {
+  const payload = (raw && typeof raw === 'object' ? raw : {}) as ListingMetadataPayload;
+  const rawCategories = payload.categories ?? payload.categoryOptions ?? payload.lookups?.categories;
+  const rawStates = payload.states ?? payload.stateOptions ?? payload.lookups?.states;
+  const rawAreas = payload.areas ?? payload.areaOptions ?? payload.lookups?.areas;
+
+  const categories = normalizeLookupOptions(rawCategories).map((category, index) => {
+    const rawItem =
+      Array.isArray(rawCategories) && rawCategories[index] && typeof rawCategories[index] === 'object'
+        ? (rawCategories[index] as Record<string, unknown>)
+        : null;
+
+    return {
+      ...category,
+      parentId: toPositiveInteger(rawItem?.parentId ?? rawItem?.parent_id) ?? null,
+    };
+  });
+
+  return {
+    categories,
+    states: normalizeLookupOptions(rawStates),
+    areas: normalizeAreaOptions(rawAreas),
+    conditions: normalizeConditions(payload.conditions),
+    statuses: normalizeStatuses(payload.statuses),
+    currencies: normalizeCurrencies(payload.currencies),
+  };
+}
+
+function isNotFoundError(error: string | null) {
+  return Boolean(error && /status 404\b/i.test(error));
+}
+
+async function authorizedRequest<T>(
+  path: string,
+  token: string,
+  init?: RequestInit
+): Promise<ServiceResponse<T>> {
+  try {
+    const response = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        ...(init?.headers || {}),
+      },
+    });
+
+    const result = await parseJsonResponse(response);
+
+    if (response.ok && result?.success) {
+      return {
+        data: (result.data ?? null) as T | null,
+        error: null,
+      };
+    }
+
+    return {
+      data: null,
+      error: result?.error || `Request failed with status ${response.status}`,
+    };
+  } catch (error) {
+    return {
+      data: null,
+      error: error instanceof Error ? error.message : 'Network error',
+    };
+  }
+}
+
+export async function getListingMetadata(
+  token: string,
+  stateId?: number
+): Promise<ServiceResponse<ListingMetadata>> {
+  const query = stateId ? `?stateId=${stateId}` : '';
+
+  try {
+    const response = await fetch(`${API_BASE}/api/dashboard/listings/metadata${query}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const result = await parseJsonResponse(response);
+
+    if (response.ok && result?.success) {
+      return {
+        data: normalizeListingMetadata(result.data),
+        error: null,
+      };
+    }
+
+    return {
+      data: null,
+      error: result?.error || `Request failed with status ${response.status}`,
+    };
+  } catch (error) {
+    return {
+      data: null,
+      error: error instanceof Error ? error.message : 'Network error',
+    };
+  }
+}
+
+export async function createListing(
+  token: string,
+  payload: CreateListingPayload
+): Promise<ServiceResponse<ListingSummary>> {
+  return authorizedRequest<ListingSummary>('/api/dashboard/listings', token, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function uploadListingImage(
+  token: string,
+  payload: ListingImageUploadPayload
+): Promise<ServiceResponse<UploadedListingImage>> {
+  return authorizedRequest<UploadedListingImage>('/api/dashboard/listings/uploads', token, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getSellerListing(
+  token: string,
+  listingId: string
+): Promise<ServiceResponse<ListingSummary>> {
+  return authorizedRequest<ListingSummary>(`/api/dashboard/listings/${listingId}`, token, {
+    method: 'GET',
+  });
+}
+
+export async function updateListing(
+  token: string,
+  listingId: string,
+  payload: CreateListingPayload
+): Promise<ServiceResponse<ListingSummary>> {
+  return authorizedRequest<ListingSummary>(`/api/dashboard/listings/${listingId}`, token, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function markListingAsSold(
+  token: string,
+  listingId: string
+): Promise<ServiceResponse<ListingSummary>> {
+  return authorizedRequest<ListingSummary>(
+    `/api/dashboard/listings/${listingId}/mark-sold`,
+    token,
+    {
+      method: 'PATCH',
+    }
+  );
+}
+
+export async function markListingAsActive(
+  token: string,
+  listingId: string
+): Promise<ServiceResponse<ListingSummary>> {
+  const primaryResponse = await authorizedRequest<ListingSummary>(
+    `/api/dashboard/listings/${listingId}/mark-active`,
+    token,
+    {
+      method: 'PATCH',
+    }
+  );
+
+  if (!isNotFoundError(primaryResponse.error)) {
+    return primaryResponse;
+  }
+
+  return authorizedRequest<ListingSummary>(
+    `/api/dashboard/listings/${listingId}/activate`,
+    token,
+    {
+      method: 'PATCH',
+    }
+  );
+}
+
+export async function deleteListing(
+  token: string,
+  listingId: string
+): Promise<ServiceResponse<DeleteListingResult>> {
+  return authorizedRequest<DeleteListingResult>(`/api/dashboard/listings/${listingId}`, token, {
+    method: 'DELETE',
+  });
+}
+
+export async function getMyListings(
+  token: string,
+  options: {
+    status: ListingFilterStatus;
+    sort: ListingSortOption;
+  }
+): Promise<ServiceResponse<MyListingsResponse>> {
+  const query = new URLSearchParams({
+    status: options.status,
+    sort: options.sort,
+  });
+
+  return authorizedRequest<MyListingsResponse>(
+    `/api/dashboard/listings?${query.toString()}`,
+    token,
+    {
+      method: 'GET',
+    }
+  );
+}

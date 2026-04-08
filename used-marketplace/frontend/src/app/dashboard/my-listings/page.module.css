@@ -126,6 +126,20 @@
   box-shadow: 0 10px 24px rgba(17, 24, 39, 0.08);
 }
 
+.tabCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.45rem;
+  height: 1.45rem;
+  margin-left: 0.45rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: rgba(24, 34, 74, 0.08);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
 .toolbarActions {
   display: flex;
   gap: 0.65rem;
@@ -152,6 +166,35 @@
 .utilityButton:hover {
   transform: translateY(-1px);
   border-color: rgba(24, 34, 74, 0.16);
+}
+
+.toolbarSelect {
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  outline: none;
+}
+
+.noticeBar {
+  margin-bottom: 1rem;
+  padding: 0.95rem 1rem;
+  border-radius: 16px;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.noticeSuccess {
+  background: #ecfdf5;
+  border: 1px solid rgba(16, 185, 129, 0.18);
+  color: #047857;
+}
+
+.noticeError {
+  background: #fff7ed;
+  border: 1px solid rgba(249, 115, 22, 0.16);
+  color: #9a3412;
 }
 
 .grid {
@@ -219,11 +262,90 @@
   position: relative;
   margin-top: 0.95rem;
   height: 215px;
+  overflow: hidden;
+  border-radius: 18px;
 }
 
 .image {
   object-fit: contain;
   filter: drop-shadow(0 18px 18px rgba(17, 24, 39, 0.15));
+}
+
+.mediaImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 18px;
+}
+
+.imageCounter {
+  position: absolute;
+  right: 0.7rem;
+  bottom: 0.7rem;
+  z-index: 2;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 48, 0.72);
+  color: #ffffff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.carouselDots {
+  position: absolute;
+  left: 50%;
+  bottom: 0.78rem;
+  z-index: 2;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.carouselDot {
+  width: 8px;
+  height: 8px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.58);
+  cursor: pointer;
+  transition: width 0.2s ease, background 0.2s ease;
+}
+
+.carouselDotActive {
+  width: 22px;
+  background: #ffffff;
+}
+
+.mediaFallback {
+  height: 100%;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  color: #ffffff;
+  text-align: center;
+  padding: 1rem;
+}
+
+.mediaFallbackInitial {
+  font-size: 3rem;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.06em;
+}
+
+.mediaFallbackLabel {
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.86;
 }
 
 .toneporcelain {
@@ -275,6 +397,12 @@
   color: var(--navy-800);
 }
 
+.cardLocation {
+  margin-top: 0.35rem;
+  font-size: 0.8rem;
+  color: #6a738f;
+}
+
 .metaRow {
   display: flex;
   gap: 0.9rem;
@@ -296,6 +424,71 @@
   display: flex;
   gap: 0.6rem;
   margin-top: auto;
+}
+
+.cardActionInfo {
+  flex: 1;
+  border-radius: 14px;
+  background: #eef1fb;
+  color: #2f3553;
+  padding: 0.82rem 0.9rem;
+  font-size: 0.84rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.managementActions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.secondaryAction,
+.successAction,
+.dangerAction {
+  flex: 1;
+  min-height: 44px;
+  border-radius: 14px;
+  padding: 0.8rem 0.9rem;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.secondaryAction {
+  background: #e6eaf8;
+  border: none;
+  color: #18224a;
+}
+
+.successAction {
+  background: linear-gradient(135deg, #0f766e, #14b8a6);
+  border: none;
+  color: #ffffff;
+}
+
+.dangerAction {
+  background: #fff1f2;
+  border: 1px solid rgba(244, 63, 94, 0.18);
+  color: #be123c;
+}
+
+.secondaryAction:hover,
+.successAction:hover,
+.dangerAction:hover {
+  transform: translateY(-1px);
+}
+
+.secondaryAction:disabled,
+.successAction:disabled,
+.dangerAction:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .editButton,
@@ -380,16 +573,23 @@
 .insightsStats {
   display: flex;
   gap: 0.8rem;
-  align-items: center;
+  align-items: stretch;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .statCard {
-  min-width: 106px;
+  min-width: 0;
+  max-width: 220px;
+  flex: 1 1 132px;
   text-align: center;
   padding: 0.9rem 0.8rem;
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .statValue {
@@ -397,6 +597,13 @@
   font-size: clamp(1.35rem, 2vw, 1.95rem);
   font-weight: 800;
   letter-spacing: -0.05em;
+  line-height: 1.08;
+}
+
+.statValueCompact {
+  font-size: clamp(1.02rem, 1.35vw, 1.5rem);
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
 }
 
 .statLabel {
@@ -407,6 +614,43 @@
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: rgba(230, 235, 255, 0.76);
+}
+
+.loadingState,
+.errorState,
+.emptyState {
+  grid-column: 1 / -1;
+  padding: 2rem;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(24, 34, 74, 0.08);
+  box-shadow: 0 18px 40px rgba(17, 24, 39, 0.08);
+  text-align: center;
+}
+
+.errorState p,
+.emptyState p {
+  margin: 0;
+  color: #5f667d;
+  line-height: 1.6;
+}
+
+.retryButton,
+.emptyAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1rem;
+  padding: 0.78rem 1.1rem;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--navy-950), var(--navy-800));
+  color: #ffffff;
+  text-decoration: none;
+  border: none;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 @media (max-width: 1100px) {
@@ -480,6 +724,14 @@
 
   .cardActions {
     flex-wrap: wrap;
+  }
+
+  .cardActionInfo {
+    width: 100%;
+  }
+
+  .managementActions {
+    flex-direction: column;
   }
 
   .moreButton {

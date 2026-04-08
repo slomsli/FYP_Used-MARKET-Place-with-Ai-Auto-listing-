@@ -1,13 +1,36 @@
 'use client';
 
-import { useState, useRef, useCallback, type ChangeEvent, type DragEvent } from 'react';
-import Link from 'next/link';
+import {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  useMemo,
+  type ChangeEvent,
+  type DragEvent,
+} from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ROUTES } from '@/src/config/routes';
+import { useRequireAuth } from '@/src/hooks/useRequireAuth';
+import { createClient } from '@/src/lib/supabase/client';
+import {
+  createListing,
+  getSellerListing,
+  getListingMetadata,
+  uploadListingImage,
+  updateListing,
+} from '@/src/services/listingService';
+import type {
+  CreateableListingStatus,
+  ListingAreaOption,
+  ListingCondition,
+  ListingMetadata,
+  ListingSummary,
+} from '@/src/types/listing';
 import styles from './page.module.css';
 
-/* ═══════════════════════════════════════════
-   Inline SVG Icons
-   ═══════════════════════════════════════════ */
+const MAX_LISTING_IMAGES = 6;
+const MAX_LISTING_IMAGE_SIZE_BYTES = 8 * 1024 * 1024;
 
 const CameraIcon = () => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -19,8 +42,10 @@ const CameraIcon = () => (
 const SparklesIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-    <path d="M5 3v4" /><path d="M19 17v4" />
-    <path d="M3 5h4" /><path d="M17 19h4" />
+    <path d="M5 3v4" />
+    <path d="M19 17v4" />
+    <path d="M3 5h4" />
+    <path d="M17 19h4" />
   </svg>
 );
 
@@ -31,145 +56,675 @@ const MapPinIcon = () => (
   </svg>
 );
 
-const SearchIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
-  </svg>
-);
-
-const CheckIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M20 6 9 17l-5-5" />
-  </svg>
-);
-
 const XIcon = () => (
   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+    <path d="M18 6 6 18" />
+    <path d="m6 6 12 12" />
   </svg>
 );
 
-/* ═══════════════════════════════════════════
-   Categories data
-   ═══════════════════════════════════════════ */
+type ListingImageItem = {
+  id: string;
+  preview: string;
+  source: 'local' | 'remote';
+  file?: File;
+};
 
-const CATEGORIES = [
-  'Electronics',
-  'Fashion & Apparel',
-  'Home & Garden',
-  'Sports & Outdoors',
-  'Vehicles & Parts',
-  'Books & Media',
-  'Toys & Games',
-  'Collectibles & Art',
-  'Health & Beauty',
-  'Industrial & Tools',
-  'Other',
-];
+function formatCurrency(amount: number) {
+  return new Intl.NumberFormat('en-MY', {
+    style: 'currency',
+    currency: 'MYR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
 
-const CONDITIONS = ['Pristine', 'Near Mint', 'Excellent', 'Good'] as const;
-type Condition = (typeof CONDITIONS)[number];
+async function getAccessToken() {
+  const supabase = createClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
-/* ═══════════════════════════════════════════
-   Component
-   ═══════════════════════════════════════════ */
+  return session?.access_token ?? null;
+}
+
+function getStoredImageUrls(listing: Pick<ListingSummary, 'imagePaths' | 'coverImagePath'>) {
+  const seenUrls = new Set<string>();
+
+  return [...listing.imagePaths, listing.coverImagePath]
+    .filter((path): path is string => Boolean(path))
+    .filter((path) => {
+      if (seenUrls.has(path)) {
+        return false;
+      }
+
+      seenUrls.add(path);
+      return true;
+    })
+    .slice(0, MAX_LISTING_IMAGES);
+}
+
+function buildStoredImageItems(
+  listing: Pick<ListingSummary, 'imagePaths' | 'coverImagePath'>
+): ListingImageItem[] {
+  return getStoredImageUrls(listing).map((preview, index) => ({
+    id: `remote-${index}-${preview}`,
+    preview,
+    source: 'remote',
+  }));
+}
+
+function revokeLocalPreview(image: ListingImageItem) {
+  if (image.source === 'local') {
+    URL.revokeObjectURL(image.preview);
+  }
+}
+
+async function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        reject(new Error('Unable to read the selected file'));
+        return;
+      }
+
+      const [, base64Data] = reader.result.split(',');
+      if (!base64Data) {
+        reject(new Error('Unable to encode the selected file'));
+        return;
+      }
+
+      resolve(base64Data);
+    };
+
+    reader.onerror = () => {
+      reject(reader.error || new Error('Unable to read the selected file'));
+    };
+
+    reader.readAsDataURL(file);
+  });
+}
 
 export default function AddListingPage() {
-  /* ── Form State ── */
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user, loading } = useRequireAuth();
+  const listingId = searchParams.get('listingId');
+  const isEditMode = Boolean(listingId);
+
+  const [metadata, setMetadata] = useState<ListingMetadata | null>(null);
+  const [areas, setAreas] = useState<ListingAreaOption[]>([]);
+  const [metadataLoading, setMetadataLoading] = useState(true);
+  const [areasLoading, setAreasLoading] = useState(false);
+  const [metadataError, setMetadataError] = useState<string | null>(null);
+  const [existingListing, setExistingListing] = useState<ListingSummary | null>(null);
+  const [listingLoading, setListingLoading] = useState(false);
+
   const [title, setTitle] = useState('');
-  const [category, setCategory] = useState('');
+  const [categoryId, setCategoryId] = useState('');
   const [brand, setBrand] = useState('');
   const [description, setDescription] = useState('');
-  const [condition, setCondition] = useState<Condition | ''>('');
+  const [condition, setCondition] = useState<ListingCondition | ''>('');
   const [price, setPrice] = useState('');
-  const [openToOffers, setOpenToOffers] = useState(false);
-  const [location, setLocation] = useState('');
-  const [images, setImages] = useState<{ file: File; preview: string }[]>([]);
+  const [openToOffers, setOpenToOffers] = useState(true);
+  const [stateId, setStateId] = useState('');
+  const [areaId, setAreaId] = useState('');
+  const [images, setImages] = useState<ListingImageItem[]>([]);
   const [dragActive, setDragActive] = useState(false);
-  const [toast, setToast] = useState<{ message: string; visible: boolean }>({ message: '', visible: false });
+  const [toast, setToast] = useState<{ message: string; visible: boolean }>({
+    message: '',
+    visible: false,
+  });
+  const [submittingStatus, setSubmittingStatus] = useState<CreateableListingStatus | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const imagesRef = useRef<ListingImageItem[]>([]);
 
-  /* ── Image Handling ── */
+  useEffect(() => {
+    imagesRef.current = images;
+  }, [images]);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
+
+      if (redirectTimerRef.current) {
+        clearTimeout(redirectTimerRef.current);
+      }
+
+      for (const image of imagesRef.current) {
+        revokeLocalPreview(image);
+      }
+    };
+  }, []);
+
+  const showToast = useCallback((message: string) => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+
+    setToast({ message, visible: true });
+    toastTimerRef.current = setTimeout(() => {
+      setToast((current) => ({ ...current, visible: false }));
+    }, 3200);
+  }, []);
+
+  const replaceImages = useCallback((nextImages: ListingImageItem[]) => {
+    setImages((previousImages) => {
+      for (const image of previousImages) {
+        revokeLocalPreview(image);
+      }
+
+      return nextImages;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadMetadata() {
+      setMetadataLoading(true);
+      setMetadataError(null);
+
+      const token = await getAccessToken();
+      if (!token) {
+        if (!cancelled) {
+          setMetadataError('No auth session found. Please sign in again.');
+          setMetadataLoading(false);
+        }
+        return;
+      }
+
+      const response = await getListingMetadata(token);
+      if (cancelled) {
+        return;
+      }
+
+      if (response.data) {
+        setMetadata(response.data);
+        setAreas(response.data.areas);
+      } else {
+        setMetadataError(response.error || 'Unable to load listing form data');
+      }
+
+      setMetadataLoading(false);
+    }
+
+    loadMetadata();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || !listingId) {
+      return;
+    }
+
+    const editingListingId = listingId;
+    let cancelled = false;
+
+    async function loadListing() {
+      setListingLoading(true);
+
+      const token = await getAccessToken();
+      if (!token) {
+        if (!cancelled) {
+          setMetadataError('No auth session found. Please sign in again.');
+          setListingLoading(false);
+        }
+        return;
+      }
+
+      const response = await getSellerListing(token, editingListingId);
+      if (cancelled) {
+        return;
+      }
+
+      if (!response.data) {
+        setMetadataError(response.error || 'Unable to load the listing for editing');
+        setListingLoading(false);
+        return;
+      }
+
+      const listing = response.data;
+      setExistingListing(listing);
+      setTitle(listing.title);
+      setCategoryId(listing.category ? String(listing.category.id) : '');
+      setBrand(listing.brand || '');
+      setDescription(listing.description || '');
+      setCondition(listing.condition);
+      setPrice(String(listing.price));
+      setOpenToOffers(listing.negotiable);
+      setStateId(listing.location.stateId ? String(listing.location.stateId) : '');
+      setAreaId(listing.location.areaId ? String(listing.location.areaId) : '');
+      replaceImages(buildStoredImageItems(listing));
+      setListingLoading(false);
+    }
+
+    loadListing();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [listingId, replaceImages, user]);
+
+  useEffect(() => {
+    if (!user || !stateId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadAreas() {
+      setAreasLoading(true);
+
+      const token = await getAccessToken();
+      if (!token) {
+        if (!cancelled) {
+          setAreasLoading(false);
+          setMetadataError('No auth session found. Please sign in again.');
+        }
+        return;
+      }
+
+      const response = await getListingMetadata(token, Number(stateId));
+      if (cancelled) {
+        return;
+      }
+
+      if (response.data) {
+        const metadataResponse = response.data;
+
+        setAreas(metadataResponse.areas);
+        setMetadata((currentMetadata) =>
+          currentMetadata
+            ? {
+                ...currentMetadata,
+                ...metadataResponse,
+                areas: metadataResponse.areas,
+              }
+            : metadataResponse
+        );
+        setAreaId((currentAreaId) =>
+          metadataResponse.areas.some((area) => String(area.id) === currentAreaId)
+            ? currentAreaId
+            : ''
+        );
+      } else {
+        setAreas([]);
+        showToast(response.error || 'Unable to load areas for the selected state');
+      }
+
+      setAreasLoading(false);
+    }
+
+    loadAreas();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [stateId, user, showToast]);
+
   const handleFiles = useCallback((files: FileList | null) => {
-    if (!files) return;
-    const newImages = Array.from(files)
-      .filter((f) => f.type.startsWith('image/'))
-      .slice(0, 6 - images.length)
-      .map((file) => ({ file, preview: URL.createObjectURL(file) }));
-    setImages((prev) => [...prev, ...newImages].slice(0, 6));
-  }, [images.length]);
+    if (!files) {
+      return;
+    }
 
-  const handleDrop = useCallback((e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
+    const selectedFiles = Array.from(files);
+    const validImageFiles = selectedFiles.filter((file) => file.type.startsWith('image/'));
+
+    if (validImageFiles.length === 0) {
+      showToast('Please choose image files only.');
+      return;
+    }
+
+    const filesWithinSizeLimit = validImageFiles.filter(
+      (file) => file.size <= MAX_LISTING_IMAGE_SIZE_BYTES
+    );
+
+    if (filesWithinSizeLimit.length !== validImageFiles.length) {
+      showToast('Each photo must be 8 MB or smaller.');
+    }
+
+    const availableSlots = Math.max(0, MAX_LISTING_IMAGES - imagesRef.current.length);
+    if (availableSlots === 0) {
+      showToast(`You can upload up to ${MAX_LISTING_IMAGES} photos per listing.`);
+      return;
+    }
+
+    const nextImages = filesWithinSizeLimit
+      .slice(0, availableSlots)
+      .map((file) => ({
+        id: `local-${crypto.randomUUID()}`,
+        file,
+        preview: URL.createObjectURL(file),
+        source: 'local' as const,
+      }));
+
+    if (nextImages.length === 0) {
+      return;
+    }
+
+    if (filesWithinSizeLimit.length > availableSlots) {
+      showToast(`Only ${availableSlots} more photo${availableSlots === 1 ? '' : 's'} can be added.`);
+    }
+
+    setImages((previousImages) => [...previousImages, ...nextImages]);
+  }, [showToast]);
+
+  const handleDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
     setDragActive(false);
-    handleFiles(e.dataTransfer.files);
+    handleFiles(event.dataTransfer.files);
   }, [handleFiles]);
 
-  const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
+  const handleDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
     setDragActive(true);
   }, []);
 
   const handleDragLeave = useCallback(() => setDragActive(false), []);
 
   const removeImage = useCallback((index: number) => {
-    setImages((prev) => {
-      URL.revokeObjectURL(prev[index].preview);
-      return prev.filter((_, i) => i !== index);
+    setImages((previousImages) => {
+      const imageToRemove = previousImages[index];
+      if (imageToRemove) {
+        revokeLocalPreview(imageToRemove);
+      }
+
+      return previousImages.filter((_, imageIndex) => imageIndex !== index);
     });
   }, []);
 
-  const handleFileChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-    handleFiles(e.target.files);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+  const handleFileChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    handleFiles(event.target.files);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   }, [handleFiles]);
 
-  /* ── Toast ── */
-  const showToast = (message: string) => {
-    setToast({ message, visible: true });
-    setTimeout(() => setToast((t) => ({ ...t, visible: false })), 3000);
-  };
+  const availableCategories = useMemo(() => {
+    const categories = metadata?.categories ?? [];
 
-  /* ── Submit Handlers ── */
-  const handlePublish = () => {
-    if (!title.trim()) {
-      showToast('Please add a title for your listing');
+    if (
+      existingListing?.category &&
+      !categories.some((item) => item.id === existingListing.category?.id)
+    ) {
+      return [
+        {
+          ...existingListing.category,
+          parentId: null,
+        },
+        ...categories,
+      ];
+    }
+
+    return categories;
+  }, [existingListing, metadata]);
+
+  const selectedCategory = useMemo(
+    () => availableCategories.find((item) => String(item.id) === categoryId) ?? null,
+    [availableCategories, categoryId]
+  );
+
+  const selectedCondition = useMemo(
+    () => metadata?.conditions.find((item) => item.value === condition) ?? null,
+    [condition, metadata]
+  );
+
+  const selectedState = useMemo(
+    () => metadata?.states.find((item) => String(item.id) === stateId) ?? null,
+    [metadata, stateId]
+  );
+
+  const selectedArea = useMemo(
+    () => (stateId ? areas.find((item) => String(item.id) === areaId) ?? null : null),
+    [areaId, areas, stateId]
+  );
+
+  const locationLabel = useMemo(() => {
+    if (selectedArea?.name && selectedState?.name) {
+      return `${selectedArea.name}, ${selectedState.name}`;
+    }
+
+    return selectedState?.name || 'Choose state and area';
+  }, [selectedArea, selectedState]);
+
+  const displayPrice = useMemo(() => {
+    const parsedPrice = Number(price);
+    if (!price || Number.isNaN(parsedPrice)) {
+      return formatCurrency(0);
+    }
+
+    return formatCurrency(parsedPrice);
+  }, [price]);
+
+  const displayedAreas = stateId ? areas : [];
+
+  const disabled = metadataLoading || listingLoading || submittingStatus !== null;
+
+  const openFilePicker = useCallback(() => {
+    if (disabled) {
       return;
     }
-    showToast('✓ Listing published successfully!');
-    // TODO: integrate with backend API
-  };
 
-  const handleDraft = () => {
-    showToast('Draft saved successfully');
-  };
+    fileInputRef.current?.click();
+  }, [disabled]);
 
-  /* ── Preview helpers ── */
-  const displayPrice = price ? `$${parseFloat(price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '$0.00';
+  const validateForm = useCallback(() => {
+    if (!title.trim()) {
+      return 'Please add a title for your listing';
+    }
+
+    if (!categoryId) {
+      return 'Please choose a category';
+    }
+
+    if (!condition) {
+      return 'Please choose the item condition';
+    }
+
+    if (!price.trim() || Number.isNaN(Number(price)) || Number(price) < 0) {
+      return 'Please enter a valid price';
+    }
+
+    if (!stateId) {
+      return 'Please choose a state';
+    }
+
+    if (!areaId) {
+      return 'Please choose an area';
+    }
+
+    return null;
+  }, [areaId, categoryId, condition, price, stateId, title]);
+
+  const submitListing = useCallback(async (status: CreateableListingStatus) => {
+    const validationError = validateForm();
+    if (validationError) {
+      showToast(validationError);
+      return;
+    }
+
+    const selectedConditionValue = condition;
+    if (!selectedConditionValue) {
+      showToast('Please choose the item condition');
+      return;
+    }
+
+    setSubmittingStatus(status);
+
+    const token = await getAccessToken();
+    if (!token) {
+      setSubmittingStatus(null);
+      showToast('No auth session found. Please sign in again.');
+      return;
+    }
+
+    const payload = {
+      title: title.trim(),
+      categoryId: Number(categoryId),
+      description: description.trim() || undefined,
+      brand: brand.trim() || undefined,
+      condition: selectedConditionValue,
+      price: Number(price),
+      currency: metadata?.currencies[0] || 'MYR',
+      negotiable: openToOffers,
+      status,
+      stateId: Number(stateId),
+      areaId: Number(areaId),
+    };
+
+    const existingImageUrls = images
+      .filter((image): image is ListingImageItem & { source: 'remote' } => image.source === 'remote')
+      .map((image) => image.preview);
+
+    const pendingUploads = images.filter(
+      (image): image is ListingImageItem & { source: 'local'; file: File } =>
+        image.source === 'local' && image.file instanceof File
+    );
+
+    const uploadedImageUrls: string[] = [];
+
+    for (const image of pendingUploads) {
+      let base64Data: string;
+
+      try {
+        base64Data = await readFileAsBase64(image.file);
+      } catch (error) {
+        setSubmittingStatus(null);
+        showToast(
+          error instanceof Error ? error.message : `Unable to read ${image.file.name} for upload`
+        );
+        return;
+      }
+
+      const uploadResponse = await uploadListingImage(token, {
+        fileName: image.file.name,
+        contentType: image.file.type,
+        base64Data,
+      });
+
+      if (!uploadResponse.data) {
+        setSubmittingStatus(null);
+        showToast(uploadResponse.error || `Unable to upload ${image.file.name}`);
+        return;
+      }
+
+      uploadedImageUrls.push(uploadResponse.data.url);
+    }
+
+    const imagePaths = [...existingImageUrls, ...uploadedImageUrls];
+    const listingPayload = {
+      ...payload,
+      imagePaths,
+      coverImagePath: imagePaths[0] ?? null,
+    };
+
+    const response = isEditMode && listingId
+      ? await updateListing(token, listingId, listingPayload)
+      : await createListing(token, listingPayload);
+
+    if (!response.data) {
+      setSubmittingStatus(null);
+      showToast(response.error || 'Failed to save your listing');
+      return;
+    }
+
+    const savedListing = response.data;
+
+    const successMessage = isEditMode
+      ? status === 'active'
+        ? 'Listing updated successfully'
+        : 'Draft updated successfully'
+      : status === 'active'
+        ? 'Listing published successfully'
+        : 'Draft saved successfully';
+
+    showToast(successMessage);
+
+    redirectTimerRef.current = setTimeout(() => {
+      router.push(`${ROUTES.MY_LISTINGS}?status=${savedListing.status}`);
+      router.refresh();
+    }, 700);
+  }, [
+    areaId,
+    brand,
+    categoryId,
+    condition,
+    description,
+    images,
+    metadata?.currencies,
+    openToOffers,
+    price,
+    router,
+    showToast,
+    stateId,
+    title,
+    validateForm,
+    isEditMode,
+    listingId,
+  ]);
+
+  if (loading || metadataLoading || listingLoading) {
+    return (
+      <div className={styles.page}>
+        <div className={styles.alert}>
+          {isEditMode ? 'Loading listing editor...' : 'Loading listing form...'}
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
 
   return (
     <div className={styles.page}>
-      {/* ─── Header ─── */}
       <section className={styles.header}>
         <div className={styles.headerCopy}>
           <p className={styles.eyebrow}>Seller Studio</p>
-          <h1 className={styles.title}>Post New Item</h1>
+          <h1 className={styles.title}>
+            {isEditMode ? 'Edit Listing' : 'Post New Item'}
+          </h1>
           <p className={styles.subtitle}>
-            Every object tells a story. Fill in the details below to list your item in our curated marketplace.
+            {isEditMode
+              ? `Update this ${existingListing?.statusLabel.toLowerCase() || 'listing'} with data from your database-backed form.`
+              : 'Create a real marketplace listing with categories, states, areas, and photos saved through the backend.'}
           </p>
         </div>
-        <button className={styles.aiButton} id="ai-generate-btn" type="button">
+        <button
+          className={styles.aiButton}
+          id="ai-generate-btn"
+          type="button"
+          onClick={() => showToast('AI autofill can be connected after the listing workflow is finished.')}
+          disabled={disabled}
+        >
           <SparklesIcon /> Generate All with AI
         </button>
       </section>
 
-      {/* ─── Two-Column Layout ─── */}
-      <div className={styles.layout}>
-        {/* ════════ FORM COLUMN ════════ */}
-        <div className={styles.formColumn}>
+      {metadataError && (
+        <div className={styles.alert}>
+          {metadataError}
+        </div>
+      )}
 
-          {/* ── 01 Visual Archive ── */}
+      <div className={styles.layout}>
+        <div className={styles.formColumn}>
           <div className={styles.section}>
             <div className={styles.sectionHeader}>
               <span className={styles.stepNumber}>01</span>
@@ -181,17 +736,29 @@ export default function AddListingPage() {
               onDrop={handleDrop}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
-              onClick={() => fileInputRef.current?.click()}
+              onClick={openFilePicker}
               id="image-drop-zone"
             >
               <div className={styles.dropIcon}>
                 <CameraIcon />
               </div>
-              <p className={styles.dropTitle}>Drag and drop high-resolution images</p>
+              <p className={styles.dropTitle}>Drag and drop listing images</p>
               <p className={styles.dropHint}>
-                Minimum 2000px wide for optimal curation display.
-                <br />Up to 6 images allowed.
+                Up to 6 photos. Click anywhere here to browse your files.
+                <br />
+                Saved photos will appear in your listing cards after publish.
               </p>
+              <button
+                type="button"
+                className={styles.dropButton}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openFilePicker();
+                }}
+                disabled={disabled}
+              >
+                Choose Photos
+              </button>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -199,20 +766,20 @@ export default function AddListingPage() {
                 multiple
                 className={styles.dropInput}
                 onChange={handleFileChange}
-                onClick={(e) => e.stopPropagation()}
+                disabled={disabled}
                 id="image-file-input"
               />
             </div>
 
             {images.length > 0 && (
               <div className={styles.imagePreviews}>
-                {images.map((img, i) => (
-                  <div key={i} className={styles.imagePreview}>
-                    <img src={img.preview} alt={`Upload ${i + 1}`} />
+                {images.map((image, index) => (
+                  <div key={image.preview} className={styles.imagePreview}>
+                    <img src={image.preview} alt={`Upload ${index + 1}`} />
                     <button
                       className={styles.imageRemove}
-                      onClick={() => removeImage(i)}
-                      aria-label={`Remove image ${i + 1}`}
+                      onClick={() => removeImage(index)}
+                      aria-label={`Remove image ${index + 1}`}
                       type="button"
                     >
                       <XIcon />
@@ -223,7 +790,6 @@ export default function AddListingPage() {
             )}
           </div>
 
-          {/* ── 02 Core Identity ── */}
           <div className={styles.section}>
             <div className={styles.sectionHeader}>
               <span className={styles.stepNumber}>02</span>
@@ -236,9 +802,10 @@ export default function AddListingPage() {
                 type="text"
                 id="listing-title"
                 className={styles.input}
-                placeholder="e.g., 1970s Braun ET55 Calculator by Dieter Rams"
+                placeholder="e.g., Gently used gaming laptop"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(event) => setTitle(event.target.value)}
+                disabled={disabled}
               />
             </div>
 
@@ -248,12 +815,15 @@ export default function AddListingPage() {
                 <select
                   id="listing-category"
                   className={styles.select}
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
+                  value={categoryId}
+                  onChange={(event) => setCategoryId(event.target.value)}
+                  disabled={disabled}
                 >
                   <option value="">Select category</option>
-                  {CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat}>{cat}</option>
+                  {availableCategories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -264,9 +834,10 @@ export default function AddListingPage() {
                   type="text"
                   id="listing-brand"
                   className={styles.input}
-                  placeholder="Herman Miller, Leica, etc."
+                  placeholder="Apple, Samsung, IKEA, etc."
                   value={brand}
-                  onChange={(e) => setBrand(e.target.value)}
+                  onChange={(event) => setBrand(event.target.value)}
+                  disabled={disabled}
                 />
               </div>
             </div>
@@ -276,33 +847,34 @@ export default function AddListingPage() {
               <textarea
                 id="listing-description"
                 className={styles.textarea}
-                placeholder="Detail the provenance, history, and physical characteristics…"
+                placeholder="Describe the item, condition details, and anything a buyer should know."
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(event) => setDescription(event.target.value)}
                 rows={5}
+                disabled={disabled}
               />
             </div>
           </div>
 
-          {/* ── 03 Provenance & Value ── */}
           <div className={styles.section}>
             <div className={styles.sectionHeader}>
               <span className={styles.stepNumber}>03</span>
-              <h2 className={styles.sectionTitle}>Provenance &amp; Value</h2>
+              <h2 className={styles.sectionTitle}>Pricing &amp; Condition</h2>
             </div>
 
             <div className={styles.formGroup}>
               <label className={styles.label}>Condition</label>
               <div className={styles.conditionGroup}>
-                {CONDITIONS.map((c) => (
+                {metadata?.conditions.map((item) => (
                   <button
-                    key={c}
+                    key={item.value}
                     type="button"
-                    className={`${styles.conditionPill} ${condition === c ? styles.conditionPillActive : ''}`}
-                    onClick={() => setCondition(c)}
-                    id={`condition-${c.toLowerCase().replace(/\s/g, '-')}`}
+                    className={`${styles.conditionPill} ${condition === item.value ? styles.conditionPillActive : ''}`}
+                    onClick={() => setCondition(item.value)}
+                    disabled={disabled}
+                    id={`condition-${item.value}`}
                   >
-                    {c}
+                    {item.label}
                   </button>
                 ))}
               </div>
@@ -310,9 +882,9 @@ export default function AddListingPage() {
 
             <div className={styles.priceRow}>
               <div className={styles.formGroup}>
-                <label className={styles.label} htmlFor="listing-price">Price (USD)</label>
+                <label className={styles.label} htmlFor="listing-price">Price (MYR)</label>
                 <div className={styles.priceInputWrapper}>
-                  <span className={styles.currencyBadge}>$</span>
+                  <span className={styles.currencyBadge}>RM</span>
                   <input
                     type="number"
                     id="listing-price"
@@ -321,7 +893,8 @@ export default function AddListingPage() {
                     min="0"
                     step="0.01"
                     value={price}
-                    onChange={(e) => setPrice(e.target.value)}
+                    onChange={(event) => setPrice(event.target.value)}
+                    disabled={disabled}
                   />
                 </div>
               </div>
@@ -330,22 +903,22 @@ export default function AddListingPage() {
                 <div className={styles.toggleRow}>
                   <div>
                     <div className={styles.toggleLabel}>Open to Offers</div>
-                    <div className={styles.toggleSub}>Negotiable</div>
+                    <div className={styles.toggleSub}>Negotiable listing</div>
                   </div>
                   <button
                     type="button"
                     className={`${styles.toggle} ${openToOffers ? styles.toggleActive : ''}`}
-                    onClick={() => setOpenToOffers(!openToOffers)}
+                    onClick={() => setOpenToOffers((current) => !current)}
                     role="switch"
                     aria-checked={openToOffers}
                     id="open-to-offers-toggle"
+                    disabled={disabled}
                   />
                 </div>
               </div>
             </div>
           </div>
 
-          {/* ── 04 Origin ── */}
           <div className={styles.section}>
             <div className={styles.sectionHeader}>
               <span className={styles.stepNumber}>04</span>
@@ -354,7 +927,6 @@ export default function AddListingPage() {
 
             <div className={styles.mapPlaceholder}>
               <div className={styles.mapOverlay} />
-              {/* Placeholder map background — soft gradient */}
               <svg width="100%" height="100%" viewBox="0 0 600 200" preserveAspectRatio="xMidYMid slice" style={{ opacity: 0.18 }}>
                 <defs>
                   <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
@@ -368,76 +940,113 @@ export default function AddListingPage() {
               </svg>
             </div>
 
-            <div className={styles.locationInput}>
-              <span className={styles.locationIcon}><MapPinIcon /></span>
-              <input
-                type="text"
-                className={styles.input}
-                placeholder="Enter origin city, e.g., Brooklyn, NY"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                id="listing-location"
-              />
-              <button type="button" className={styles.locationSearch} aria-label="Search location">
-                <SearchIcon />
-              </button>
+            <p className={styles.fieldHint}>
+              Choose the listing location from the database-backed `states` and `areas` tables.
+            </p>
+
+            <div className={styles.locationGrid}>
+              <div className={styles.formGroup}>
+                <label className={styles.label} htmlFor="listing-state">
+                  <MapPinIcon />
+                  <span>State</span>
+                </label>
+                <select
+                  id="listing-state"
+                  className={styles.select}
+                  value={stateId}
+                  onChange={(event) => {
+                    setStateId(event.target.value);
+                    setAreaId('');
+                  }}
+                  disabled={disabled}
+                >
+                  <option value="">Select state</option>
+                  {metadata?.states.map((state) => (
+                    <option key={state.id} value={state.id}>
+                      {state.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.label} htmlFor="listing-area">Area</label>
+                <select
+                  id="listing-area"
+                  className={styles.select}
+                  value={areaId}
+                  onChange={(event) => setAreaId(event.target.value)}
+                  disabled={disabled || !stateId || areasLoading}
+                >
+                  <option value="">
+                    {areasLoading ? 'Loading areas...' : 'Select area'}
+                  </option>
+                  {displayedAreas.map((area) => (
+                    <option key={area.id} value={area.id}>
+                      {area.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
-          {/* ── Actions ── */}
           <div className={styles.actions}>
             <button
               type="button"
               className={styles.publishBtn}
-              onClick={handlePublish}
+              onClick={() => submitListing('active')}
               id="publish-btn"
+              disabled={disabled}
             >
-              Publish to Marketplace
+              {submittingStatus === 'active'
+                ? isEditMode ? 'Saving...' : 'Publishing...'
+                : isEditMode ? 'Save Changes' : 'Publish to Marketplace'}
             </button>
             <button
               type="button"
               className={styles.draftBtn}
-              onClick={handleDraft}
+              onClick={() => submitListing('draft')}
               id="save-draft-btn"
+              disabled={disabled}
             >
-              Save Draft
+              {submittingStatus === 'draft'
+                ? 'Saving...'
+                : isEditMode ? 'Move to Draft' : 'Save Draft'}
             </button>
           </div>
         </div>
 
-        {/* ════════ PREVIEW COLUMN ════════ */}
         <div className={styles.previewColumn}>
           <div className={styles.previewCard}>
-            {/* Preview Image */}
             <div className={styles.previewImageArea}>
               {images.length > 0 ? (
                 <img src={images[0].preview} alt="Preview" />
               ) : (
                 <CameraIcon />
               )}
-              <span className={styles.previewBadge}>Draft Preview</span>
+              <span className={styles.previewBadge}>Live Preview</span>
             </div>
 
-            {/* Preview Body */}
             <div className={styles.previewBody}>
               <div className={styles.previewTags}>
-                {condition && (
+                {selectedCondition && (
                   <span className={`${styles.previewTag} ${styles.previewTagCondition}`}>
-                    {condition}
+                    {selectedCondition.label}
                   </span>
                 )}
-                {category && (
+                {selectedCategory && (
                   <span className={`${styles.previewTag} ${styles.previewTagCategory}`}>
-                    {category}
+                    {selectedCategory.name}
                   </span>
                 )}
               </div>
 
               <h3 className={styles.previewTitle}>
-                {title || 'Vintage Archive Listing'}
+                {title || 'Your listing title will appear here'}
               </h3>
               <p className={styles.previewDesc}>
-                {description || 'Your description and item story will appear here as a curated editorial entry…'}
+                {description || 'Add item details, condition notes, and buyer-facing information to preview the finished listing.'}
               </p>
 
               <div className={styles.previewPriceRow}>
@@ -448,27 +1057,16 @@ export default function AddListingPage() {
                 <div className={styles.previewLocation}>
                   <div className={styles.previewLocationLabel}>Location</div>
                   <div className={styles.previewLocationValue}>
-                    {location || 'Earth'}
+                    {locationLabel}
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Curator Tip */}
-          <div className={styles.curatorTip}>
-            <div className={styles.curatorTipHeader}>
-              <span className={styles.curatorTipDot} />
-              <span className={styles.curatorTipTitle}>Curator Tip</span>
-            </div>
-            <p className={styles.curatorTipText}>
-              &ldquo;Items with detailed provenance and professional-grade photography sell 3.5x faster on the marketplace.&rdquo;
-            </p>
-          </div>
         </div>
       </div>
 
-      {/* ─── Toast ─── */}
       <div className={`${styles.toast} ${toast.visible ? styles.toastVisible : ''}`} role="status">
         {toast.message}
       </div>

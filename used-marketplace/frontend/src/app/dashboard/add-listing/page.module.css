@@ -86,6 +86,17 @@
   color: var(--text-soft);
 }
 
+.alert {
+  margin-bottom: 1.25rem;
+  padding: 0.95rem 1rem;
+  border-radius: 16px;
+  background: #fff7ed;
+  border: 1px solid rgba(249, 115, 22, 0.16);
+  color: #9a3412;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
 /* ── AI Generate Button ── */
 .aiButton {
   display: inline-flex;
@@ -209,11 +220,28 @@
   line-height: 1.5;
 }
 
-.dropInput {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
+.dropButton {
+  margin-top: 1rem;
+  padding: 0.72rem 1.1rem;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--navy-950), var(--navy-800));
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
   cursor: pointer;
+  box-shadow: 0 12px 24px rgba(24, 34, 74, 0.18);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.dropButton:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 28px rgba(24, 34, 74, 0.24);
+}
+
+.dropInput {
+  display: none;
 }
 
 /* ── Image Previews ── */
@@ -280,13 +308,20 @@
 }
 
 .label {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
   margin-bottom: 0.45rem;
   font-size: 0.72rem;
   font-weight: 700;
+  line-height: 1.2;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-soft);
+}
+
+.label svg {
+  flex-shrink: 0;
 }
 
 .input,
@@ -314,6 +349,14 @@
 .textarea:focus {
   border-color: var(--navy-700);
   box-shadow: 0 0 0 3px rgba(36, 53, 106, 0.08);
+}
+
+.input:disabled,
+.select:disabled,
+.textarea:disabled {
+  background: #f7f8fc;
+  cursor: not-allowed;
+  opacity: 0.72;
 }
 
 .select {
@@ -445,6 +488,18 @@
   transform: translateX(20px);
 }
 
+.toggle:disabled,
+.aiButton:disabled,
+.dropButton:disabled,
+.publishBtn:disabled,
+.draftBtn:disabled,
+.conditionPill:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+  transform: none;
+  box-shadow: none;
+}
+
 /* ── Origin / Location ── */
 .mapPlaceholder {
   border-radius: var(--radius-card);
@@ -510,6 +565,20 @@
 
 .locationSearch:hover {
   background: var(--surface-muted);
+}
+
+.fieldHint {
+  margin: 0.75rem 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.locationGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 0.75rem;
 }
 
 /* ── Preview Card ── */
@@ -788,6 +857,10 @@
   }
 
   .priceRow {
+    grid-template-columns: 1fr;
+  }
+
+  .locationGrid {
     grid-template-columns: 1fr;
   }
 
