@@ -4,6 +4,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import authRoutes from './routes/authRoutes';
+import dashboardRoutes from './routes/dashboardRoutes';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -47,6 +48,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 /* ── Error handler (must be last) ───────────────────────── */
 

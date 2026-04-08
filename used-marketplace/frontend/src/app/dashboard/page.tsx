@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
+import { createClient } from '@/src/lib/supabase/client';
+import { getDashboardSummary, type DashboardSummary } from '@/src/services/dashboardService';
 import { ROUTES } from '@/src/config/routes';
 import styles from './page.module.css';
 
@@ -67,50 +69,48 @@ const ShieldCheck = () => (
    Mock Data
    ══════════════════════════════════════════ */
 
-const weeklyData = [
-  { week: 'WEEK 1', views: 2200, offers: 800 },
-  { week: 'WEEK 2', views: 3400, offers: 1200 },
-  { week: 'WEEK 3', views: 1800, offers: 600 },
-  { week: 'WEEK 4', views: 2600, offers: 900 },
-];
-
-const recentActivity = [
-  {
-    id: '1',
-    name: 'Vintage Leather Tote',
-    badge: 'SINGLE OWNER',
-    badgeColor: '#dc2626',
-    timeAgo: 'Listed 2 days ago',
-    views: 14,
-    priceLabel: 'Highest Offer',
-    price: '$1,200.00',
-    emoji: '👜',
-  },
-  {
-    id: '2',
-    name: 'Smartphone X-Pro',
-    badge: 'REFURBISHED',
-    badgeColor: '#059669',
-    timeAgo: 'Listed 5 days ago',
-    views: 69,
-    priceLabel: 'Asking Price',
-    price: '$850.00',
-    emoji: '📱',
-  },
-];
-
-/* ══════════════════════════════════════════
-   Dashboard Page Component
-   ══════════════════════════════════════════ */
-
 export default function DashboardPage() {
   const { user } = useRequireAuth();
   const [chartMode, setChartMode] = useState<'views' | 'offers'>('views');
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  if (!user) return null;
+  useEffect(() => {
+    async function loadData() {
+      if (!user) return;
+      try {
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session?.access_token) {
+          const res = await getDashboardSummary(session.access_token);
+          if (res.data) {
+            setSummary(res.data);
+          } else {
+            setErrorMsg(res.error || 'Failed to fetch data');
+          }
+        } else {
+          setErrorMsg('No auth session');
+        }
+      } catch (err: any) {
+        setErrorMsg(err.message || 'Unknown error from loadData');
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, [user]);
+
+  if (!user || loading) return <div style={{ padding: '2rem', display: 'flex', justifyContent: 'center' }}>Loading dashboard...</div>;
+  if (!summary) return <div style={{ padding: '2rem', display: 'flex', justifyContent: 'center', color: 'red' }}>Failed to load dashboard data: {errorMsg}</div>;
 
   const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'User';
-  const maxVal = Math.max(...weeklyData.map(d => chartMode === 'views' ? d.views : d.offers));
+  
+  // Real data refs
+  const weeklyData = summary.insights.weeklyData;
+  const recentActivity = summary.recentActivity;
+  const maxVal = Math.max(...weeklyData.map((d: any) => chartMode === 'views' ? d.views : d.offers), 10);
 
   return (
     <div className={styles.dashboard}>
@@ -135,7 +135,7 @@ export default function DashboardPage() {
         {/* My Listings */}
         <div className={styles.statCard}>
           <div className={styles.statTop}>
-            <span className={styles.statNumber}>12</span>
+            <span className={styles.statNumber}>{summary.stats.activeListings}</span>
             <span className={`${styles.statIconBg} ${styles.statIconBlue}`}><ListIcon /></span>
           </div>
           <div className={styles.statTitle}>My Listings</div>
@@ -149,8 +149,8 @@ export default function DashboardPage() {
         <div className={styles.statCard}>
           <div className={styles.statTop}>
             <span className={styles.statNumber}>
-              3
-              <span className={styles.notifDot} />
+              {summary.stats.unreadMessages}
+              {summary.stats.unreadMessages > 0 && <span className={styles.notifDot} />}
             </span>
             <span className={`${styles.statIconBg} ${styles.statIconGray}`}><MsgIcon /></span>
           </div>
@@ -164,7 +164,7 @@ export default function DashboardPage() {
         {/* Favorites */}
         <div className={styles.statCard}>
           <div className={styles.statTop}>
-            <span className={styles.statNumber}>8</span>
+            <span className={styles.statNumber}>{summary.stats.favorites}</span>
             <span className={`${styles.statIconBg} ${styles.statIconPink}`}><HeartIcon /></span>
           </div>
           <div className={styles.statTitle}>Favorites</div>
@@ -180,13 +180,13 @@ export default function DashboardPage() {
             <h3 className={styles.darkCardTitle}>Active<br />Offers</h3>
           </div>
           <p className={styles.darkCardDesc}>
-            You have 5 high-intent offers pending review.
+            {summary.stats.pendingOffers > 0 ? `You have ${summary.stats.pendingOffers} high-intent offers pending review.` : `No active offers yet.`}
           </p>
           <div className={styles.darkCardProduct}>
-            <div className={styles.darkProductImg}>👟</div>
+            <div className={styles.darkProductImg}>{summary.highlightedOffer?.emoji || '❔'}</div>
             <div>
-              <div className={styles.darkProductName}>Air Max Legacy</div>
-              <div className={styles.darkProductPrice}>$210.00</div>
+              <div className={styles.darkProductName}>{summary.highlightedOffer?.productName || 'No Item'}</div>
+              <div className={styles.darkProductPrice}>{summary.highlightedOffer?.price || '-'}</div>
             </div>
           </div>
           <Link href={ROUTES.BROWSE} className={styles.darkCardBtn}>
@@ -223,9 +223,9 @@ export default function DashboardPage() {
           <div className={styles.chart}>
             <div className={styles.chartYLabel}>{(maxVal / 1000).toFixed(1)}k</div>
             <div className={styles.chartBars}>
-              {weeklyData.map((d, i) => {
+              {weeklyData.map((d: any, i: number) => {
                 const val = chartMode === 'views' ? d.views : d.offers;
-                const pct = (val / maxVal) * 100;
+                const pct = maxVal > 0 ? (val / maxVal) * 100 : 0;
                 return (
                   <div key={i} className={styles.chartBarGroup}>
                     <div className={styles.chartBarWrapper}>
@@ -260,11 +260,11 @@ export default function DashboardPage() {
           <div className={styles.recommendedCard}>
             <div className={styles.recommendedLabel}>RECOMMENDED FOR YOU</div>
             <div className={styles.recommendedProduct}>
-              <div className={styles.recommendedImg}>⌚</div>
+              <div className={styles.recommendedImg}>{summary.recommended?.emoji || '❔'}</div>
               <div>
-                <div className={styles.recommendedName}>Minimalist Chrono</div>
-                <div className={styles.recommendedPrice}>$450.00</div>
-                <span className={styles.recommendedBadge}>New Arrival</span>
+                <div className={styles.recommendedName}>{summary.recommended?.productName || 'Browse latest'}</div>
+                <div className={styles.recommendedPrice}>{summary.recommended?.price || ''}</div>
+                <span className={styles.recommendedBadge}>{summary.recommended?.badge || 'Find Items'}</span>
               </div>
             </div>
           </div>
