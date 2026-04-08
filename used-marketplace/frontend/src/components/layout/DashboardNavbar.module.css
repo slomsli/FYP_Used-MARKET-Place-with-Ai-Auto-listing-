@@ -25,23 +25,6 @@
   color: #0f1d36;
 }
 
-.brandIcon {
-  width: 34px;
-  height: 34px;
-  background: #0f1d36;
-  border-radius: 9px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-}
-
-.brandText {
-  font-size: 1.0625rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
 .navLinks {
   display: flex;
   align-items: center;
@@ -178,9 +161,5 @@
 
   .searchWrapper {
     display: none;
-  }
-
-  .brandText {
-    font-size: 0.9375rem;
   }
 }

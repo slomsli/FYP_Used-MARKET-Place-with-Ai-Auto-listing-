@@ -46,14 +46,7 @@ export default function DashboardNavbar({ userName }: DashboardNavbarProps) {
       {/* Left: Brand + Nav Links */}
       <div className={styles.left}>
         <Link href={ROUTES.DASHBOARD} className={styles.brand}>
-          <div className={styles.brandIcon}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9Z" />
-              <path d="m3 9 2.45-4.9A2 2 0 0 1 7.24 3h9.52a2 2 0 0 1 1.8 1.1L21 9" />
-              <path d="M12 3v6" />
-            </svg>
-          </div>
-          <span className={styles.brandText}>The Exchange</span>
+          <img src="/assets/images/remarket_harbor_style_logo_1.png" alt="ReMarket" style={{ height: '100px', width: 'auto' }} />
         </Link>
 
         <div className={styles.navLinks}>
