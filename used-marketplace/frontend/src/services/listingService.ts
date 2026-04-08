@@ -58,6 +58,19 @@ function toPositiveInteger(value: unknown): number | null {
   return null;
 }
 
+function normalizeSlug(value: unknown, name: string, id: number): string {
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim();
+  }
+
+  const derivedSlug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return derivedSlug || `option-${id}`;
+}
+
 function normalizeLookupOptions(value: unknown): ListingLookupOption[] {
   if (!Array.isArray(value)) {
     return [];
@@ -72,13 +85,16 @@ function normalizeLookupOptions(value: unknown): ListingLookupOption[] {
       const typedItem = item as Record<string, unknown>;
       const id = toPositiveInteger(typedItem.id);
       const name = typeof typedItem.name === 'string' ? typedItem.name.trim() : '';
-      const slug = typeof typedItem.slug === 'string' ? typedItem.slug.trim() : '';
 
-      if (!id || !name || !slug) {
+      if (!id || !name) {
         return null;
       }
 
-      return { id, name, slug };
+      return {
+        id,
+        name,
+        slug: normalizeSlug(typedItem.slug, name, id),
+      };
     })
     .filter((item): item is ListingLookupOption => item !== null);
 }
@@ -97,14 +113,18 @@ function normalizeAreaOptions(value: unknown): ListingAreaOption[] {
       const typedItem = item as Record<string, unknown>;
       const id = toPositiveInteger(typedItem.id);
       const name = typeof typedItem.name === 'string' ? typedItem.name.trim() : '';
-      const slug = typeof typedItem.slug === 'string' ? typedItem.slug.trim() : '';
       const stateId = toPositiveInteger(typedItem.stateId ?? typedItem.state_id);
 
-      if (!id || !name || !slug || !stateId) {
+      if (!id || !name || !stateId) {
         return null;
       }
 
-      return { id, name, slug, stateId };
+      return {
+        id,
+        name,
+        slug: normalizeSlug(typedItem.slug, name, id),
+        stateId,
+      };
     })
     .filter((item): item is ListingAreaOption => item !== null);
 }
