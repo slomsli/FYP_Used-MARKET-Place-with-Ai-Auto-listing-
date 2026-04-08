@@ -33,11 +33,23 @@
 }
 
 /* ── Brand Header ── */
+
+
 .brand {
   text-align: center;
   margin-bottom: 2rem;
-  position: relative;
-  z-index: 1;
+  display: flex;
+  /* Added flex to help with alignment */
+  flex-direction: column;
+  align-items: center;
+}
+
+.logoImage {
+  height: 200px;
+  width: auto;
+  margin-bottom: 0.5rem;
+  margin-left: 20px;
+  /* This nudges ONLY the logo */
 }
 
 .brandName {
@@ -70,8 +82,15 @@
 }
 
 @keyframes cardIn {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .cardTitle {

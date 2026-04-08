@@ -101,7 +101,11 @@ export default function SignupPage() {
     <div className={styles.page}>
       {/* Brand */}
       <div className={styles.brand}>
-        <img src="/assets/images/remarket_harbor_style_logo_1.png" alt="Logo" style={{ height: '250px', width: 'auto', marginBottom: '0.5rem' }} />
+        <img
+          src="/assets/images/remarket_harbor_style_logo_1.png"
+          alt="Logo"
+          className={styles.logoImage}
+        />
         <p className={styles.brandTagline}>
           Start buying and selling in your local marketplace.
         </p>

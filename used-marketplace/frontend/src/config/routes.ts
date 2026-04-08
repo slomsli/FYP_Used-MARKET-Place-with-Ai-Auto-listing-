@@ -7,4 +7,13 @@ export const ROUTES = {
   RESET_PASSWORD: '/reset-password',
   AUTH_ERROR: '/auth-error',
   DASHBOARD: '/dashboard',
+  MY_LISTINGS: '/dashboard/my-listings',
+  FAVORITES: '/dashboard/favorites',
+  MESSAGES: '/dashboard/messages',
+  OFFERS: '/dashboard/offers',
+  PROFILE: '/dashboard/profile',
+  SETTINGS: '/dashboard/settings',
+  ADD_LISTING: '/dashboard/add-listing',
+  BROWSE: '/browse',
+  SELLERS: '/sellers',
 } as const;
