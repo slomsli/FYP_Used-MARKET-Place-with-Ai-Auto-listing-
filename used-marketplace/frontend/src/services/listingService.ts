@@ -308,36 +308,60 @@ export async function getListingMetadata(
   token: string,
   stateId?: number
 ): Promise<ServiceResponse<ListingMetadata>> {
-  const query = stateId ? `?stateId=${stateId}` : '';
+  async function requestMetadata(cacheBust = false): Promise<ServiceResponse<ListingMetadata>> {
+    const params = new URLSearchParams();
 
-  try {
-    const response = await fetch(`${API_BASE}/api/dashboard/listings/metadata${query}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    const result = await parseJsonResponse(response);
-
-    if (response.ok && result?.success) {
-      return {
-        data: normalizeListingMetadata(result.data),
-        error: null,
-      };
+    if (stateId) {
+      params.set('stateId', String(stateId));
     }
 
-    return {
-      data: null,
-      error: result?.error || `Request failed with status ${response.status}`,
-    };
-  } catch (error) {
-    return {
-      data: null,
-      error: error instanceof Error ? error.message : 'Network error',
-    };
+    if (cacheBust) {
+      params.set('_ts', String(Date.now()));
+    }
+
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+
+    try {
+      const response = await fetch(`${API_BASE}/api/dashboard/listings/metadata${suffix}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        cache: 'no-store',
+      });
+
+      const result = await parseJsonResponse(response);
+
+      if (response.ok && result?.success) {
+        return {
+          data: normalizeListingMetadata(result.data),
+          error: null,
+        };
+      }
+
+      return {
+        data: null,
+        error: result?.error || `Request failed with status ${response.status}`,
+      };
+    } catch (error) {
+      return {
+        data: null,
+        error: error instanceof Error ? error.message : 'Network error',
+      };
+    }
   }
+
+  const primaryResponse = await requestMetadata(false);
+
+  if (primaryResponse.data && primaryResponse.data.categories.length > 0) {
+    return primaryResponse;
+  }
+
+  // Retry once with a cache-busting query so stale browser metadata cannot hide real categories.
+  const retryResponse = await requestMetadata(true);
+
+  return retryResponse.data ? retryResponse : primaryResponse;
 }
 
 export async function createListing(

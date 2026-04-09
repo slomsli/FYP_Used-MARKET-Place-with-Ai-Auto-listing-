@@ -574,6 +574,23 @@
   line-height: 1.5;
 }
 
+.inlineAction {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--navy-700);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.inlineAction:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .locationGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;

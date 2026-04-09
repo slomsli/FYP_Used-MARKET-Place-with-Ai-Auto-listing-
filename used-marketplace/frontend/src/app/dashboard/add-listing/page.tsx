@@ -159,6 +159,7 @@ export default function AddListingPage() {
   const [metadataLoading, setMetadataLoading] = useState(true);
   const [areasLoading, setAreasLoading] = useState(false);
   const [metadataError, setMetadataError] = useState<string | null>(null);
+  const [metadataRetryKey, setMetadataRetryKey] = useState(0);
   const [existingListing, setExistingListing] = useState<ListingSummary | null>(null);
   const [listingLoading, setListingLoading] = useState(false);
 
@@ -265,7 +266,7 @@ export default function AddListingPage() {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [metadataRetryKey, user]);
 
   useEffect(() => {
     if (!user || !listingId) {
@@ -826,6 +827,20 @@ export default function AddListingPage() {
                     </option>
                   ))}
                 </select>
+                {!metadataLoading && availableCategories.length === 0 && (
+                  <p className={styles.fieldHint}>
+                    Categories did not load. Try refreshing the metadata.
+                    {' '}
+                    <button
+                      type="button"
+                      className={styles.inlineAction}
+                      onClick={() => setMetadataRetryKey((current) => current + 1)}
+                      disabled={disabled}
+                    >
+                      Reload categories
+                    </button>
+                  </p>
+                )}
               </div>
 
               <div className={styles.formGroup}>

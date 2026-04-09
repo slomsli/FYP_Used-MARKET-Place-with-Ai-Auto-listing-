@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit';
 import authRoutes from './routes/authRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
 import listingRoutes from './routes/listingRoutes';
+import messageRoutes from './routes/messageRoutes';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -51,6 +52,7 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/listings', listingRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/messages', messageRoutes);
 
 /* ── Error handler (must be last) ───────────────────────── */
 
