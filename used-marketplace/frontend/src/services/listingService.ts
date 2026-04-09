@@ -6,10 +6,14 @@ import type {
   ListingMetadata,
   ListingLookupOption,
   ListingAreaOption,
+  ListingViewResult,
   ListingFilterStatus,
   ListingSortOption,
   ListingSummary,
   MyListingsResponse,
+  PublicListingDetailResponse,
+  PublicListingsResponse,
+  PublicListingSortOption,
   UploadedListingImage,
 } from '@/src/types/listing';
 
@@ -42,6 +46,41 @@ async function parseJsonResponse(response: Response) {
     return await response.json();
   } catch {
     return null;
+  }
+}
+
+async function publicRequest<T>(
+  path: string,
+  init?: RequestInit
+): Promise<ServiceResponse<T>> {
+  try {
+    const response = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init?.headers || {}),
+      },
+      cache: 'no-store',
+    });
+
+    const result = await parseJsonResponse(response);
+
+    if (response.ok && result?.success) {
+      return {
+        data: (result.data ?? null) as T | null,
+        error: null,
+      };
+    }
+
+    return {
+      data: null,
+      error: result?.error || `Request failed with status ${response.status}`,
+    };
+  } catch (error) {
+    return {
+      data: null,
+      error: error instanceof Error ? error.message : 'Network error',
+    };
   }
 }
 
@@ -407,4 +446,75 @@ export async function getMyListings(
       method: 'GET',
     }
   );
+}
+
+export async function getPublicListings(options: {
+  q?: string;
+  categoryIds?: number[];
+  conditions?: ListingCondition[];
+  stateId?: number;
+  minPrice?: number;
+  maxPrice?: number;
+  sort?: PublicListingSortOption;
+  limit?: number;
+  offset?: number;
+}): Promise<ServiceResponse<PublicListingsResponse>> {
+  const query = new URLSearchParams();
+
+  if (options.q?.trim()) {
+    query.set('q', options.q.trim());
+  }
+
+  if (options.categoryIds && options.categoryIds.length > 0) {
+    query.set('categoryIds', options.categoryIds.join(','));
+  }
+
+  if (options.conditions && options.conditions.length > 0) {
+    query.set('conditions', options.conditions.join(','));
+  }
+
+  if (options.stateId) {
+    query.set('stateId', String(options.stateId));
+  }
+
+  if (options.minPrice !== undefined) {
+    query.set('minPrice', String(options.minPrice));
+  }
+
+  if (options.maxPrice !== undefined) {
+    query.set('maxPrice', String(options.maxPrice));
+  }
+
+  if (options.sort) {
+    query.set('sort', options.sort);
+  }
+
+  if (options.limit !== undefined) {
+    query.set('limit', String(options.limit));
+  }
+
+  if (options.offset !== undefined) {
+    query.set('offset', String(options.offset));
+  }
+
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return publicRequest<PublicListingsResponse>(`/api/listings${suffix}`, {
+    method: 'GET',
+  });
+}
+
+export async function getPublicListingById(
+  listingId: string
+): Promise<ServiceResponse<PublicListingDetailResponse>> {
+  return publicRequest<PublicListingDetailResponse>(`/api/listings/${listingId}`, {
+    method: 'GET',
+  });
+}
+
+export async function recordPublicListingView(
+  listingId: string
+): Promise<ServiceResponse<ListingViewResult>> {
+  return publicRequest<ListingViewResult>(`/api/listings/${listingId}/views`, {
+    method: 'POST',
+  });
 }

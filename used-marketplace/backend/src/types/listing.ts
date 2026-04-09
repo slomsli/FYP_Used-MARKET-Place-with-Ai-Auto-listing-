@@ -16,11 +16,18 @@ export const LISTING_SORT_OPTIONS = [
   'price_desc',
   'views_desc',
 ] as const;
+export const PUBLIC_LISTING_SORT_OPTIONS = [
+  'newest',
+  'price_asc',
+  'price_desc',
+  'popular',
+] as const;
 
 export type ListingCondition = (typeof LISTING_CONDITIONS)[number];
 export type CreateableListingStatus = (typeof CREATEABLE_LISTING_STATUSES)[number];
 export type ListingFilterStatus = (typeof FILTERABLE_LISTING_STATUSES)[number];
 export type ListingSortOption = (typeof LISTING_SORT_OPTIONS)[number];
+export type PublicListingSortOption = (typeof PUBLIC_LISTING_SORT_OPTIONS)[number];
 
 export interface CreateListingBody {
   title: string;
@@ -133,4 +140,98 @@ export interface MyListingsResponse {
 export interface DeleteListingResult {
   id: string;
   deleted: true;
+}
+
+export interface PublicCategoryFilterOption extends ListingLookupOption {
+  count: number;
+}
+
+export interface PublicStateFilterOption extends ListingLookupOption {
+  count: number;
+}
+
+export interface PublicConditionFilterOption {
+  value: ListingCondition;
+  label: string;
+  count: number;
+}
+
+export interface PublicSellerPreview {
+  id: string;
+  displayName: string;
+  avatarPath: string | null;
+}
+
+export interface PublicListingSummary extends ListingSummary {
+  locationLabel: string;
+  seller: PublicSellerPreview;
+}
+
+export interface PublicListingsQuery {
+  q?: string;
+  categoryIds?: number[];
+  conditions?: ListingCondition[];
+  stateId?: number;
+  minPrice?: number;
+  maxPrice?: number;
+  sort: PublicListingSortOption;
+  limit: number;
+  offset: number;
+}
+
+export interface PublicListingsResponse {
+  filters: {
+    q: string;
+    categoryIds: number[];
+    conditions: ListingCondition[];
+    stateId: number | null;
+    minPrice: number | null;
+    maxPrice: number | null;
+    sort: PublicListingSortOption;
+    limit: number;
+    offset: number;
+  };
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
+  summary: {
+    resultCount: number;
+    priceRange: {
+      min: number;
+      max: number;
+    };
+  };
+  lookups: {
+    categories: PublicCategoryFilterOption[];
+    states: PublicStateFilterOption[];
+    conditions: PublicConditionFilterOption[];
+  };
+  listings: PublicListingSummary[];
+}
+
+export interface PublicSellerSummary {
+  id: string;
+  displayName: string;
+  username: string;
+  avatarPath: string | null;
+  memberSince: string;
+  averageRating: number | null;
+  totalReviews: number;
+  totalSales: number;
+  activeListings: number;
+  location: ListingLocationSummary;
+}
+
+export interface PublicListingDetailResponse {
+  listing: PublicListingSummary;
+  seller: PublicSellerSummary;
+  related: PublicListingSummary[];
+}
+
+export interface ListingViewResult {
+  id: string;
+  viewsCount: number;
 }

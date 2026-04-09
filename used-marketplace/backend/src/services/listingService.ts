@@ -4,6 +4,7 @@ import {
   type CreateListingBody,
   type CreateableListingStatus,
   type DeleteListingResult,
+  type ListingViewResult,
   type ListingAreaOption,
   type ListingCategorySummary,
   type ListingCondition,
@@ -14,6 +15,13 @@ import {
   type ListingSortOption,
   type ListingSummary,
   type MyListingsResponse,
+  PUBLIC_LISTING_SORT_OPTIONS,
+  type PublicListingDetailResponse,
+  type PublicListingsQuery,
+  type PublicListingsResponse,
+  type PublicListingSortOption,
+  type PublicListingSummary,
+  type PublicSellerSummary,
   type UploadedListingImage,
   type UploadListingImageBody,
 } from '../types/listing';
@@ -41,6 +49,7 @@ interface RawArea {
 
 interface RawListing {
   id: string;
+  seller_id?: string;
   title: string;
   description: string | null;
   brand: string | null;
@@ -57,6 +66,34 @@ interface RawListing {
   categories: Relation<RawCategory>;
   states: Relation<RawState>;
   areas: Relation<RawArea>;
+}
+
+interface RawProfile {
+  id: string;
+  username: string;
+  full_name: string | null;
+  avatar_path: string | null;
+  created_at: string;
+  state_id: number | null;
+  area_id: number | null;
+}
+
+interface RawSellerStatsListing {
+  status: string;
+}
+
+interface RawDailyView {
+  id: number;
+  views_count: number;
+}
+
+interface RawPublicLookupListing {
+  category_id: number;
+  state_id: number | null;
+  condition: ListingCondition;
+  price: unknown;
+  categories: Relation<RawCategory>;
+  states: Relation<RawState>;
 }
 
 interface RawListingImage {
@@ -113,6 +150,8 @@ const LISTING_IMAGE_BUCKET =
 
 const MAX_LISTING_IMAGE_SIZE_BYTES = 8 * 1024 * 1024;
 const LISTING_IMAGE_MIME_TYPES = ['image/*'];
+const PUBLIC_BROWSE_LISTING_STATUS = 'active';
+const PUBLIC_DETAIL_VISIBLE_STATUSES = ['active', 'reserved'] as const;
 
 let listingImageBucketPromise: Promise<void> | null = null;
 
@@ -308,6 +347,78 @@ function buildListingSummary(
   };
 }
 
+function buildLocationLabel(location: ListingLocationSummary): string {
+  if (location.areaName && location.stateName) {
+    return `${location.areaName}, ${location.stateName}`;
+  }
+
+  if (location.stateName) {
+    return location.stateName;
+  }
+
+  return 'Location not set';
+}
+
+function buildSellerDisplayName(profile: Pick<RawProfile, 'full_name' | 'username'>): string {
+  const fullName = profile.full_name?.trim();
+  if (fullName) {
+    return fullName;
+  }
+
+  const username = profile.username?.trim();
+  if (username) {
+    return username;
+  }
+
+  return 'Seller';
+}
+
+function buildPublicListingSummary(
+  listing: RawListing,
+  imageMap: Map<string, string[]>,
+  favoriteCountMap: Map<string, number>,
+  totalOfferCountMap: Map<string, number>,
+  pendingOfferCountMap: Map<string, number>,
+  sellerPreviewMap: Map<string, PublicListingSummary['seller']>
+): PublicListingSummary {
+  const summary = buildListingSummary(
+    listing,
+    imageMap,
+    favoriteCountMap,
+    totalOfferCountMap,
+    pendingOfferCountMap
+  );
+
+  return {
+    ...summary,
+    locationLabel: buildLocationLabel(summary.location),
+    seller:
+      sellerPreviewMap.get(listing.seller_id ?? '') ?? {
+        id: listing.seller_id ?? '',
+        displayName: 'Seller',
+        avatarPath: null,
+      },
+  };
+}
+
+function applyPublicListingSort(query: any, sort: PublicListingSortOption) {
+  switch (sort) {
+    case 'price_asc':
+      return query.order('price', { ascending: true }).order('created_at', { ascending: false });
+    case 'price_desc':
+      return query.order('price', { ascending: false }).order('created_at', { ascending: false });
+    case 'popular':
+      return query.order('views_count', { ascending: false }).order('created_at', { ascending: false });
+    case 'newest':
+    default:
+      return query.order('created_at', { ascending: false });
+  }
+}
+
+function escapeForSupabaseLike(value: string): string {
+  return value.replace(/[%_]/g, '').replace(/,/g, ' ').trim();
+}
+
 async function ensureCategoryExists(categoryId: number): Promise<void> {
   const { data, error } = await supabaseAdmin
     .from('categories')
@@ -468,17 +579,17 @@ async function getListingByIdForSeller(listingId: string, sellerId: string): Pro
       updated_at,
       published_at,
       views_count,
-      categories (
+      categories!listings_category_id_fkey (
         id,
         name,
         slug
       ),
-      states (
+      states!listings_state_id_fkey (
         id,
         name,
         slug
       ),
-      areas (
+      areas!listings_area_id_fkey (
         id,
         name,
         slug,
@@ -534,6 +645,273 @@ function applyListingSort(query: any, sort: ListingSortOption) {
     default:
       return query.order('created_at', { ascending: false });
   }
+}
+
+async function getSellerPreviewMap(
+  sellerIds: string[]
+): Promise<Map<string, PublicListingSummary['seller']>> {
+  const previewMap = new Map<string, PublicListingSummary['seller']>();
+
+  if (sellerIds.length === 0) {
+    return previewMap;
+  }
+
+  const uniqueSellerIds = Array.from(new Set(sellerIds));
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('id, username, full_name, avatar_path')
+    .in('id', uniqueSellerIds);
+
+  if (error) {
+    console.error('[Listings] Failed to fetch seller previews:', error);
+    throw new ListingServiceError('Unable to load seller details for listings', 500);
+  }
+
+  for (const profile of (data ?? []) as Pick<
+    RawProfile,
+    'id' | 'username' | 'full_name' | 'avatar_path'
+  >[]) {
+    previewMap.set(profile.id, {
+      id: profile.id,
+      displayName: buildSellerDisplayName(profile),
+      avatarPath: profile.avatar_path ?? null,
+    });
+  }
+
+  return previewMap;
+}
+
+async function getListingEngagementMaps(listingIds: string[]) {
+  const favoriteCountMap = new Map<string, number>();
+  const totalOfferCountMap = new Map<string, number>();
+  const pendingOfferCountMap = new Map<string, number>();
+
+  if (listingIds.length === 0) {
+    return {
+      favoriteCountMap,
+      totalOfferCountMap,
+      pendingOfferCountMap,
+    };
+  }
+
+  const [favoritesResult, offersResult] = await Promise.all([
+    supabaseAdmin.from('favorites').select('listing_id').in('listing_id', listingIds),
+    supabaseAdmin.from('offers').select('listing_id, status').in('listing_id', listingIds),
+  ]);
+
+  if (favoritesResult.error) {
+    console.error('[Listings] Failed to fetch public favorite counts:', favoritesResult.error);
+    throw new ListingServiceError('Unable to load listing favorite counts', 500);
+  }
+
+  if (offersResult.error) {
+    console.error('[Listings] Failed to fetch public offer counts:', offersResult.error);
+    throw new ListingServiceError('Unable to load listing offer counts', 500);
+  }
+
+  for (const row of favoritesResult.data ?? []) {
+    incrementMapCount(favoriteCountMap, row.listing_id);
+  }
+
+  for (const row of offersResult.data ?? []) {
+    incrementMapCount(totalOfferCountMap, row.listing_id);
+    if (row.status === 'pending') {
+      incrementMapCount(pendingOfferCountMap, row.listing_id);
+    }
+  }
+
+  return {
+    favoriteCountMap,
+    totalOfferCountMap,
+    pendingOfferCountMap,
+  };
+}
+
+async function getPublicListingLookups(): Promise<{
+  lookups: PublicListingsResponse['lookups'];
+  priceRange: PublicListingsResponse['summary']['priceRange'];
+}> {
+  const { data, error } = await supabaseAdmin
+    .from('listings')
+    .select(`
+      category_id,
+      state_id,
+      condition,
+      price,
+      categories!listings_category_id_fkey (
+        id,
+        name,
+        slug
+      ),
+      states!listings_state_id_fkey (
+        id,
+        name,
+        slug
+      )
+    `)
+    .eq('status', PUBLIC_BROWSE_LISTING_STATUS);
+
+  if (error) {
+    console.error('[Listings] Failed to fetch public listing lookups:', error);
+    throw new ListingServiceError('Unable to load browse filters', 500);
+  }
+
+  const categoryCountMap = new Map<number, { id: number; name: string; slug: string; count: number }>();
+  const stateCountMap = new Map<number, { id: number; name: string; slug: string; count: number }>();
+  const conditionCountMap = new Map<ListingCondition, number>();
+  let minPrice = Number.POSITIVE_INFINITY;
+  let maxPrice = 0;
+
+  for (const listing of (data ?? []) as RawPublicLookupListing[]) {
+    const price = toNumber(listing.price, 0);
+    minPrice = Math.min(minPrice, price);
+    maxPrice = Math.max(maxPrice, price);
+
+    const category = unwrapRelation(listing.categories);
+    if (category) {
+      const current = categoryCountMap.get(category.id);
+      categoryCountMap.set(category.id, {
+        id: category.id,
+        name: category.name,
+        slug: category.slug,
+        count: (current?.count ?? 0) + 1,
+      });
+    }
+
+    const state = unwrapRelation(listing.states);
+    if (state) {
+      const current = stateCountMap.get(state.id);
+      stateCountMap.set(state.id, {
+        id: state.id,
+        name: state.name,
+        slug: state.slug,
+        count: (current?.count ?? 0) + 1,
+      });
+    }
+
+    conditionCountMap.set(
+      listing.condition,
+      (conditionCountMap.get(listing.condition) ?? 0) + 1
+    );
+  }
+
+  const categories = Array.from(categoryCountMap.values()).sort((left, right) =>
+    left.name.localeCompare(right.name)
+  );
+  const states = Array.from(stateCountMap.values()).sort((left, right) =>
+    left.name.localeCompare(right.name)
+  );
+  const conditions = Object.entries(CONDITION_LABELS).map(([value, label]) => ({
+    value: value as ListingCondition,
+    label,
+    count: conditionCountMap.get(value as ListingCondition) ?? 0,
+  }));
+
+  return {
+    lookups: {
+      categories,
+      states,
+      conditions,
+    },
+    priceRange: {
+      min: Number.isFinite(minPrice) ? minPrice : 0,
+      max: maxPrice,
+    },
+  };
+}
+
+async function getPublicSellerSummary(
+  sellerId: string
+): Promise<PublicSellerSummary> {
+  const [profileResult, reviewsResult, listingsResult, sellerStatesResult, sellerAreasResult] =
+    await Promise.all([
+      supabaseAdmin
+        .from('profiles')
+        .select('id, username, full_name, avatar_path, created_at, state_id, area_id')
+        .eq('id', sellerId)
+        .maybeSingle(),
+      supabaseAdmin.from('reviews').select('rating').eq('seller_id', sellerId),
+      supabaseAdmin.from('listings').select('status').eq('seller_id', sellerId),
+      supabaseAdmin.from('states').select('id, name, slug'),
+      supabaseAdmin.from('areas').select('id, name, slug, state_id'),
+    ]);
+
+  if (profileResult.error) {
+    console.error('[Listings] Failed to fetch seller profile:', profileResult.error);
+    throw new ListingServiceError('Unable to load seller profile', 500);
+  }
+
+  if (!profileResult.data) {
+    throw new ListingServiceError('Seller not found', 404);
+  }
+
+  if (reviewsResult.error) {
+    console.error('[Listings] Failed to fetch seller reviews:', reviewsResult.error);
+    throw new ListingServiceError('Unable to load seller review data', 500);
+  }
+
+  if (listingsResult.error) {
+    console.error('[Listings] Failed to fetch seller listing stats:', listingsResult.error);
+    throw new ListingServiceError('Unable to load seller listing statistics', 500);
+  }
+
+  if (sellerStatesResult.error) {
+    console.error('[Listings] Failed to fetch states for seller location:', sellerStatesResult.error);
+    throw new ListingServiceError('Unable to load seller location', 500);
+  }
+
+  if (sellerAreasResult.error) {
+    console.error('[Listings] Failed to fetch areas for seller location:', sellerAreasResult.error);
+    throw new ListingServiceError('Unable to load seller location', 500);
+  }
+
+  const profile = profileResult.data as RawProfile;
+  const ratings = reviewsResult.data ?? [];
+  const totalReviews = ratings.length;
+  const averageRating =
+    totalReviews > 0
+      ? Number(
+          (
+            ratings.reduce((sum, row) => sum + toNumber((row as RawRating).rating), 0) /
+            totalReviews
+          ).toFixed(2)
+        )
+      : null;
+
+  let totalSales = 0;
+  let activeListings = 0;
+  for (const listing of (listingsResult.data ?? []) as RawSellerStatsListing[]) {
+    if (listing.status === 'sold') {
+      totalSales += 1;
+    }
+
+    if (listing.status === 'active') {
+      activeListings += 1;
+    }
+  }
+
+  const sellerState =
+    (sellerStatesResult.data ?? []).find((state) => state.id === profile.state_id) ?? null;
+  const sellerArea =
+    (sellerAreasResult.data ?? []).find((area) => area.id === profile.area_id) ?? null;
+
+  return {
+    id: profile.id,
+    displayName: buildSellerDisplayName(profile),
+    username: profile.username,
+    avatarPath: profile.avatar_path ?? null,
+    memberSince: new Date(profile.created_at).getFullYear().toString(),
+    averageRating,
+    totalReviews,
+    totalSales,
+    activeListings,
+    location: {
+      stateId: sellerState?.id ?? null,
+      stateName: sellerState?.name ?? null,
+      areaId: sellerArea?.id ?? null,
+      areaName: sellerArea?.name ?? null,
+    },
+  };
 }
 
 export async function getListingMetadata(stateId?: number): Promise<ListingMetadata> {
@@ -1010,17 +1388,17 @@ export async function getMyListings(
       updated_at,
       published_at,
       views_count,
-      categories (
+      categories!listings_category_id_fkey (
         id,
         name,
         slug
       ),
-      states (
+      states!listings_state_id_fkey (
         id,
         name,
         slug
       ),
-      areas (
+      areas!listings_area_id_fkey (
         id,
         name,
         slug,
@@ -1156,5 +1534,374 @@ export async function getMyListings(
         pendingOfferCountMap
       )
     ),
+  };
+}
+
+export async function getPublicListings(
+  filters: PublicListingsQuery
+): Promise<PublicListingsResponse> {
+  let listingsQuery = supabaseAdmin
+    .from('listings')
+    .select(
+      `
+      id,
+      seller_id,
+      title,
+      description,
+      brand,
+      condition,
+      price,
+      currency,
+      negotiable,
+      status,
+      cover_image_path,
+      created_at,
+      updated_at,
+      published_at,
+      views_count,
+      categories!listings_category_id_fkey (
+        id,
+        name,
+        slug
+      ),
+      states!listings_state_id_fkey (
+        id,
+        name,
+        slug
+      ),
+      areas!listings_area_id_fkey (
+        id,
+        name,
+        slug,
+        state_id
+      )
+    `,
+      { count: 'exact' }
+    )
+    .eq('status', PUBLIC_BROWSE_LISTING_STATUS);
+
+  if (filters.categoryIds && filters.categoryIds.length > 0) {
+    listingsQuery = listingsQuery.in('category_id', filters.categoryIds);
+  }
+
+  if (filters.conditions && filters.conditions.length > 0) {
+    listingsQuery = listingsQuery.in('condition', filters.conditions);
+  }
+
+  if (filters.stateId) {
+    listingsQuery = listingsQuery.eq('state_id', filters.stateId);
+  }
+
+  if (filters.minPrice !== undefined) {
+    listingsQuery = listingsQuery.gte('price', filters.minPrice);
+  }
+
+  if (filters.maxPrice !== undefined) {
+    listingsQuery = listingsQuery.lte('price', filters.maxPrice);
+  }
+
+  const normalizedQuery = filters.q ? escapeForSupabaseLike(filters.q) : '';
+  if (normalizedQuery) {
+    listingsQuery = listingsQuery.or(
+      `title.ilike.%${normalizedQuery}%,description.ilike.%${normalizedQuery}%,brand.ilike.%${normalizedQuery}%`
+    );
+  }
+
+  listingsQuery = applyPublicListingSort(listingsQuery, filters.sort).range(
+    filters.offset,
+    filters.offset + filters.limit - 1
+  );
+
+  const [publicListingsResult, lookupResult] = await Promise.all([
+    listingsQuery,
+    getPublicListingLookups(),
+  ]);
+
+  if (publicListingsResult.error) {
+    console.error('[Listings] Failed to fetch public listings:', publicListingsResult.error);
+    throw new ListingServiceError('Unable to load marketplace listings', 500);
+  }
+
+  const listings = (publicListingsResult.data ?? []) as RawListing[];
+  const listingIds = listings.map((listing) => listing.id);
+  const sellerIds = listings.map((listing) => listing.seller_id ?? '').filter(Boolean);
+
+  const [
+    imagesMap,
+    engagementMaps,
+    sellerPreviewMap,
+  ] = await Promise.all([
+    getListingImages(listingIds),
+    getListingEngagementMaps(listingIds),
+    getSellerPreviewMap(sellerIds),
+  ]);
+
+  const total = publicListingsResult.count ?? 0;
+
+  return {
+    filters: {
+      q: filters.q ?? '',
+      categoryIds: filters.categoryIds ?? [],
+      conditions: filters.conditions ?? [],
+      stateId: filters.stateId ?? null,
+      minPrice: filters.minPrice ?? null,
+      maxPrice: filters.maxPrice ?? null,
+      sort: filters.sort,
+      limit: filters.limit,
+      offset: filters.offset,
+    },
+    pagination: {
+      total,
+      limit: filters.limit,
+      offset: filters.offset,
+      hasMore: filters.offset + listings.length < total,
+    },
+    summary: {
+      resultCount: total,
+      priceRange: lookupResult.priceRange,
+    },
+    lookups: lookupResult.lookups,
+    listings: listings.map((listing) =>
+      buildPublicListingSummary(
+        listing,
+        imagesMap,
+        engagementMaps.favoriteCountMap,
+        engagementMaps.totalOfferCountMap,
+        engagementMaps.pendingOfferCountMap,
+        sellerPreviewMap
+      )
+    ),
+  };
+}
+
+export async function getPublicListingById(
+  listingId: string
+): Promise<PublicListingDetailResponse> {
+  const { data, error } = await supabaseAdmin
+    .from('listings')
+    .select(`
+      id,
+      seller_id,
+      title,
+      description,
+      brand,
+      condition,
+      price,
+      currency,
+      negotiable,
+      status,
+      cover_image_path,
+      created_at,
+      updated_at,
+      published_at,
+      views_count,
+      categories!listings_category_id_fkey (
+        id,
+        name,
+        slug
+      ),
+      states!listings_state_id_fkey (
+        id,
+        name,
+        slug
+      ),
+      areas!listings_area_id_fkey (
+        id,
+        name,
+        slug,
+        state_id
+      )
+    `)
+    .eq('id', listingId)
+    .in('status', [...PUBLIC_DETAIL_VISIBLE_STATUSES])
+    .maybeSingle();
+
+  if (error) {
+    console.error('[Listings] Failed to fetch public listing detail:', error);
+    throw new ListingServiceError('Unable to load listing details', 500);
+  }
+
+  if (!data) {
+    throw new ListingServiceError('Listing not found', 404);
+  }
+
+  const listing = data as RawListing;
+  const relatedQuery = supabaseAdmin
+    .from('listings')
+    .select(`
+      id,
+      seller_id,
+      title,
+      description,
+      brand,
+      condition,
+      price,
+      currency,
+      negotiable,
+      status,
+      cover_image_path,
+      created_at,
+      updated_at,
+      published_at,
+      views_count,
+      categories!listings_category_id_fkey (
+        id,
+        name,
+        slug
+      ),
+      states!listings_state_id_fkey (
+        id,
+        name,
+        slug
+      ),
+      areas!listings_area_id_fkey (
+        id,
+        name,
+        slug,
+        state_id
+      )
+    `)
+    .eq('status', PUBLIC_BROWSE_LISTING_STATUS)
+    .neq('id', listingId)
+    .limit(4);
+
+  const listingCategory = buildCategorySummary(listing.categories);
+  const listingState = buildLocationSummary(listing.states, listing.areas).stateId;
+
+  if (listingCategory?.id) {
+    relatedQuery.eq('category_id', listingCategory.id);
+  } else if (listingState) {
+    relatedQuery.eq('state_id', listingState);
+  }
+
+  const [relatedResult, imagesMap, engagementMaps, sellerPreviewMap, sellerSummary] =
+    await Promise.all([
+      relatedQuery,
+      getListingImages([listing.id]),
+      getListingEngagementMaps([listing.id]),
+      getSellerPreviewMap([listing.seller_id ?? '']),
+      getPublicSellerSummary(listing.seller_id ?? ''),
+    ]);
+
+  if (relatedResult.error) {
+    console.error('[Listings] Failed to fetch related public listings:', relatedResult.error);
+    throw new ListingServiceError('Unable to load related listings', 500);
+  }
+
+  const relatedListings = (relatedResult.data ?? []) as RawListing[];
+  const relatedListingIds = relatedListings.map((item) => item.id);
+  const relatedSellerIds = relatedListings
+    .map((item) => item.seller_id ?? '')
+    .filter(Boolean);
+
+  const [relatedImagesMap, relatedEngagementMaps, relatedSellerPreviewMap] = await Promise.all([
+    getListingImages(relatedListingIds),
+    getListingEngagementMaps(relatedListingIds),
+    getSellerPreviewMap(relatedSellerIds),
+  ]);
+
+  return {
+    listing: buildPublicListingSummary(
+      listing,
+      imagesMap,
+      engagementMaps.favoriteCountMap,
+      engagementMaps.totalOfferCountMap,
+      engagementMaps.pendingOfferCountMap,
+      sellerPreviewMap
+    ),
+    seller: sellerSummary,
+    related: relatedListings.map((item) =>
+      buildPublicListingSummary(
+        item,
+        relatedImagesMap,
+        relatedEngagementMaps.favoriteCountMap,
+        relatedEngagementMaps.totalOfferCountMap,
+        relatedEngagementMaps.pendingOfferCountMap,
+        relatedSellerPreviewMap
+      )
+    ),
+  };
+}
+
+export async function incrementPublicListingView(
+  listingId: string
+): Promise<ListingViewResult> {
+  const { data, error } = await supabaseAdmin
+    .from('listings')
+    .select('id, views_count, status')
+    .eq('id', listingId)
+    .in('status', [...PUBLIC_DETAIL_VISIBLE_STATUSES])
+    .maybeSingle();
+
+  if (error) {
+    console.error('[Listings] Failed to inspect listing before incrementing views:', error);
+    throw new ListingServiceError('Unable to record listing view', 500);
+  }
+
+  if (!data) {
+    throw new ListingServiceError('Listing not found', 404);
+  }
+
+  const nextViewsCount = toNumber(data.views_count) + 1;
+  const today = new Date().toISOString().slice(0, 10);
+
+  const [listingUpdateResult, dailyViewResult] = await Promise.all([
+    supabaseAdmin
+      .from('listings')
+      .update({
+        views_count: nextViewsCount,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', listingId),
+    supabaseAdmin
+      .from('listing_daily_views')
+      .select('id, views_count')
+      .eq('listing_id', listingId)
+      .eq('view_date', today)
+      .maybeSingle(),
+  ]);
+
+  if (listingUpdateResult.error) {
+    console.error('[Listings] Failed to increment listing views:', listingUpdateResult.error);
+    throw new ListingServiceError('Unable to record listing view', 500);
+  }
+
+  if (dailyViewResult.error) {
+    console.error('[Listings] Failed to inspect daily listing views:', dailyViewResult.error);
+    throw new ListingServiceError('Unable to record listing view', 500);
+  }
+
+  if (dailyViewResult.data) {
+    const currentDailyView = dailyViewResult.data as RawDailyView;
+    const { error: updateDailyError } = await supabaseAdmin
+      .from('listing_daily_views')
+      .update({
+        views_count: currentDailyView.views_count + 1,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', currentDailyView.id);
+
+    if (updateDailyError) {
+      console.error('[Listings] Failed to update daily listing views:', updateDailyError);
+      throw new ListingServiceError('Unable to record listing view', 500);
+    }
+  } else {
+    const { error: insertDailyError } = await supabaseAdmin
+      .from('listing_daily_views')
+      .insert({
+        listing_id: listingId,
+        view_date: today,
+        views_count: 1,
+      });
+
+    if (insertDailyError) {
+      console.error('[Listings] Failed to create daily listing view record:', insertDailyError);
+      throw new ListingServiceError('Unable to record listing view', 500);
+    }
+  }
+
+  return {
+    id: listingId,
+    viewsCount: nextViewsCount,
   };
 }
