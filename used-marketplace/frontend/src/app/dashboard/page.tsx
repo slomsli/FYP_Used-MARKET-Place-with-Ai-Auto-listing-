@@ -1,117 +1,484 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
-import { signOut } from '@/src/services/authService';
+import { createClient } from '@/src/lib/supabase/client';
+import {
+  getDashboardSummary,
+  type DashboardSummary,
+} from '@/src/services/dashboardService';
 import { ROUTES } from '@/src/config/routes';
-import Spinner from '@/src/components/ui/Spinner';
 import styles from './page.module.css';
 
-const MarketIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9Z" />
-    <path d="m3 9 2.45-4.9A2 2 0 0 1 7.24 3h9.52a2 2 0 0 1 1.8 1.1L21 9" />
-    <path d="M12 3v6" />
+const DASHBOARD_TIME_ZONE = 'Asia/Kuala_Lumpur';
+
+const ListIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M16 3h5v5" />
+    <path d="m21 3-7 7" />
+    <path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" />
   </svg>
 );
 
-const LogOutIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-    <polyline points="16 17 21 12 16 7" />
-    <line x1="21" y1="12" x2="9" y2="12" />
+const MsgIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
   </svg>
 );
+
+const HeartIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+  </svg>
+);
+
+const ArrowIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5 12h14" />
+    <path d="m12 5 7 7-7 7" />
+  </svg>
+);
+
+const PlusIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 5v14" />
+    <path d="M5 12h14" />
+  </svg>
+);
+
+const SupportIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 18.72a9.1 9.1 0 0 0 3.35-5.22A9 9 0 1 0 5.78 19.5" />
+    <path d="M22 22s-2-1-4-1.5" />
+    <path d="M12 12h.01" />
+    <path d="M8 12h.01" />
+    <path d="M16 12h.01" />
+  </svg>
+);
+
+const MoreIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="1" />
+    <circle cx="12" cy="5" r="1" />
+    <circle cx="12" cy="19" r="1" />
+  </svg>
+);
+
+const ShieldCheck = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12 2l8 4v6c0 5.25-3.5 9.74-8 11-4.5-1.26-8-5.75-8-11V6l8-4zm-1 14.59l-3.3-3.3 1.41-1.41L11 13.77l4.89-4.89 1.41 1.41L11 16.59z" />
+  </svg>
+);
+
+function getCurrentMonthValue() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: DASHBOARD_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(new Date());
+  const year = parts.find((part) => part.type === 'year')?.value ?? '0000';
+  const month = parts.find((part) => part.type === 'month')?.value ?? '01';
+
+  return `${year}-${month}`;
+}
+
+function canRenderImage(path: string | null | undefined) {
+  return Boolean(path && (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('/')));
+}
+
+function getFallbackLabel(value: string | null | undefined) {
+  return value?.trim().charAt(0).toUpperCase() || 'R';
+}
 
 export default function DashboardPage() {
-  const router = useRouter();
-  const { user, loading } = useRequireAuth();
+  const { user, loading: authLoading } = useRequireAuth();
+  const [chartMode, setChartMode] = useState<'views' | 'offers'>('views');
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthValue);
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  if (loading || !user) {
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadData() {
+      setLoading(true);
+
+      try {
+        const supabase = createClient();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (!session?.access_token) {
+          if (!cancelled) {
+            setErrorMsg('No auth session');
+            setLoading(false);
+          }
+          return;
+        }
+
+        const response = await getDashboardSummary(session.access_token, selectedMonth);
+        if (cancelled) {
+          return;
+        }
+
+        if (response.data) {
+          setSummary(response.data);
+          setErrorMsg(null);
+        } else {
+          setErrorMsg(response.error || 'Failed to fetch data');
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setErrorMsg(error instanceof Error ? error.message : 'Unknown error from loadData');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMonth, user]);
+
+  if (authLoading || !user || (loading && !summary)) {
     return (
-      <div className={styles.loading}>
-        <Spinner size={32} className="text-navy-800" />
+      <div style={{ padding: '2rem', display: 'flex', justifyContent: 'center' }}>
+        Loading dashboard...
       </div>
     );
   }
 
-  const displayName = user.user_metadata?.full_name || user.email || 'User';
-  const role = user.user_metadata?.role || 'user';
+  if (!summary) {
+    return (
+      <div
+        style={{
+          padding: '2rem',
+          display: 'flex',
+          justifyContent: 'center',
+          color: 'red',
+        }}
+      >
+        Failed to load dashboard data: {errorMsg}
+      </div>
+    );
+  }
 
-  const handleLogout = async () => {
-    await signOut();
-    router.push(ROUTES.LOGIN);
-  };
+  const displayName =
+    user.user_metadata?.full_name || user.email?.split('@')[0] || 'User';
+  const weeklyData = summary.insights.weeklyData;
+  const chartValues = weeklyData.map((bucket) =>
+    chartMode === 'views' ? bucket.views : bucket.offers
+  );
+  const maxVal = Math.max(...chartValues, 1);
+  const isRefreshing = loading && Boolean(summary);
 
   return (
-    <div className={styles.page}>
-      {/* Header */}
-      <header className={styles.header}>
-        <div className={styles.brand}>
-          <img src="/assets/images/remarket_harbor_style_logo_1.png" alt="Logo" style={{ height: '250px', width: 'auto' }} />
-        </div>
-        <button onClick={handleLogout} className={styles.logoutBtn}>
-          <LogOutIcon /> Log out
-        </button>
-      </header>
-
-      {/* Main */}
-      <main className={styles.main}>
-        <div className={styles.welcome}>
-          <h1 className={styles.welcomeTitle}>Welcome back, {displayName}!</h1>
-          <p className={styles.welcomeSub}>
-            Here&apos;s an overview of your marketplace activity.
-          </p>
-          <span className={styles.roleBadge}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2l8 4v6c0 5.25-3.5 9.74-8 11-4.5-1.26-8-5.75-8-11V6l8-4z" />
-            </svg>
-            {role}
+    <div className={styles.dashboard}>
+      <section className={styles.welcome} id="welcome-section">
+        <h1 className={styles.welcomeTitle}>Hello, {displayName}!</h1>
+        <p className={styles.welcomeSub}>
+          Manage your activity, track listings, and explore curated offers in your personal archive.
+        </p>
+        <div className={styles.badges}>
+          <span className={styles.badgeGreen}>
+            <ShieldCheck /> Curated Seller
+          </span>
+          <span className={styles.badgeGreen}>
+            <ShieldCheck /> Verified Buyer
           </span>
         </div>
+      </section>
 
-        <div className={styles.statsGrid}>
-          <div className={styles.statCard}>
-            <div className={`${styles.statIcon} ${styles.statIconBlue}`}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M16 3h5v5" /><path d="m21 3-7 7" /><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" />
-              </svg>
+      <section className={styles.statsRow} id="stats-section">
+        <div className={styles.statCard}>
+          <div className={styles.statTop}>
+            <span className={styles.statNumber}>{summary.stats.activeListings}</span>
+            <span className={`${styles.statIconBg} ${styles.statIconBlue}`}>
+              <ListIcon />
+            </span>
+          </div>
+          <div className={styles.statTitle}>My Listings</div>
+          <div className={styles.statDesc}>Active items in marketplace</div>
+          <Link href={ROUTES.ADD_LISTING} className={styles.statAction}>
+            List an item <ArrowIcon />
+          </Link>
+        </div>
+
+        <div className={styles.statCard}>
+          <div className={styles.statTop}>
+            <span className={styles.statNumber}>
+              {summary.stats.unreadMessages}
+              {summary.stats.unreadMessages > 0 && <span className={styles.notifDot} />}
+            </span>
+            <span className={`${styles.statIconBg} ${styles.statIconGray}`}>
+              <MsgIcon />
+            </span>
+          </div>
+          <div className={styles.statTitle}>Messages</div>
+          <div className={styles.statDesc}>New unread inquiries</div>
+          <Link href={ROUTES.MESSAGES} className={styles.statAction}>
+            Open Inbox <ArrowIcon />
+          </Link>
+        </div>
+
+        <div className={styles.statCard}>
+          <div className={styles.statTop}>
+            <span className={styles.statNumber}>{summary.stats.favorites}</span>
+            <span className={`${styles.statIconBg} ${styles.statIconPink}`}>
+              <HeartIcon />
+            </span>
+          </div>
+          <div className={styles.statTitle}>Favorites</div>
+          <div className={styles.statDesc}>Saved for later</div>
+          <Link href={ROUTES.FAVORITES} className={styles.statAction}>
+            View Saved <ArrowIcon />
+          </Link>
+        </div>
+
+        <div className={`${styles.statCard} ${styles.statCardDark}`}>
+          <div className={styles.darkCardHeader}>
+            <h3 className={styles.darkCardTitle}>
+              Active
+              <br />
+              Offers
+            </h3>
+          </div>
+          <p className={styles.darkCardDesc}>
+            {summary.stats.pendingOffers > 0
+              ? `You have ${summary.stats.pendingOffers} high-intent offers pending review.`
+              : 'No active offers yet.'}
+          </p>
+          <div className={styles.darkCardProduct}>
+            <div className={styles.darkProductImg}>
+              {canRenderImage(summary.highlightedOffer?.imagePath) ? (
+                <img
+                  src={summary.highlightedOffer?.imagePath || ''}
+                  alt={summary.highlightedOffer?.productName || 'Offer'}
+                />
+              ) : (
+                <span className={styles.productFallback}>
+                  {getFallbackLabel(summary.highlightedOffer?.productName || 'Offer')}
+                </span>
+              )}
             </div>
-            <div className={styles.statValue}>0</div>
-            <div className={styles.statLabel}>Active Listings</div>
+            <div>
+              <div className={styles.darkProductName}>
+                {summary.highlightedOffer?.productName || 'No Item'}
+              </div>
+              <div className={styles.darkProductPrice}>
+                {summary.highlightedOffer?.price || '-'}
+              </div>
+            </div>
+          </div>
+          <Link href={ROUTES.OFFERS} className={styles.darkCardBtn}>
+            Review Offers
+          </Link>
+        </div>
+      </section>
+
+      <section className={styles.middleRow} id="insights-section">
+        <div className={styles.chartCard}>
+          <div className={styles.chartHeader}>
+            <div>
+              <h2 className={styles.chartTitle}>Inventory Insights</h2>
+              <p className={styles.chartSub}>
+                Listing visibility and demand trends ({summary.insights.selectedMonthLabel})
+              </p>
+            </div>
+
+            <div className={styles.chartControls}>
+              <label className={styles.monthSelectWrap}>
+                <span className={styles.monthSelectLabel}>Month</span>
+                <select
+                  className={styles.monthSelect}
+                  value={selectedMonth}
+                  onChange={(event) => setSelectedMonth(event.target.value)}
+                  disabled={isRefreshing}
+                >
+                  {summary.insights.availableMonths.map((month) => (
+                    <option key={month.value} value={month.value}>
+                      {month.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className={styles.chartTabs}>
+                <button
+                  className={`${styles.chartTab} ${chartMode === 'views' ? styles.chartTabActive : ''}`}
+                  onClick={() => setChartMode('views')}
+                  type="button"
+                >
+                  Views
+                </button>
+                <button
+                  className={`${styles.chartTab} ${chartMode === 'offers' ? styles.chartTabActive : ''}`}
+                  onClick={() => setChartMode('offers')}
+                  type="button"
+                >
+                  Offers
+                </button>
+              </div>
+            </div>
           </div>
 
-          <div className={styles.statCard}>
-            <div className={`${styles.statIcon} ${styles.statIconGreen}`}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
-              </svg>
+          <div className={styles.chart}>
+            <div className={styles.chartYAxis}>
+              <span>{maxVal.toLocaleString()}</span>
+              <span>0</span>
             </div>
-            <div className={styles.statValue}>0</div>
-            <div className={styles.statLabel}>Completed Sales</div>
+
+            <div className={styles.chartBars}>
+              {weeklyData.map((bucket) => {
+                const value = chartMode === 'views' ? bucket.views : bucket.offers;
+                const barHeight = value > 0 ? Math.max((value / maxVal) * 100, 10) : 4;
+                const metricLabel = chartMode === 'views' ? 'views' : 'offers';
+
+                return (
+                  <div key={bucket.week} className={styles.chartBarGroup}>
+                    <div className={styles.chartBarWrapper}>
+                      <button
+                        type="button"
+                        className={styles.chartBarButton}
+                        title={`${bucket.rangeLabel}: ${value} ${metricLabel}`}
+                      >
+                        <span className={styles.chartTooltip}>
+                          <strong>{bucket.rangeLabel}</strong>
+                          <span>
+                            {value.toLocaleString()} {metricLabel}
+                          </span>
+                        </span>
+                        <span
+                          className={styles.chartBar}
+                          style={{ height: `${barHeight}%` }}
+                        />
+                      </button>
+                    </div>
+                    <span className={styles.chartBarLabel}>{bucket.shortLabel}</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
-          <div className={styles.statCard}>
-            <div className={`${styles.statIcon} ${styles.statIconAmber}`}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-              </svg>
+          {isRefreshing && (
+            <div className={styles.chartLoadingText}>Refreshing chart...</div>
+          )}
+        </div>
+
+        <div className={styles.rightCol}>
+          <div className={styles.conciergeCard}>
+            <div className={styles.conciergeIcon}>
+              <SupportIcon />
             </div>
-            <div className={styles.statValue}>0</div>
-            <div className={styles.statLabel}>Messages</div>
+            <h3 className={styles.conciergeTitle}>Concierge Assistance</h3>
+            <p className={styles.conciergeDesc}>
+              As a premium member, you have access to our direct concierge line for luxury authentications and shipment logistics.
+            </p>
+            <button className={styles.conciergeBtn} type="button">
+              Contact Support
+            </button>
           </div>
 
-          <div className={styles.statCard}>
-            <div className={`${styles.statIcon} ${styles.statIconPurple}`}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-              </svg>
+          <div className={styles.recommendedCard}>
+            <div className={styles.recommendedLabel}>Recommended For You</div>
+            <div className={styles.recommendedProduct}>
+              <div className={styles.recommendedImg}>
+                {canRenderImage(summary.recommended?.imagePath) ? (
+                  <img
+                    src={summary.recommended?.imagePath || ''}
+                    alt={summary.recommended?.productName || 'Recommended item'}
+                  />
+                ) : (
+                  <span className={styles.productFallback}>
+                    {getFallbackLabel(summary.recommended?.productName || 'Browse latest')}
+                  </span>
+                )}
+              </div>
+              <div>
+                <div className={styles.recommendedName}>
+                  {summary.recommended?.productName || 'Browse latest'}
+                </div>
+                <div className={styles.recommendedPrice}>
+                  {summary.recommended?.price || ''}
+                </div>
+                <span className={styles.recommendedBadge}>
+                  {summary.recommended?.badge || 'Find Items'}
+                </span>
+              </div>
             </div>
-            <div className={styles.statValue}>0</div>
-            <div className={styles.statLabel}>Reviews</div>
           </div>
         </div>
-      </main>
+      </section>
+
+      <section className={styles.activitySection} id="activity-section">
+        <div className={styles.activityHeader}>
+          <h2 className={styles.activityTitle}>Recent Listing Activity</h2>
+          <Link href={ROUTES.MY_LISTINGS} className={styles.activityViewAll}>
+            View All Activity
+          </Link>
+        </div>
+
+        <div className={styles.activityList}>
+          {summary.recentActivity.length === 0 ? (
+            <div className={styles.activityEmpty}>No listing activity yet.</div>
+          ) : (
+            summary.recentActivity.map((item) => (
+              <div key={item.id} className={styles.activityItem}>
+                <div className={styles.activityLeft}>
+                  <div className={styles.activityEmoji}>
+                    {canRenderImage(item.imagePath) ? (
+                      <img src={item.imagePath || ''} alt={item.name} />
+                    ) : (
+                      <span className={styles.productFallback}>
+                        {getFallbackLabel(item.name)}
+                      </span>
+                    )}
+                  </div>
+                  <div>
+                    <div className={styles.activityName}>
+                      {item.name}
+                      <span
+                        className={styles.activityBadge}
+                        style={{ background: item.badgeColor }}
+                      >
+                        {item.badge}
+                      </span>
+                    </div>
+                    <div className={styles.activityMeta}>
+                      {item.timeAgo} | {item.views} views
+                    </div>
+                  </div>
+                </div>
+                <div className={styles.activityRight}>
+                  <div className={styles.activityPriceLabel}>{item.priceLabel}</div>
+                  <div className={styles.activityPrice}>{item.price}</div>
+                </div>
+                <button className={styles.activityMore} aria-label="More actions" type="button">
+                  <MoreIcon />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </section>
+
+      <Link href={ROUTES.ADD_LISTING} className={styles.fab} id="post-new-item-fab">
+        <PlusIcon />
+        Post New Item
+      </Link>
     </div>
   );
 }

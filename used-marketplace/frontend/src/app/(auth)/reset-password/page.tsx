@@ -154,10 +154,12 @@ export default function ResetPasswordPage() {
   return (
     <div className={styles.page}>
       <div className={styles.heroPanel}>
+        {/* Logo pinned to top-left corner */}
+        <div className={styles.heroBrand}>
+          <img src="/assets/images/remarket_logo white for login or any page the has blue background.png" alt="ReMarket" style={{ height: '150px', width: 'auto' }} />
+        </div>
+
         <div className={styles.heroContent}>
-          <div className={styles.heroBrand}>
-            <img src="/assets/images/remarket_harbor_style_logo_1.png" alt="Logo" style={{ height: '250px', width: 'auto' }} />
-          </div>
           <div className={styles.heroTagline}>
             <h1 className={styles.heroTitle}>Secure Your Account</h1>
             <p className={styles.heroDescription}>

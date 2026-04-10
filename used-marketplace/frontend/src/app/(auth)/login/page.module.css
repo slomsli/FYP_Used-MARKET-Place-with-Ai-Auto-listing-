@@ -24,16 +24,15 @@
   z-index: 1;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   height: 100%;
 }
 
 .heroBrand {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  font-size: 1.25rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  position: absolute;
+  top: 0.1px;
+  left: 0.1px;
+  z-index: 10;
 }
 
 .heroBrandIcon {
@@ -118,8 +117,15 @@
 }
 
 @keyframes formFadeIn {
-  from { opacity: 0; transform: translateY(16px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .formTitle {

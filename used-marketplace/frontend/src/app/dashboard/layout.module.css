@@ -1,0 +1,58 @@
+.shell {
+  min-height: 100vh;
+  background: #f4f5f7;
+}
+
+.body {
+  display: flex;
+  position: relative;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+  padding: 2rem 2.5rem;
+  overflow-x: hidden;
+}
+
+.loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f4f5f7;
+}
+
+.menuToggle {
+  display: none;
+  position: fixed;
+  bottom: 1.25rem;
+  left: 1.25rem;
+  z-index: 150;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: none;
+  background: #1b2a4a;
+  color: white;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(27, 42, 74, 0.35);
+  transition: all 0.2s ease;
+}
+
+.menuToggle:hover {
+  background: #0f1d36;
+  transform: scale(1.05);
+}
+
+@media (max-width: 768px) {
+  .content {
+    padding: 1.25rem;
+  }
+
+  .menuToggle {
+    display: flex;
+  }
+}

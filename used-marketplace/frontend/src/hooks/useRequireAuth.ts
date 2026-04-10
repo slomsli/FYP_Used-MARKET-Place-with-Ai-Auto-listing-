@@ -6,7 +6,7 @@ import { useAuth } from './useAuth';
 import { ROUTES } from '@/src/config/routes';
 
 export function useRequireAuth() {
-  const { user, loading } = useAuth();
+  const { user, session, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -15,5 +15,5 @@ export function useRequireAuth() {
     }
   }, [user, loading, router]);
 
-  return { user, loading, isAuthenticated: !!user };
+  return { user, session, token: session?.access_token, loading, isAuthenticated: !!user };
 }

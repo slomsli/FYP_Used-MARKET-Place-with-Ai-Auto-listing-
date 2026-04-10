@@ -81,18 +81,19 @@ export default function LoginPage() {
     <div className={styles.page}>
       {/* ── Left Hero ── */}
       <div className={styles.heroPanel}>
-        <div className={styles.heroContent}>
-          <div className={styles.heroBrand}>
-            <img src="/assets/images/remarket_harbor_style_logo_1.png" alt="Harbor Market" style={{ height: '250px', width: 'auto' }} />
-          </div>
+        {/* Logo pinned to top-left corner */}
+        <div className={styles.heroBrand}>
+          <img src="/assets/images/remarket_logo white for login or any page the has blue background.png" alt="ReMarket" style={{ height: '150px', width: 'auto' }} />
+        </div>
 
+        <div className={styles.heroContent}>
           <div className={styles.heroTagline}>
             <h1 className={styles.heroTitle}>
               Curated items,<br />trusted by experts.
             </h1>
             <p className={styles.heroDescription}>
               Join a community where quality meets security.<br />
-              Every item on Harbor Market is verified for<br />
+              Every item on ReMarket is verified for<br />
               authenticity and condition.
             </p>
           </div>
