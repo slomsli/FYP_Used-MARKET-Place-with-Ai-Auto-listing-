@@ -12,7 +12,6 @@ import {
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ROUTES } from '@/src/config/routes';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
-import { createClient } from '@/src/lib/supabase/client';
 import {
   createListing,
   getSellerListing,
@@ -79,15 +78,6 @@ function formatCurrency(amount: number) {
   }).format(amount);
 }
 
-async function getAccessToken() {
-  const supabase = createClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  return session?.access_token ?? null;
-}
-
 function getStoredImageUrls(listing: Pick<ListingSummary, 'imagePaths' | 'coverImagePath'>) {
   const seenUrls = new Set<string>();
 
@@ -150,7 +140,7 @@ async function readFileAsBase64(file: File): Promise<string> {
 export default function AddListingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, loading } = useRequireAuth();
+  const { user, token, loading } = useRequireAuth();
   const listingId = searchParams.get('listingId');
   const isEditMode = Boolean(listingId);
 
@@ -237,7 +227,6 @@ export default function AddListingPage() {
       setMetadataLoading(true);
       setMetadataError(null);
 
-      const token = await getAccessToken();
       if (!token) {
         if (!cancelled) {
           setMetadataError('No auth session found. Please sign in again.');
@@ -266,7 +255,7 @@ export default function AddListingPage() {
     return () => {
       cancelled = true;
     };
-  }, [metadataRetryKey, user]);
+  }, [metadataRetryKey, token, user]);
 
   useEffect(() => {
     if (!user || !listingId) {
@@ -279,7 +268,6 @@ export default function AddListingPage() {
     async function loadListing() {
       setListingLoading(true);
 
-      const token = await getAccessToken();
       if (!token) {
         if (!cancelled) {
           setMetadataError('No auth session found. Please sign in again.');
@@ -319,7 +307,7 @@ export default function AddListingPage() {
     return () => {
       cancelled = true;
     };
-  }, [listingId, replaceImages, user]);
+  }, [listingId, replaceImages, token, user]);
 
   useEffect(() => {
     if (!user || !stateId) {
@@ -331,7 +319,6 @@ export default function AddListingPage() {
     async function loadAreas() {
       setAreasLoading(true);
 
-      const token = await getAccessToken();
       if (!token) {
         if (!cancelled) {
           setAreasLoading(false);
@@ -376,7 +363,7 @@ export default function AddListingPage() {
     return () => {
       cancelled = true;
     };
-  }, [stateId, user, showToast]);
+  }, [showToast, stateId, token, user]);
 
   const handleFiles = useCallback((files: FileList | null) => {
     if (!files) {
@@ -567,7 +554,6 @@ export default function AddListingPage() {
 
     setSubmittingStatus(status);
 
-    const token = await getAccessToken();
     if (!token) {
       setSubmittingStatus(null);
       showToast('No auth session found. Please sign in again.');
@@ -673,6 +659,7 @@ export default function AddListingPage() {
     router,
     showToast,
     stateId,
+    token,
     title,
     validateForm,
     isEditMode,

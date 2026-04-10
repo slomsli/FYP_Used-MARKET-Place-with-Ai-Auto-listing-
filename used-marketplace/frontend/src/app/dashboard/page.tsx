@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
-import { createClient } from '@/src/lib/supabase/client';
 import {
   getDashboardSummary,
   type DashboardSummary,
@@ -92,7 +91,7 @@ function getFallbackLabel(value: string | null | undefined) {
 }
 
 export default function DashboardPage() {
-  const { user, loading: authLoading } = useRequireAuth();
+  const { user, token, loading: authLoading } = useRequireAuth();
   const [chartMode, setChartMode] = useState<'views' | 'offers'>('views');
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthValue);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
@@ -110,12 +109,7 @@ export default function DashboardPage() {
       setLoading(true);
 
       try {
-        const supabase = createClient();
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        if (!session?.access_token) {
+        if (!token) {
           if (!cancelled) {
             setErrorMsg('No auth session');
             setLoading(false);
@@ -123,7 +117,7 @@ export default function DashboardPage() {
           return;
         }
 
-        const response = await getDashboardSummary(session.access_token, selectedMonth);
+        const response = await getDashboardSummary(token, selectedMonth);
         if (cancelled) {
           return;
         }
@@ -150,7 +144,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedMonth, user]);
+  }, [selectedMonth, token, user]);
 
   if (authLoading || !user || (loading && !summary)) {
     return (

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../../config/supabase';
+import { ensureProfileForUserId } from './profileSync';
 import type { RegisterBody, ServiceResult } from '../../types/auth';
 
 export async function registerUser(body: RegisterBody): Promise<ServiceResult> {
@@ -46,8 +47,16 @@ export async function registerUser(body: RegisterBody): Promise<ServiceResult> {
     return { success: false, error: 'An account with this email already exists', status: 409 };
   }
 
-  // NOTE: Profile row creation is handled automatically by a Postgres trigger in Supabase
-  // when an auth.users record is created. We do not insert it manually here.
+  try {
+    await ensureProfileForUserId(authData.user.id, {
+      username: trimmedUsername,
+      fullName: trimmedFullName,
+      role: 'user',
+    });
+  } catch (error) {
+    console.error('[Auth] Failed to sync profile after registration:', error);
+    return { success: false, error: 'Account created but profile setup failed', status: 500 };
+  }
 
   return {
     success: true,

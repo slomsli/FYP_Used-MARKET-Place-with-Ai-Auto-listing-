@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { supabaseAdmin } from '../config/supabase';
+
 import {
   type CreateListingBody,
   type CreateableListingStatus,
@@ -823,27 +824,14 @@ async function getPublicListingLookups(): Promise<{
 async function getPublicSellerSummary(
   sellerId: string
 ): Promise<PublicSellerSummary> {
-  const [profileResult, reviewsResult, listingsResult, sellerStatesResult, sellerAreasResult] =
+  const [profile, reviewsResult, listingsResult, sellerStatesResult, sellerAreasResult] =
     await Promise.all([
-      supabaseAdmin
-        .from('profiles')
-        .select('id, username, full_name, avatar_path, created_at, state_id, area_id')
-        .eq('id', sellerId)
-        .maybeSingle(),
+      ensureProfileForUserId(sellerId),
       supabaseAdmin.from('reviews').select('rating').eq('seller_id', sellerId),
       supabaseAdmin.from('listings').select('status').eq('seller_id', sellerId),
       supabaseAdmin.from('states').select('id, name, slug'),
       supabaseAdmin.from('areas').select('id, name, slug, state_id'),
     ]);
-
-  if (profileResult.error) {
-    console.error('[Listings] Failed to fetch seller profile:', profileResult.error);
-    throw new ListingServiceError('Unable to load seller profile', 500);
-  }
-
-  if (!profileResult.data) {
-    throw new ListingServiceError('Seller not found', 404);
-  }
 
   if (reviewsResult.error) {
     console.error('[Listings] Failed to fetch seller reviews:', reviewsResult.error);
@@ -865,17 +853,16 @@ async function getPublicSellerSummary(
     throw new ListingServiceError('Unable to load seller location', 500);
   }
 
-  const profile = profileResult.data as RawProfile;
   const ratings = reviewsResult.data ?? [];
   const totalReviews = ratings.length;
   const averageRating =
     totalReviews > 0
       ? Number(
-          (
-            ratings.reduce((sum, row) => sum + toNumber((row as RawRating).rating), 0) /
-            totalReviews
-          ).toFixed(2)
-        )
+        (
+          ratings.reduce((sum, row) => sum + toNumber((row as RawRating).rating), 0) /
+          totalReviews
+        ).toFixed(2)
+      )
       : null;
 
   let totalSales = 0;
@@ -891,9 +878,35 @@ async function getPublicSellerSummary(
   }
 
   const sellerState =
-    (sellerStatesResult.data ?? []).find((state) => state.id === profile.state_id) ?? null;
+    profile
+      ? (sellerStatesResult.data ?? []).find((state) => state.id === profile.state_id) ?? null
+      : null;
   const sellerArea =
-    (sellerAreasResult.data ?? []).find((area) => area.id === profile.area_id) ?? null;
+    profile
+      ? (sellerAreasResult.data ?? []).find((area) => area.id === profile.area_id) ?? null
+      : null;
+
+  if (!profile) {
+    const shortSellerId = sellerId.replace(/-/g, '').slice(0, 6) || 'member';
+
+    return {
+      id: sellerId,
+      displayName: 'Seller',
+      username: `seller_${shortSellerId}`.slice(0, 20),
+      avatarPath: null,
+      memberSince: new Date().getFullYear().toString(),
+      averageRating,
+      totalReviews,
+      totalSales,
+      activeListings,
+      location: {
+        stateId: null,
+        stateName: null,
+        areaId: null,
+        areaName: null,
+      },
+    };
+  }
 
   return {
     id: profile.id,
@@ -931,10 +944,10 @@ export async function getListingMetadata(stateId?: number): Promise<ListingMetad
     stateId === undefined
       ? Promise.resolve({ data: [], error: null })
       : supabaseAdmin
-          .from('areas')
-          .select('id, name, slug, state_id')
-          .eq('state_id', stateId)
-          .order('name', { ascending: true }),
+        .from('areas')
+        .select('id, name, slug, state_id')
+        .eq('state_id', stateId)
+        .order('name', { ascending: true }),
   ]);
 
   if (categoriesResult.error) {
@@ -1510,10 +1523,10 @@ export async function getMyListings(
     totalReviews === 0
       ? null
       : Number(
-          (
-            ratings.reduce((sum, row) => sum + toNumber(row.rating), 0) / totalReviews
-          ).toFixed(2)
-        );
+        (
+          ratings.reduce((sum, row) => sum + toNumber(row.rating), 0) / totalReviews
+        ).toFixed(2)
+      );
 
   return {
     filters,

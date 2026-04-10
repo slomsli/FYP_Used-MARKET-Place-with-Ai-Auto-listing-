@@ -10,7 +10,13 @@ export default function SettingsPage() {
 
   const handleLogout = async () => {
     await signOut();
-    router.push(ROUTES.LOGIN);
+
+    if (typeof window !== 'undefined') {
+      window.location.assign(ROUTES.LOGIN);
+      return;
+    }
+
+    router.replace(ROUTES.LOGIN);
   };
 
   return (

@@ -74,7 +74,13 @@ export default function LoginPage() {
       setErrors({ general: mapAuthError(result.error || '') });
       return;
     }
-    router.push(ROUTES.DASHBOARD);
+
+    if (typeof window !== 'undefined') {
+      window.location.assign(ROUTES.DASHBOARD);
+      return;
+    }
+
+    router.replace(ROUTES.DASHBOARD);
   };
 
   return (

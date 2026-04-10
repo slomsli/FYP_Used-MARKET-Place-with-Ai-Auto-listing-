@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { ROUTES } from '@/src/config/routes';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
-import { createClient } from '@/src/lib/supabase/client';
 import {
   deleteListing,
   getMyListings,
@@ -83,15 +82,6 @@ function BoxIcon() {
       <path d="M12 12V21" />
     </svg>
   );
-}
-
-async function getAccessToken() {
-  const supabase = createClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  return session?.access_token ?? null;
 }
 
 function formatCurrency(amount: number, currency: string) {
@@ -220,7 +210,7 @@ function getAccent(listing: ListingSummary) {
 
 export default function MyListingsPage() {
   const searchParams = useSearchParams();
-  const { user, loading: authLoading } = useRequireAuth();
+  const { user, token, loading: authLoading } = useRequireAuth();
   const [status, setStatus] = useState<ListingFilterStatus>(() => parseStatus(searchParams.get('status')));
   const [sort, setSort] = useState<ListingSortOption>(() => parseSort(searchParams.get('sort')));
   const [data, setData] = useState<MyListingsResponse | null>(null);
@@ -243,7 +233,6 @@ export default function MyListingsPage() {
       setLoading(true);
       setError(null);
 
-      const token = await getAccessToken();
       if (!token) {
         if (!cancelled) {
           setError('No auth session found. Please sign in again.');
@@ -271,7 +260,7 @@ export default function MyListingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [refreshKey, sort, status, user]);
+  }, [refreshKey, sort, status, token, user]);
 
   useEffect(() => {
     if (!data?.listings.length) {
@@ -339,7 +328,6 @@ export default function MyListingsPage() {
     setActionType('sold');
     setNotice(null);
 
-    const token = await getAccessToken();
     if (!token) {
       setActingOnId(null);
       setActionType(null);
@@ -371,7 +359,6 @@ export default function MyListingsPage() {
     setActionType('active');
     setNotice(null);
 
-    const token = await getAccessToken();
     if (!token) {
       setActingOnId(null);
       setActionType(null);
@@ -428,7 +415,6 @@ export default function MyListingsPage() {
     setActionType('delete');
     setNotice(null);
 
-    const token = await getAccessToken();
     if (!token) {
       setActingOnId(null);
       setActionType(null);

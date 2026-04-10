@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../../config/supabase';
+import { ensureProfileForUser } from './profileSync';
 import type { LoginBody, ServiceResult } from '../../types/auth';
 
 function mapAuthError(error: string): string {
@@ -48,6 +49,13 @@ export async function loginUser(body: LoginBody): Promise<ServiceResult> {
   if (error) {
     const message = mapAuthError(error.message);
     return { success: false, error: message, status: 401 };
+  }
+
+  try {
+    await ensureProfileForUser(data.user);
+  } catch (profileError) {
+    console.error('[Auth] Failed to sync profile during login:', profileError);
+    return { success: false, error: 'Unable to prepare your account profile', status: 500 };
   }
 
   return {

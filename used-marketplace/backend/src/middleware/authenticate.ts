@@ -1,6 +1,7 @@
 import type { Response, NextFunction } from 'express';
 import type { AuthenticatedRequest } from '../types/auth';
 import { supabaseAdmin } from '../config/supabase';
+import { ensureProfileForUser } from '../services/auth/profileSync';
 import { sendError } from '../utils/apiResponse';
 
 /**
@@ -27,6 +28,12 @@ export async function authenticate(
     if (error || !data.user) {
       sendError(res, 'Invalid or expired token', 401);
       return;
+    }
+
+    try {
+      await ensureProfileForUser(data.user);
+    } catch (profileError) {
+      console.error('[Auth] Failed to sync profile during authentication:', profileError);
     }
 
     req.user = data.user;
