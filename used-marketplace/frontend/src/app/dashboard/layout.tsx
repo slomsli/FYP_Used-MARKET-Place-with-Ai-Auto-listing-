@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
+import { subscribeToDashboardProfileUpdates } from '@/src/lib/profileSync';
 import DashboardNavbar from '@/src/components/layout/DashboardNavbar';
 import DashboardSidebar from '@/src/components/layout/DashboardSidebar';
 import Spinner from '@/src/components/ui/Spinner';
@@ -14,19 +15,51 @@ export default function DashboardLayout({
 }) {
   const { user, token, loading } = useRequireAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [profileName, setProfileName] = useState<string | null>(null);
+  const [profileRole, setProfileRole] = useState<string | null>(null);
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
 
-  require('react').useEffect(() => {
-    if (token) {
-      import('@/src/services/profileService').then(({ getProfile }) => {
-        getProfile(token).then((res) => {
-          if (res.data) {
-            setAvatarPath(res.data.avatarPath);
-          }
-        });
-      });
+  useEffect(() => {
+    if (!token) {
+      return;
     }
+
+    let cancelled = false;
+
+    import('@/src/services/profileService').then(({ getProfile }) => {
+      getProfile(token).then((res) => {
+        if (cancelled || !res.data) {
+          return;
+        }
+
+        setProfileName(res.data.fullName);
+        setProfileRole(res.data.role);
+        setAvatarPath(res.data.avatarPath);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [token]);
+
+  useEffect(
+    () =>
+      subscribeToDashboardProfileUpdates(({ fullName, avatarPath: nextAvatarPath, role }) => {
+        if (fullName !== undefined) {
+          setProfileName(fullName);
+        }
+
+        if (nextAvatarPath !== undefined) {
+          setAvatarPath(nextAvatarPath);
+        }
+
+        if (role !== undefined) {
+          setProfileRole(role);
+        }
+      }),
+    []
+  );
 
   if (loading || !user) {
     return (
@@ -36,12 +69,21 @@ export default function DashboardLayout({
     );
   }
 
-  const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'User';
-  const role = user.user_metadata?.role || 'user';
+  const displayName =
+    profileName?.trim() ||
+    user.user_metadata?.full_name ||
+    user.email?.split('@')[0] ||
+    'User';
+  const role = profileRole || user.user_metadata?.role || 'user';
+  const resolvedAvatarPath =
+    avatarPath ??
+    (typeof user.user_metadata?.avatar_path === 'string'
+      ? user.user_metadata.avatar_path
+      : null);
 
   return (
     <div className={styles.shell}>
-      <DashboardNavbar userName={displayName} avatarUrl={avatarPath} />
+      <DashboardNavbar userName={displayName} avatarUrl={resolvedAvatarPath} />
 
       <div className={styles.body}>
         {/* Mobile menu toggle */}
@@ -61,7 +103,7 @@ export default function DashboardLayout({
         <DashboardSidebar
           userName={displayName}
           userRole={role}
-          avatarUrl={avatarPath}
+          avatarUrl={resolvedAvatarPath}
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
         />

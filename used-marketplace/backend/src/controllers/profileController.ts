@@ -1,9 +1,12 @@
-import type { Response } from 'express';
+import type { Response, Request } from 'express';
 import type { AuthenticatedRequest } from '../types/auth';
 import {
   getProfile,
+  updateProfile,
   updateAvatar,
   removeAvatar,
+  getStates,
+  getAreasByState,
   ProfileServiceError,
 } from '../services/profileService';
 import { sendError, sendSuccess } from '../utils/apiResponse';
@@ -39,6 +42,42 @@ export async function getProfileHandler(
     sendSuccess(res, data);
   } catch (error) {
     handleProfileError(res, error, 'Internal server error while fetching profile');
+  }
+}
+
+/**
+ * PATCH /api/dashboard/profile
+ * Body: { fullName?, username?, phone?, stateId?, areaId? }
+ */
+export async function updateProfileHandler(
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> {
+  if (!req.user) {
+    sendError(res, 'Unauthorized', 401);
+    return;
+  }
+
+  try {
+    const { fullName, username, phone, stateId, areaId } = req.body as {
+      fullName?: string;
+      username?: string;
+      phone?: string;
+      stateId?: number | null;
+      areaId?: number | null;
+    };
+
+    const result = await updateProfile(req.user.id, {
+      fullName,
+      username,
+      phone,
+      stateId,
+      areaId,
+    });
+
+    sendSuccess(res, result);
+  } catch (error) {
+    handleProfileError(res, error, 'Internal server error while updating profile');
   }
 }
 
@@ -95,5 +134,40 @@ export async function removeAvatarHandler(
     sendSuccess(res, result);
   } catch (error) {
     handleProfileError(res, error, 'Internal server error while removing avatar');
+  }
+}
+
+/**
+ * GET /api/dashboard/profile/states
+ */
+export async function getStatesHandler(
+  _req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const data = await getStates();
+    sendSuccess(res, data);
+  } catch (error) {
+    handleProfileError(res, error, 'Internal server error while fetching states');
+  }
+}
+
+/**
+ * GET /api/dashboard/profile/states/:stateId/areas
+ */
+export async function getAreasHandler(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const stateId = Number(req.params.stateId);
+    if (isNaN(stateId)) {
+      sendError(res, 'Invalid state ID', 422);
+      return;
+    }
+    const data = await getAreasByState(stateId);
+    sendSuccess(res, data);
+  } catch (error) {
+    handleProfileError(res, error, 'Internal server error while fetching areas');
   }
 }

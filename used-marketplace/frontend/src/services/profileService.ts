@@ -4,6 +4,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 export interface ProfileData {
   id: string;
+  email: string | null;
   username: string;
   fullName: string | null;
   phone: string | null;
@@ -15,6 +16,27 @@ export interface ProfileData {
   areaId: number | null;
   stateName: string | null;
   areaName: string | null;
+}
+
+export interface UpdateProfilePayload {
+  fullName?: string;
+  username?: string;
+  phone?: string;
+  stateId?: number | null;
+  areaId?: number | null;
+}
+
+export interface StateLookup {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+export interface AreaLookup {
+  id: number;
+  name: string;
+  slug: string;
+  stateId: number;
 }
 
 interface ServiceResponse<T> {
@@ -90,6 +112,23 @@ export async function getProfile(
 }
 
 /**
+ * Update profile fields.
+ */
+export async function updateProfile(
+  token: string,
+  payload: UpdateProfilePayload
+): Promise<ServiceResponse<ProfileData>> {
+  return authorizedRequest<ProfileData>(
+    '/api/dashboard/profile',
+    token,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+/**
  * Upload / update avatar.
  */
 export async function updateAvatar(
@@ -117,5 +156,32 @@ export async function removeAvatar(
     '/api/dashboard/profile/avatar',
     token,
     { method: 'DELETE' }
+  );
+}
+
+/**
+ * Get all states for location dropdown.
+ */
+export async function getStates(
+  token: string
+): Promise<ServiceResponse<StateLookup[]>> {
+  return authorizedRequest<StateLookup[]>(
+    '/api/dashboard/profile/states',
+    token,
+    { method: 'GET' }
+  );
+}
+
+/**
+ * Get areas for a specific state.
+ */
+export async function getAreasByState(
+  token: string,
+  stateId: number
+): Promise<ServiceResponse<AreaLookup[]>> {
+  return authorizedRequest<AreaLookup[]>(
+    `/api/dashboard/profile/states/${stateId}/areas`,
+    token,
+    { method: 'GET' }
   );
 }

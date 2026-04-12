@@ -27,8 +27,11 @@ import {
 } from '../controllers/offerController';
 import {
   getProfileHandler,
+  updateProfileHandler,
   updateAvatarHandler,
   removeAvatarHandler,
+  getStatesHandler,
+  getAreasHandler,
 } from '../controllers/profileController';
 import { authenticate } from '../middleware/authenticate';
 import { validateCreateListing } from '../middleware/listings/validateCreateListing';
@@ -45,11 +48,20 @@ router.get('/summary', getSummary);
 // GET /api/dashboard/profile
 router.get('/profile', getProfileHandler);
 
+// PATCH /api/dashboard/profile
+router.patch('/profile', updateProfileHandler);
+
 // PATCH /api/dashboard/profile/avatar
 router.patch('/profile/avatar', updateAvatarHandler);
 
 // DELETE /api/dashboard/profile/avatar
 router.delete('/profile/avatar', removeAvatarHandler);
+
+// GET /api/dashboard/profile/states
+router.get('/profile/states', getStatesHandler);
+
+// GET /api/dashboard/profile/states/:stateId/areas
+router.get('/profile/states/:stateId/areas', getAreasHandler);
 
 // ── Favorites ──────────────────────────────────────────
 // GET /api/dashboard/favorites

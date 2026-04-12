@@ -65,7 +65,6 @@ const navItems = [
   { label: 'Favorites', icon: <FavoritesIcon />, href: ROUTES.FAVORITES },
   { label: 'Messages', icon: <MessagesIcon />, href: ROUTES.MESSAGES },
   { label: 'Offers', icon: <OffersIcon />, href: ROUTES.OFFERS },
-  { label: 'Profile', icon: <ProfileIcon />, href: ROUTES.PROFILE },
   { label: 'Settings', icon: <SettingsIcon />, href: ROUTES.SETTINGS },
 ];
 

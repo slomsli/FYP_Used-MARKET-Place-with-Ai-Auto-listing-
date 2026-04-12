@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
+import { subscribeToDashboardProfileUpdates } from '@/src/lib/profileSync';
+import { getProfile } from '@/src/services/profileService';
 import {
   getDashboardSummary,
   type DashboardSummary,
@@ -94,6 +96,7 @@ export default function DashboardPage() {
   const { user, token, loading: authLoading } = useRequireAuth();
   const [chartMode, setChartMode] = useState<'views' | 'offers'>('views');
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthValue);
+  const [profileName, setProfileName] = useState<string | null>(null);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -146,6 +149,34 @@ export default function DashboardPage() {
     };
   }, [selectedMonth, token, user]);
 
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    let cancelled = false;
+
+    getProfile(token).then((response) => {
+      if (!cancelled && response.data) {
+        setProfileName(response.data.fullName);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  useEffect(
+    () =>
+      subscribeToDashboardProfileUpdates(({ fullName }) => {
+        if (fullName !== undefined) {
+          setProfileName(fullName);
+        }
+      }),
+    []
+  );
+
   if (authLoading || !user || (loading && !summary)) {
     return (
       <div style={{ padding: '2rem', display: 'flex', justifyContent: 'center' }}>
@@ -170,7 +201,7 @@ export default function DashboardPage() {
   }
 
   const displayName =
-    user.user_metadata?.full_name || user.email?.split('@')[0] || 'User';
+    profileName?.trim() || user.user_metadata?.full_name || user.email?.split('@')[0] || 'User';
   const weeklyData = summary.insights.weeklyData;
   const chartValues = weeklyData.map((bucket) =>
     chartMode === 'views' ? bucket.views : bucket.offers
