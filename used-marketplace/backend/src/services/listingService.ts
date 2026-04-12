@@ -824,14 +824,23 @@ async function getPublicListingLookups(): Promise<{
 async function getPublicSellerSummary(
   sellerId: string
 ): Promise<PublicSellerSummary> {
-  const [profile, reviewsResult, listingsResult, sellerStatesResult, sellerAreasResult] =
+  const [profileResult, reviewsResult, listingsResult, sellerStatesResult, sellerAreasResult] =
     await Promise.all([
-      ensureProfileForUserId(sellerId),
+      supabaseAdmin
+        .from('profiles')
+        .select('id, username, full_name, avatar_path, created_at, state_id, area_id')
+        .eq('id', sellerId)
+        .maybeSingle(),
       supabaseAdmin.from('reviews').select('rating').eq('seller_id', sellerId),
       supabaseAdmin.from('listings').select('status').eq('seller_id', sellerId),
       supabaseAdmin.from('states').select('id, name, slug'),
       supabaseAdmin.from('areas').select('id, name, slug, state_id'),
     ]);
+
+  if (profileResult.error) {
+    console.error('[Listings] Failed to fetch seller profile:', profileResult.error);
+    throw new ListingServiceError('Unable to load seller details', 500);
+  }
 
   if (reviewsResult.error) {
     console.error('[Listings] Failed to fetch seller reviews:', reviewsResult.error);
@@ -853,13 +862,13 @@ async function getPublicSellerSummary(
     throw new ListingServiceError('Unable to load seller location', 500);
   }
 
-  const ratings = reviewsResult.data ?? [];
+  const ratings = (reviewsResult.data ?? []) as RawRating[];
   const totalReviews = ratings.length;
   const averageRating =
     totalReviews > 0
       ? Number(
         (
-          ratings.reduce((sum, row) => sum + toNumber((row as RawRating).rating), 0) /
+          ratings.reduce((sum: number, row: RawRating) => sum + toNumber(row.rating), 0) /
           totalReviews
         ).toFixed(2)
       )
@@ -867,6 +876,8 @@ async function getPublicSellerSummary(
 
   let totalSales = 0;
   let activeListings = 0;
+  const profile = profileResult.data as RawProfile | null;
+
   for (const listing of (listingsResult.data ?? []) as RawSellerStatsListing[]) {
     if (listing.status === 'sold') {
       totalSales += 1;
@@ -879,11 +890,15 @@ async function getPublicSellerSummary(
 
   const sellerState =
     profile
-      ? (sellerStatesResult.data ?? []).find((state) => state.id === profile.state_id) ?? null
+      ? ((sellerStatesResult.data ?? []) as RawState[]).find(
+          (state: RawState) => state.id === profile.state_id
+        ) ?? null
       : null;
   const sellerArea =
     profile
-      ? (sellerAreasResult.data ?? []).find((area) => area.id === profile.area_id) ?? null
+      ? ((sellerAreasResult.data ?? []) as RawArea[]).find(
+          (area: RawArea) => area.id === profile.area_id
+        ) ?? null
       : null;
 
   if (!profile) {

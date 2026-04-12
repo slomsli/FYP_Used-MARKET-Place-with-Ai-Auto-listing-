@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../../config/supabase';
+import { createSupabaseAuthClient, supabaseAdmin } from '../../config/supabase';
 import { ensureProfileForUser } from './profileSync';
 import type { LoginBody, ServiceResult } from '../../types/auth';
 
@@ -41,7 +41,7 @@ export async function loginUser(body: LoginBody): Promise<ServiceResult> {
     }
   }
 
-  const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+  const { data, error } = await createSupabaseAuthClient().auth.signInWithPassword({
     email: finalEmail,
     password,
   });

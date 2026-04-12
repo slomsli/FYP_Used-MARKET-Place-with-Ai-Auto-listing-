@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../../config/supabase';
+import { createSupabaseAuthClient, supabaseAdmin } from '../../config/supabase';
 import { ensureProfileForUserId } from './profileSync';
 import type { RegisterBody, ServiceResult } from '../../types/auth';
 
@@ -20,7 +20,7 @@ export async function registerUser(body: RegisterBody): Promise<ServiceResult> {
   }
 
   // 2 — Create auth user (sends confirmation email automatically)
-  const { data: authData, error: authError } = await supabaseAdmin.auth.signUp({
+  const { data: authData, error: authError } = await createSupabaseAuthClient().auth.signUp({
     email: trimmedEmail,
     password,
     options: {
