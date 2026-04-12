@@ -1,0 +1,167 @@
+/* ══════════════════════════════════════════
+   Settings Page Styles
+   ══════════════════════════════════════════ */
+
+.container {
+  max-width: 800px;
+  animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.title {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #0f1d36;
+  margin: 0 0 0.5rem;
+  letter-spacing: -0.03em;
+}
+
+.subtitle {
+  font-size: 0.95rem;
+  color: #64748b;
+  margin: 0 0 2rem;
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 1.5rem;
+  padding: 2rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.02);
+  margin-bottom: 2rem;
+}
+
+.sectionTitle {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 1.5rem;
+}
+
+/* Avatar Widget */
+.avatarWidget {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.avatarPreview {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1b2a4a, #4164a5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 2rem;
+  font-weight: 700;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: 0 8px 16px rgba(15, 29, 54, 0.15);
+}
+
+.avatarImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatarActions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.avatarMeta {
+  font-size: 0.8rem;
+  color: #64748b;
+  margin: 0;
+}
+
+.btnRow {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.uploadBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6rem 1.25rem;
+  background: #0f172a;
+  color: #ffffff;
+  border: none;
+  border-radius: 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.uploadBtn:hover:not(:disabled) {
+  background: #1e293b;
+}
+
+.uploadBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.removeBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6rem 1.25rem;
+  background: transparent;
+  color: #ef4444;
+  border: 1px solid #fca5a5;
+  border-radius: 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.removeBtn:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+.removeBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.hiddenInput {
+  display: none;
+}
+
+/* Logout */
+.logoutSection {
+  border-top: 1px solid #f1f5f9;
+  padding-top: 2rem;
+  margin-top: 2rem;
+}
+
+.logoutBtn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.75rem 1.5rem;
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  border-radius: 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.logoutBtn:hover {
+  background: #fee2e2;
+}

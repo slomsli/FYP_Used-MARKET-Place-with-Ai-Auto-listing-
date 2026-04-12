@@ -10,6 +10,10 @@ import {
   getPublicListingById,
   recordPublicListingView,
 } from '@/src/services/listingService';
+import {
+  toggleFavorite,
+  checkFavoriteStatus,
+} from '@/src/services/favoriteService';
 import type { PublicListingDetailResponse, PublicListingSummary } from '@/src/types/listing';
 import styles from './page.module.css';
 
@@ -156,35 +160,22 @@ function getSellerLocationLabel(response: PublicListingDetailResponse['seller'])
   return 'Malaysia';
 }
 
-function getLocalSavedListings() {
-  if (typeof window === 'undefined') {
-    return [];
-  }
-
-  try {
-    const value = window.localStorage.getItem('remarket-saved-listings');
-    if (!value) {
-      return [];
-    }
-
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : [];
-  } catch {
-    return [];
-  }
-}
-
 export default function ProductDetailClient({ listingId }: ProductDetailClientProps) {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, session } = useAuth();
 
   const [response, setResponse] = useState<PublicListingDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [searchText, setSearchText] = useState('');
-  const [savedVersion, setSavedVersion] = useState(0);
+  const [isFavorited, setIsFavorited] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [showOfferModal, setShowOfferModal] = useState<'purchase' | 'offer' | null>(null);
+  const [offerPrice, setOfferPrice] = useState('');
+  const [offerMessage, setOfferMessage] = useState('');
+  const [offerSubmitting, setOfferSubmitting] = useState(false);
   const recordedViewIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -255,6 +246,22 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
     };
   }, [listingId, response]);
 
+  // Check favorite status when user is authenticated
+  useEffect(() => {
+    if (!user || !session?.access_token || !response) return;
+    let cancelled = false;
+
+    async function checkStatus() {
+      const result = await checkFavoriteStatus(session!.access_token, [listingId]);
+      if (!cancelled && result.data) {
+        setIsFavorited(result.data[listingId] ?? false);
+      }
+    }
+
+    checkStatus();
+    return () => { cancelled = true; };
+  }, [user, session, listingId, response]);
+
   useEffect(() => {
     if (!toast) {
       return;
@@ -281,19 +288,64 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
     router.push(target);
   }
 
-  function handleSaveToggle() {
-    const current = new Set(getLocalSavedListings());
-
-    if (current.has(listingId)) {
-      current.delete(listingId);
-      setToast('Removed from saved listings on this device.');
-    } else {
-      current.add(listingId);
-      setToast('Saved for later on this device.');
+  async function handleFavoriteToggle() {
+    if (!user || !session?.access_token) {
+      router.push(`${ROUTES.LOGIN}?redirect=${encodeURIComponent(`/product/${listingId}`)}`);
+      return;
     }
 
-    window.localStorage.setItem('remarket-saved-listings', JSON.stringify(Array.from(current)));
-    setSavedVersion((currentVersion) => currentVersion + 1);
+    if (favoriteLoading) return;
+    setFavoriteLoading(true);
+
+    try {
+      const result = await toggleFavorite(session.access_token, listingId);
+      if (result.data) {
+        setIsFavorited(result.data.favorited);
+        setToast(result.data.favorited ? 'Added to favorites' : 'Removed from favorites');
+      } else {
+        setToast(result.error || 'Failed to update favorite');
+      }
+    } catch {
+      setToast('Failed to update favorite');
+    } finally {
+      setFavoriteLoading(false);
+    }
+  }
+
+  async function handleOfferSubmit() {
+    if (!user || !session?.access_token || !response) return;
+    if (offerSubmitting) return;
+
+    const { createOffer } = await import('@/src/services/offerService');
+    setOfferSubmitting(true);
+
+    const price = showOfferModal === 'purchase'
+      ? response.listing.price
+      : parseFloat(offerPrice);
+
+    if (isNaN(price) || price < 0) {
+      setToast('Please enter a valid price');
+      setOfferSubmitting(false);
+      return;
+    }
+
+    const result = await createOffer(session.access_token, {
+      listingId,
+      offerPrice: price,
+      message: offerMessage.trim() || undefined,
+      offerKind: showOfferModal === 'purchase' ? 'purchase_request' : 'offer',
+    });
+
+    setOfferSubmitting(false);
+
+    if (result.data) {
+      setShowOfferModal(null);
+      setOfferPrice('');
+      setOfferMessage('');
+      setToast('Offer sent successfully!');
+    } else {
+      setToast(result.error || 'Failed to send offer');
+    }
   }
 
   function handleReport(listing: PublicListingSummary) {
@@ -335,8 +387,6 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
   }
 
   const { listing, seller, related } = response;
-  void savedVersion;
-  const saved = getLocalSavedListings().includes(listingId);
   const gallery = buildGallery(listing);
   const activeImage = gallery[activeIndex] ?? null;
   const toneClass = styles[getToneClass(listing)];
@@ -440,9 +490,10 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
                 </div>
                 <button
                   type="button"
-                  className={`${styles.saveButton} ${saved ? styles.saveButtonActive : ''}`}
-                  aria-label={saved ? 'Remove saved listing' : 'Save listing'}
-                  onClick={handleSaveToggle}
+                  className={`${styles.saveButton} ${isFavorited ? styles.saveButtonActive : ''}`}
+                  aria-label={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
+                  onClick={handleFavoriteToggle}
+                  disabled={favoriteLoading}
                 >
                   <HeartIcon />
                 </button>
@@ -548,43 +599,59 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
             </div>
 
             <div className={styles.actionStack}>
-              <button
-                type="button"
-                className={styles.primaryAction}
-                onClick={() =>
-                  handleProtectedNavigation(
-                    `${ROUTES.OFFERS}?listingId=${listing.id}&intent=buy`
-                  )
-                }
-              >
-                Purchase Now
-              </button>
-              <div className={styles.secondaryActions}>
-                <button
-                  type="button"
-                  className={styles.secondaryAction}
-                  onClick={() =>
-                    handleProtectedNavigation(
-                      `${ROUTES.MESSAGES}?listingId=${listing.id}&sellerId=${seller.id}`
-                    )
-                  }
-                >
-                  <MailIcon />
-                  Message
-                </button>
-                <button
-                  type="button"
-                  className={styles.secondaryAction}
-                  onClick={() =>
-                    handleProtectedNavigation(
-                      `${ROUTES.OFFERS}?listingId=${listing.id}&intent=offer`
-                    )
-                  }
-                >
-                  <TagIcon />
-                  Make Offer
-                </button>
-              </div>
+              {listing.status === 'active' ? (
+                <>
+                  <button
+                    type="button"
+                    className={styles.primaryAction}
+                    onClick={() => {
+                      if (!user) {
+                        router.push(`${ROUTES.LOGIN}?redirect=${encodeURIComponent(`/product/${listingId}`)}`);
+                        return;
+                      }
+                      setOfferPrice(String(listing.price));
+                      setOfferMessage('');
+                      setShowOfferModal('purchase');
+                    }}
+                  >
+                    Request to Buy
+                  </button>
+                  <div className={styles.secondaryActions}>
+                    <button
+                      type="button"
+                      className={styles.secondaryAction}
+                      onClick={() =>
+                        handleProtectedNavigation(
+                          `${ROUTES.MESSAGES}?listingId=${listing.id}&sellerId=${seller.id}`
+                        )
+                      }
+                    >
+                      <MailIcon />
+                      Message Seller
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.secondaryAction}
+                      onClick={() => {
+                        if (!user) {
+                          router.push(`${ROUTES.LOGIN}?redirect=${encodeURIComponent(`/product/${listingId}`)}`);
+                          return;
+                        }
+                        setOfferPrice('');
+                        setOfferMessage('');
+                        setShowOfferModal('offer');
+                      }}
+                    >
+                      <TagIcon />
+                      Make Offer
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className={styles.statusNotice}>
+                  This listing is currently <strong>{listing.statusLabel}</strong> and is not accepting new offers.
+                </div>
+              )}
             </div>
 
             <div className={styles.assuranceCard}>
@@ -716,7 +783,85 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
         </footer>
       </main>
 
-      {toast && <div className={styles.toast}>{toast}</div>}
+      {/* ── Offer Modal ── */}
+      {showOfferModal && response && (
+        <div className={styles.modalOverlay} onClick={() => setShowOfferModal(null)}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <button type="button" className={styles.modalClose} onClick={() => setShowOfferModal(null)}>
+              ✕
+            </button>
+            <h2 className={styles.modalTitle}>
+              {showOfferModal === 'purchase' ? 'Request to Buy' : 'Make an Offer'}
+            </h2>
+            <p className={styles.modalSubtitle}>
+              {showOfferModal === 'purchase'
+                ? `You are requesting to buy "${response.listing.title}" at the asking price.`
+                : `Submit a custom offer for "${response.listing.title}".`}
+            </p>
+
+            <div className={styles.modalField}>
+              <label className={styles.modalLabel}>
+                {showOfferModal === 'purchase' ? 'Price' : 'Your Offer Price'}
+              </label>
+              <div className={styles.modalInputRow}>
+                <span className={styles.modalCurrency}>{response.listing.currency}</span>
+                <input
+                  type="number"
+                  className={styles.modalInput}
+                  value={showOfferModal === 'purchase' ? String(response.listing.price) : offerPrice}
+                  onChange={(e) => setOfferPrice(e.target.value)}
+                  disabled={showOfferModal === 'purchase'}
+                  placeholder="0.00"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+              {showOfferModal === 'offer' && (
+                <p className={styles.modalHint}>
+                  Asking price: {formatCurrency(response.listing.price, response.listing.currency)}
+                </p>
+              )}
+            </div>
+
+            <div className={styles.modalField}>
+              <label className={styles.modalLabel}>Message (optional)</label>
+              <textarea
+                className={styles.modalTextarea}
+                value={offerMessage}
+                onChange={(e) => setOfferMessage(e.target.value)}
+                placeholder={showOfferModal === 'purchase'
+                  ? 'Hi, I want to buy this item.'
+                  : 'Add a note for the seller...'}
+                rows={3}
+              />
+            </div>
+
+            <button
+              type="button"
+              className={styles.modalSubmit}
+              onClick={handleOfferSubmit}
+              disabled={offerSubmitting}
+            >
+              {offerSubmitting
+                ? 'Sending...'
+                : showOfferModal === 'purchase'
+                  ? 'Send Purchase Request'
+                  : 'Send Offer'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className={styles.toast}>
+          {toast}
+          {toast === 'Offer sent successfully!' && (
+            <Link href={ROUTES.OFFERS} className={styles.toastLink}>
+              View My Offers
+            </Link>
+          )}
+        </div>
+      )}
     </div>
   );
 }

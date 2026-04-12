@@ -8,6 +8,7 @@ import styles from './DashboardSidebar.module.css';
 interface DashboardSidebarProps {
   userName?: string;
   userRole?: string;
+  avatarUrl?: string | null;
   isOpen?: boolean;
   onClose?: () => void;
 }
@@ -68,7 +69,7 @@ const navItems = [
   { label: 'Settings', icon: <SettingsIcon />, href: ROUTES.SETTINGS },
 ];
 
-export default function DashboardSidebar({ userName, userRole, isOpen, onClose }: DashboardSidebarProps) {
+export default function DashboardSidebar({ userName, userRole, avatarUrl, isOpen, onClose }: DashboardSidebarProps) {
   const pathname = usePathname();
   const displayName = userName || 'User';
   const memberLabel = userRole === 'admin' ? 'Admin' : 'Premium Member';
@@ -82,7 +83,11 @@ export default function DashboardSidebar({ userName, userRole, isOpen, onClose }
         {/* User Info */}
         <div className={styles.userSection}>
           <div className={styles.userAvatar}>
-            {displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+            {avatarUrl ? (
+              <img src={avatarUrl} alt={displayName} className={styles.avatarImg} />
+            ) : (
+              displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+            )}
           </div>
           <div className={styles.userInfo}>
             <div className={styles.userName}>{displayName}</div>

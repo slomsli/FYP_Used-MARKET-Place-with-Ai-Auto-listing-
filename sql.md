@@ -121,10 +121,15 @@ CREATE TABLE public.offers (
   status text NOT NULL DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'accepted'::text, 'rejected'::text, 'cancelled'::text])),
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  parent_offer_id uuid,
+  initiated_by uuid,
+  offer_kind text NOT NULL DEFAULT 'offer'::text CHECK (offer_kind = ANY (ARRAY['purchase_request'::text, 'offer'::text, 'counter_offer'::text])),
   CONSTRAINT offers_pkey PRIMARY KEY (id),
   CONSTRAINT offers_listing_id_fkey FOREIGN KEY (listing_id) REFERENCES public.listings(id),
   CONSTRAINT offers_buyer_id_fkey FOREIGN KEY (buyer_id) REFERENCES public.profiles(id),
-  CONSTRAINT offers_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.profiles(id)
+  CONSTRAINT offers_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.profiles(id),
+  CONSTRAINT offers_parent_offer_id_fkey FOREIGN KEY (parent_offer_id) REFERENCES public.offers(id),
+  CONSTRAINT offers_initiated_by_fkey FOREIGN KEY (initiated_by) REFERENCES public.profiles(id)
 );
 CREATE TABLE public.profiles (
   id uuid NOT NULL,

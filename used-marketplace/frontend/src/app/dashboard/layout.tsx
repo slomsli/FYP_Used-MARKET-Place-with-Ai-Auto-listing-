@@ -12,8 +12,21 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, loading } = useRequireAuth();
+  const { user, token, loading } = useRequireAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [avatarPath, setAvatarPath] = useState<string | null>(null);
+
+  require('react').useEffect(() => {
+    if (token) {
+      import('@/src/services/profileService').then(({ getProfile }) => {
+        getProfile(token).then((res) => {
+          if (res.data) {
+            setAvatarPath(res.data.avatarPath);
+          }
+        });
+      });
+    }
+  }, [token]);
 
   if (loading || !user) {
     return (
@@ -28,7 +41,7 @@ export default function DashboardLayout({
 
   return (
     <div className={styles.shell}>
-      <DashboardNavbar userName={displayName} />
+      <DashboardNavbar userName={displayName} avatarUrl={avatarPath} />
 
       <div className={styles.body}>
         {/* Mobile menu toggle */}
@@ -48,6 +61,7 @@ export default function DashboardLayout({
         <DashboardSidebar
           userName={displayName}
           userRole={role}
+          avatarUrl={avatarPath}
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
         />

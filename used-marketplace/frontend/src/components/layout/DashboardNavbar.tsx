@@ -6,6 +6,7 @@ import styles from './DashboardNavbar.module.css';
 
 interface DashboardNavbarProps {
   userName?: string;
+  avatarUrl?: string | null;
 }
 
 /* ── Inline SVG Icons ── */
@@ -36,7 +37,7 @@ const UserAvatarIcon = () => (
   </svg>
 );
 
-export default function DashboardNavbar({ userName }: DashboardNavbarProps) {
+export default function DashboardNavbar({ userName, avatarUrl }: DashboardNavbarProps) {
   const initials = userName
     ? userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     : 'U';
@@ -76,7 +77,11 @@ export default function DashboardNavbar({ userName }: DashboardNavbarProps) {
             <MailIcon />
           </button>
           <Link href={ROUTES.PROFILE} className={styles.avatarBtn} id="user-avatar-btn">
-            <span className={styles.avatar}>{initials}</span>
+            {avatarUrl ? (
+              <img src={avatarUrl} alt={userName || 'User'} className={styles.avatarImg} />
+            ) : (
+              <span className={styles.avatar}>{initials}</span>
+            )}
           </Link>
         </div>
       </div>

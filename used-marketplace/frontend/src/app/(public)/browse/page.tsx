@@ -5,7 +5,12 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ROUTES } from '@/src/config/routes';
+import { useAuth } from '@/src/hooks/useAuth';
 import { getPublicListings } from '@/src/services/listingService';
+import {
+  toggleFavorite,
+  checkFavoriteStatus,
+} from '@/src/services/favoriteService';
 import type {
   ListingCondition,
   PublicListingSortOption,
@@ -178,6 +183,7 @@ function getInitialBrowseQuery() {
 
 export default function BrowsePage() {
   const router = useRouter();
+  const { user, session } = useAuth();
 
   const [searchText, setSearchText] = useState(getInitialBrowseQuery);
   const [query, setQuery] = useState(getInitialBrowseQuery);
@@ -192,6 +198,60 @@ export default function BrowsePage() {
   const [response, setResponse] = useState<PublicListingsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [favoriteMap, setFavoriteMap] = useState<Record<string, boolean>>({});
+  const [favoriteLoadingIds, setFavoriteLoadingIds] = useState<Set<string>>(new Set());
+  const [toast, setToast] = useState<string | null>(null);
+
+  // Check favorite status when listings load and user is authenticated
+  useEffect(() => {
+    if (!user || !session?.access_token || !response?.listings?.length) return;
+    let cancelled = false;
+
+    const listingIds = response.listings.map((item) => item.id);
+    checkFavoriteStatus(session.access_token, listingIds).then((result) => {
+      if (!cancelled && result.data) {
+        setFavoriteMap((prev) => ({ ...prev, ...result.data }));
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [user, session, response]);
+
+  // Toast auto-dismiss
+  useEffect(() => {
+    if (!toast) return;
+    const timeout = window.setTimeout(() => setToast(null), 2200);
+    return () => window.clearTimeout(timeout);
+  }, [toast]);
+
+  async function handleFavoriteToggle(e: React.MouseEvent, listingId: string) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!user || !session?.access_token) {
+      router.push(`${ROUTES.LOGIN}?redirect=${encodeURIComponent(ROUTES.BROWSE)}`);
+      return;
+    }
+
+    if (favoriteLoadingIds.has(listingId)) return;
+    setFavoriteLoadingIds((s) => new Set(s).add(listingId));
+
+    try {
+      const result = await toggleFavorite(session.access_token, listingId);
+      if (result.data) {
+        setFavoriteMap((prev) => ({ ...prev, [listingId]: result.data!.favorited }));
+        setToast(result.data.favorited ? 'Added to favorites' : 'Removed from favorites');
+      }
+    } catch {
+      setToast('Failed to update favorite');
+    } finally {
+      setFavoriteLoadingIds((s) => {
+        const next = new Set(s);
+        next.delete(listingId);
+        return next;
+      });
+    }
+  }
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -598,6 +658,15 @@ export default function BrowsePage() {
                           <span className={styles.cardBadge}>
                             {listing.negotiable ? 'Negotiable' : 'Fixed Price'}
                           </span>
+                          <button
+                            type="button"
+                            className={`${styles.cardHeart} ${favoriteMap[listing.id] ? styles.cardHeartActive : ''}`}
+                            onClick={(e) => handleFavoriteToggle(e, listing.id)}
+                            disabled={favoriteLoadingIds.has(listing.id)}
+                            aria-label={favoriteMap[listing.id] ? 'Remove from favorites' : 'Add to favorites'}
+                          >
+                            <HeartIcon />
+                          </button>
                           <div className={styles.mediaGlow} />
                           {imageUrl ? (
                             <img
