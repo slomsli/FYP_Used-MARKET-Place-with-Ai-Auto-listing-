@@ -12,7 +12,17 @@ export interface DashboardSummary {
   insights: {
     selectedMonth: string;
     selectedMonthLabel: string;
+    selectedListingId: string | null;
+    selectedListingLabel: string;
     availableMonths: Array<{ value: string; label: string }>;
+    availableListings: Array<{
+      id: string;
+      title: string;
+      status: string;
+      imagePath: string | null;
+      views: number;
+      offers: number;
+    }>;
     weeklyData: Array<{
       week: string;
       shortLabel: string;
@@ -70,14 +80,9 @@ interface RawListingCard {
   cover_image_path: string | null;
 }
 
-interface RawRecentListing extends RawListingCard {
+interface RawUserListing extends RawListingCard {
   condition: string | null;
-  created_at: string | null;
-  views_count: unknown;
-}
-
-interface RawUserListingMetric {
-  id: string;
+  status: string | null;
   created_at: string | null;
   updated_at: string | null;
   views_count: unknown;
@@ -89,7 +94,8 @@ interface RawDailyView {
   views_count: unknown;
 }
 
-interface RawOfferDate {
+interface RawOfferMetric {
+  listing_id: string;
   created_at: string | null;
 }
 
@@ -345,7 +351,8 @@ function resolveListingImagePath(
 
 export async function getDashboardSummary(
   userId: string,
-  selectedMonth?: string
+  selectedMonth?: string,
+  selectedListingId?: string
 ): Promise<DashboardSummary> {
   const { year, monthIndex } = parseMonthSelection(selectedMonth);
   const startDate = createUtcMonthDate(year, monthIndex, 1);
@@ -359,13 +366,23 @@ export async function getDashboardSummary(
   }).format(startDate);
   const weeklyData = buildInsightBuckets(startDate, endDate);
   const availableMonths = buildAvailableMonths();
-
-  const activeListingsResult = await supabaseAdmin
+  const userListingsResult = await supabaseAdmin
     .from('listings')
-    .select('*', { count: 'exact', head: true })
+    .select(
+      'id, title, condition, status, created_at, updated_at, views_count, price, currency, cover_image_path'
+    )
     .eq('seller_id', userId)
-    .eq('status', 'active');
-  logQueryError('active listings', activeListingsResult.error);
+    .order('created_at', { ascending: false });
+  logQueryError('user listings', userListingsResult.error);
+
+  const userListings = (userListingsResult.data ?? []) as RawUserListing[];
+  const listingIds = userListings.map((listing) => listing.id);
+  const selectedListing =
+    selectedListingId && listingIds.includes(selectedListingId)
+      ? userListings.find((listing) => listing.id === selectedListingId) ?? null
+      : null;
+  const scopedListings = selectedListing ? [selectedListing] : userListings;
+  const scopedListingIds = scopedListings.map((listing) => listing.id);
 
   const favoritesResult = await supabaseAdmin
     .from('favorites')
@@ -429,21 +446,13 @@ export async function getDashboardSummary(
     .limit(1);
   logQueryError('recommended listing', recommendedResult.error);
 
-  const recentListingsResult = await supabaseAdmin
-    .from('listings')
-    .select('id, title, condition, created_at, views_count, price, currency, cover_image_path')
-    .eq('seller_id', userId)
-    .order('created_at', { ascending: false })
-    .limit(5);
-  logQueryError('recent listings', recentListingsResult.error);
-
   const highlightedListing = highestOffersResult.data && highestOffersResult.data.length > 0
     ? unwrapRelation((highestOffersResult.data[0] as RawPendingOffer).listings)
     : null;
   const recommendedListing = recommendedResult.data && recommendedResult.data.length > 0
     ? (recommendedResult.data[0] as RawListingCard)
     : null;
-  const recentListings = (recentListingsResult.data ?? []) as RawRecentListing[];
+  const recentListings = userListings.slice(0, 5);
 
   const imageLookupIds = new Set<string>();
   if (highlightedListing?.id) {
@@ -452,7 +461,7 @@ export async function getDashboardSummary(
   if (recommendedListing?.id) {
     imageLookupIds.add(recommendedListing.id);
   }
-  for (const listing of recentListings) {
+  for (const listing of userListings) {
     imageLookupIds.add(listing.id);
   }
 
@@ -512,31 +521,54 @@ export async function getDashboardSummary(
     };
   });
 
-  const userListingsResult = await supabaseAdmin
-    .from('listings')
-    .select('id, created_at, updated_at, views_count')
-    .eq('seller_id', userId);
-  logQueryError('user listings', userListingsResult.error);
+  const offersByListingId = new Map<string, number>();
 
-  if (userListingsResult.data && userListingsResult.data.length > 0) {
-    const userListings = userListingsResult.data as RawUserListingMetric[];
-    const listingIds = userListings.map((listing) => listing.id);
+  if (listingIds.length > 0) {
+    const offersResult = await supabaseAdmin
+      .from('offers')
+      .select('listing_id, created_at')
+      .in('listing_id', listingIds);
+    logQueryError('listing offers', offersResult.error);
 
+    for (const offer of (offersResult.data ?? []) as RawOfferMetric[]) {
+      offersByListingId.set(
+        offer.listing_id,
+        (offersByListingId.get(offer.listing_id) ?? 0) + 1
+      );
+
+      if (!scopedListingIds.includes(offer.listing_id)) {
+        continue;
+      }
+
+      const bucketIndex = getBucketIndexForTimestamp(
+        offer.created_at,
+        selectedMonthValue,
+        weeklyData.length
+      );
+
+      if (bucketIndex >= 0) {
+        weeklyData[bucketIndex].offers += 1;
+      }
+    }
+  }
+
+  const availableListings = userListings.map((listing) => ({
+    id: listing.id,
+    title: listing.title,
+    status: listing.status || 'unknown',
+    imagePath: resolveListingImagePath(listing.id, listing.cover_image_path, imageMap),
+    views: toFiniteNumber(listing.views_count),
+    offers: offersByListingId.get(listing.id) ?? 0,
+  }));
+
+  if (scopedListingIds.length > 0) {
     const dailyViewsResult = await supabaseAdmin
       .from('listing_daily_views')
       .select('listing_id, view_date, views_count')
-      .in('listing_id', listingIds)
+      .in('listing_id', scopedListingIds)
       .gte('view_date', selectedMonthValue + '-01')
       .lt('view_date', nextMonthStart.toISOString().split('T')[0]);
     logQueryError('daily views', dailyViewsResult.error);
-
-    const offersResult = await supabaseAdmin
-      .from('offers')
-      .select('created_at')
-      .in('listing_id', listingIds)
-      .gte('created_at', startDate.toISOString())
-      .lt('created_at', nextMonthStart.toISOString());
-    logQueryError('monthly offers', offersResult.error);
 
     const listingsWithDailyViews = new Set<string>();
     for (const view of (dailyViewsResult.data ?? []) as RawDailyView[]) {
@@ -552,7 +584,7 @@ export async function getDashboardSummary(
       }
     }
 
-    for (const listing of userListings) {
+    for (const listing of scopedListings) {
       if (listingsWithDailyViews.has(listing.id)) {
         continue;
       }
@@ -572,23 +604,11 @@ export async function getDashboardSummary(
         weeklyData[bucketIndex].views += viewsCount;
       }
     }
-
-    for (const offer of (offersResult.data ?? []) as RawOfferDate[]) {
-      const bucketIndex = getBucketIndexForTimestamp(
-        offer.created_at,
-        selectedMonthValue,
-        weeklyData.length
-      );
-
-      if (bucketIndex >= 0) {
-        weeklyData[bucketIndex].offers += 1;
-      }
-    }
   }
 
   return {
     stats: {
-      activeListings: activeListingsResult.count || 0,
+      activeListings: userListings.filter((listing) => listing.status === 'active').length,
       unreadMessages,
       favorites: favoritesResult.count || 0,
       pendingOffers: pendingOffersResult.count || 0,
@@ -596,7 +616,10 @@ export async function getDashboardSummary(
     insights: {
       selectedMonth: selectedMonthValue,
       selectedMonthLabel,
+      selectedListingId: selectedListing?.id ?? null,
+      selectedListingLabel: selectedListing?.title ?? 'All Listings',
       availableMonths,
+      availableListings,
       weeklyData,
     },
     highlightedOffer,

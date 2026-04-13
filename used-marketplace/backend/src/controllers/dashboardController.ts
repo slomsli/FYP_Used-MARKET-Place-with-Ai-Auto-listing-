@@ -20,6 +20,18 @@ function parseOptionalMonth(value: unknown): string | undefined {
   return value;
 }
 
+function parseOptionalListingId(value: unknown): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error('listingId must be a non-empty string');
+  }
+
+  return value.trim();
+}
+
 export async function getSummary(req: AuthenticatedRequest, res: Response): Promise<void> {
   if (!req.user) {
     sendError(res, 'Unauthorized', 401);
@@ -28,10 +40,14 @@ export async function getSummary(req: AuthenticatedRequest, res: Response): Prom
 
   try {
     const month = parseOptionalMonth(req.query.month);
-    const summary = await getDashboardSummary(req.user.id, month);
+    const listingId = parseOptionalListingId(req.query.listingId);
+    const summary = await getDashboardSummary(req.user.id, month, listingId);
     sendSuccess(res, summary);
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith('month ')) {
+    if (
+      error instanceof Error &&
+      (error.message.startsWith('month ') || error.message.startsWith('listingId '))
+    ) {
       sendError(res, error.message, 422);
       return;
     }

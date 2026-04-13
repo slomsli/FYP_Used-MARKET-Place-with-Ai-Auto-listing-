@@ -318,6 +318,10 @@
   flex-shrink: 0;
 }
 
+.itemPriceSold {
+  color: #9a3412;
+}
+
 .itemOriginalPrice {
   font-size: 0.75rem;
   color: #9ca3af;
@@ -333,6 +337,21 @@
   text-transform: uppercase;
   margin-top: 0.125rem;
 }
+
+.soldStatusText {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-top: 0.25rem;
+  padding: 0.22rem 0.55rem;
+  border-radius: 999px;
+  background: #fff1f2;
+  color: #b42318;
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+ }
 
 .itemCondition {
   display: inline-flex;

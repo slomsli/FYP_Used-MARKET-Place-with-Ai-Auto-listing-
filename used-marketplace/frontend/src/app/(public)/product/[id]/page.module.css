@@ -467,6 +467,19 @@
   letter-spacing: -0.05em;
 }
 
+.soldOutPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.46rem 0.72rem;
+  border-radius: 999px;
+  background: rgba(127, 29, 29, 0.1);
+  color: #991b1b;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .negotiablePill {
   display: inline-flex;
   align-items: center;
@@ -485,6 +498,29 @@
   margin: 0.8rem 0 0;
   color: #63708a;
   line-height: 1.65;
+}
+
+.soldOutBanner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 1rem;
+  padding: 0.95rem 1rem;
+  border-radius: 1rem;
+  background: rgba(254, 242, 242, 0.92);
+  border: 1px solid rgba(248, 113, 113, 0.28);
+  color: #7f1d1d;
+}
+
+.soldOutBanner strong {
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.soldOutBanner span {
+  line-height: 1.6;
 }
 
 .detailCard {

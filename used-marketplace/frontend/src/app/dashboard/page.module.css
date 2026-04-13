@@ -317,6 +317,245 @@
   margin-top: 0.25rem;
 }
 
+.chartSelectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.chartSelectionLabel {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.chartSelectionText {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.chartSelectionEmpty {
+  margin-bottom: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px dashed #d1d5db;
+  border-radius: 12px;
+  background: #f9fafb;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.insightListingPanel {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 0.9rem;
+  align-items: stretch;
+  margin-bottom: 1.25rem;
+}
+
+.productSelectWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.productSelect {
+  min-height: 52px;
+  padding: 0.8rem 0.95rem;
+  border: 1px solid #dbe2ea;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.selectedInsightCard {
+  display: flex;
+  align-items: center;
+  gap: 0.95rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  box-shadow: 0 10px 24px rgba(15, 29, 54, 0.06);
+}
+
+.selectedInsightCardSold {
+  border-color: rgba(180, 83, 9, 0.28);
+  background: linear-gradient(180deg, #fffaf0, #fff7ed);
+}
+
+.selectedInsightThumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 14px;
+  background: #e5e7eb;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.selectedInsightThumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.selectedInsightBody {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.selectedInsightTop {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.selectedInsightTitle {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.selectedInsightBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.28rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.selectedInsightBadgeActive {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.selectedInsightBadgeSold {
+  background: #fed7aa;
+  color: #9a3412;
+}
+
+.selectedInsightBadgeDraft {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.selectedInsightBadgeReserved {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.selectedInsightMeta {
+  margin-top: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.selectedInsightNote {
+  margin: 0.35rem 0 0;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: #6b7280;
+}
+
+.insightListingPicker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.insightListingButton {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  width: 100%;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.insightListingButton:hover,
+.insightListingButton:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(52, 79, 132, 0.35);
+  box-shadow: 0 10px 24px rgba(15, 29, 54, 0.08);
+}
+
+.insightListingButtonActive {
+  border-color: rgba(27, 42, 74, 0.55);
+  box-shadow: 0 12px 28px rgba(27, 42, 74, 0.12);
+  background: linear-gradient(180deg, #f8fbff, #eef4ff);
+}
+
+.insightListingThumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: #e5e7eb;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.insightListingThumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.insightListingThumbNeutral {
+  background: linear-gradient(180deg, #1b2a4a, #344f84);
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.insightListingBody {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.insightListingTitle {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #111827;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.insightListingMeta {
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
 .chartTabs {
   display: flex;
   gap: 0.25rem;
@@ -853,6 +1092,18 @@
 
   .monthSelect {
     flex: 1;
+  }
+
+  .insightListingPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .productSelectWrap {
+    width: 100%;
+  }
+
+  .insightListingPicker {
+    grid-template-columns: 1fr;
   }
 
   .fab {

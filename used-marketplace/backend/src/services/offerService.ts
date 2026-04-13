@@ -386,7 +386,7 @@ export async function createOffer(
 }
 
 /**
- * Accept the current pending proposal and reserve the listing for the buyer.
+ * Accept the current pending proposal and complete the sale for the buyer.
  */
 export async function acceptOffer(
   userId: string,
@@ -413,9 +413,11 @@ export async function acceptOffer(
     throw new OfferServiceError('You can only accept a proposal when it is your turn to respond', 403);
   }
 
+  const acceptedAt = new Date().toISOString();
+
   const { error: updateErr } = await supabaseAdmin
     .from('offers')
-    .update({ status: 'accepted', updated_at: new Date().toISOString() })
+    .update({ status: 'accepted', updated_at: acceptedAt })
     .eq('id', offerId);
 
   if (updateErr) {
@@ -424,18 +426,36 @@ export async function acceptOffer(
   }
 
   // Mark listing as sold to the buyer who accepted the final price.
-  const { error: listingErr } = await supabaseAdmin
+  const { data: soldListing, error: listingErr } = await supabaseAdmin
     .from('listings')
     .update({
       status: 'sold',
-      sold_at: new Date().toISOString(),
+      sold_at: acceptedAt,
       sold_to_user_id: offer.buyer_id,
-      updated_at: new Date().toISOString(),
+      updated_at: acceptedAt,
     })
-    .eq('id', offer.listing_id);
+    .eq('id', offer.listing_id)
+    .select('id, status, sold_to_user_id')
+    .maybeSingle();
 
-  if (listingErr) {
-    console.error('[Offers] Failed to mark listing as sold:', listingErr);
+  if (
+    listingErr ||
+    !soldListing ||
+    soldListing.status !== 'sold' ||
+    soldListing.sold_to_user_id !== offer.buyer_id
+  ) {
+    console.error('[Offers] Failed to mark listing as sold:', listingErr ?? soldListing);
+
+    const { error: rollbackErr } = await supabaseAdmin
+      .from('offers')
+      .update({ status: 'pending', updated_at: new Date().toISOString() })
+      .eq('id', offerId);
+
+    if (rollbackErr) {
+      console.error('[Offers] Failed to roll back accepted offer after sale update error:', rollbackErr);
+    }
+
+    throw new OfferServiceError('Unable to complete the sale for this buyer', 500);
   }
 
   // Reject all other pending offers for this listing

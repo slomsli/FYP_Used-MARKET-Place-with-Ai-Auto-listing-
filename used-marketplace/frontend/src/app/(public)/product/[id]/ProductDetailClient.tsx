@@ -391,6 +391,8 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
   const activeImage = gallery[activeIndex] ?? null;
   const toneClass = styles[getToneClass(listing)];
   const sellerLocationLabel = getSellerLocationLabel(seller);
+  const isSoldOut = listing.status === 'sold';
+  const availabilityLabel = isSoldOut ? 'Sold Out' : listing.statusLabel;
   const breadcrumb = ['Archive', listing.category?.name ?? 'Listings', listing.locationLabel];
   const detailRows = [
     { label: 'Condition', value: listing.conditionLabel },
@@ -406,7 +408,9 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
     listing.brand?.trim()
       ? `The seller listed this piece under ${listing.brand.trim()} and marked it as ${listing.conditionLabel.toLowerCase()}.`
       : `The seller marked this item as ${listing.conditionLabel.toLowerCase()} and published it from ${listing.locationLabel}.`,
-    listing.negotiable
+    isSoldOut
+      ? 'This listing is now sold out. Buyers can still review the listing history here, but new offers and messages are closed.'
+      : listing.negotiable
       ? 'The asking price is currently negotiable, so buyers can reach out or submit an offer from the marketplace flow.'
       : 'The listing is currently set to a fixed asking price, but buyers can still contact the seller through the marketplace flow.',
   ];
@@ -418,7 +422,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
   const included = [
     `Listing currency: ${listing.currency}`,
     `Seller region: ${sellerLocationLabel}`,
-    `Status: ${listing.statusLabel}`,
+    `Status: ${availabilityLabel}`,
   ];
 
   return (
@@ -483,9 +487,9 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
         <section className={styles.heroSection}>
           <div className={styles.mediaColumn}>
             <div className={`${styles.heroMedia} ${toneClass}`}>
-              <div className={styles.heroMediaTop}>
-                <div className={styles.heroBadges}>
-                  <span className={styles.badgeSoft}>{listing.statusLabel}</span>
+                <div className={styles.heroMediaTop}>
+                  <div className={styles.heroBadges}>
+                  <span className={styles.badgeSoft}>{availabilityLabel}</span>
                   <span className={styles.badgeMint}>{listing.conditionLabel}</span>
                 </div>
                 <button
@@ -547,6 +551,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
               <h1 className={styles.title}>{listing.title}</h1>
               <div className={styles.priceRow}>
                 <span className={styles.price}>{formatCurrency(listing.price, listing.currency)}</span>
+                {isSoldOut && <span className={styles.soldOutPill}>{availabilityLabel}</span>}
                 <span className={styles.negotiablePill}>
                   <TagIcon />
                   {listing.negotiable ? 'Negotiable' : 'Fixed price'}
@@ -555,6 +560,12 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
               <p className={styles.titleNote}>
                 Sold by {seller.displayName} in {listing.locationLabel}.
               </p>
+              {isSoldOut && (
+                <div className={styles.soldOutBanner}>
+                  <strong>{availabilityLabel}</strong>
+                  <span>This listing has already been purchased and is now shown as archive-only.</span>
+                </div>
+              )}
             </div>
 
             <div className={styles.detailCard}>
@@ -622,7 +633,11 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
                       className={styles.secondaryAction}
                       onClick={() =>
                         handleProtectedNavigation(
-                          `${ROUTES.MESSAGES}?listingId=${listing.id}&sellerId=${seller.id}`
+                          `${ROUTES.MESSAGES}?${new URLSearchParams({
+                            listingId: listing.id,
+                            recipientId: seller.id,
+                            recipientName: seller.displayName,
+                          }).toString()}`
                         )
                       }
                     >
@@ -649,7 +664,17 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
                 </>
               ) : (
                 <div className={styles.statusNotice}>
-                  This listing is currently <strong>{listing.statusLabel}</strong> and is not accepting new offers.
+                  {isSoldOut ? (
+                    <>
+                      This listing is <strong>{availabilityLabel}</strong>. You can still view the full details,
+                      but it is no longer accepting offers or new messages.
+                    </>
+                  ) : (
+                    <>
+                      This listing is currently <strong>{availabilityLabel}</strong> and is not accepting new
+                      offers.
+                    </>
+                  )}
                 </div>
               )}
             </div>

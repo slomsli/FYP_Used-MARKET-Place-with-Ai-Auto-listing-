@@ -118,12 +118,14 @@ function FavoriteItemCard({
 }) {
   const isSold = item.status === 'sold';
   const badge = getBadge(item);
+  const availabilityLabel = isSold ? 'Sold Out' : item.statusLabel;
 
   return (
-    <Link 
-      href={`/product/${item.listingId}`} 
-      className={styles.itemCard} 
+    <Link
+      href={`/product/${item.listingId}`}
+      className={styles.itemCard}
       id={`favorite-item-${item.listingId}`}
+      aria-label={isSold ? `View sold out listing ${item.title}` : `View listing ${item.title}`}
     >
       <div className={styles.itemImageWrap}>
         {/* Badge */}
@@ -172,7 +174,7 @@ function FavoriteItemCard({
       <div className={styles.itemContent}>
         <div className={styles.itemTitleRow}>
           <span className={styles.itemTitle}>{item.title}</span>
-          <span className={styles.itemPrice}>
+          <span className={`${styles.itemPrice} ${isSold ? styles.itemPriceSold : ''}`}>
             {formatCurrency(item.price, item.currency)}
           </span>
         </div>
@@ -183,6 +185,8 @@ function FavoriteItemCard({
             {item.brand ? ` • ${item.brand}` : ''}
           </span>
         )}
+
+        {isSold && <span className={styles.soldStatusText}>{availabilityLabel}</span>}
 
         <span className={styles.itemCondition}>
           <span className={`${styles.conditionDot} ${getConditionClass(item.condition)}`} />

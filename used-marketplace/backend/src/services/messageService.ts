@@ -17,7 +17,9 @@ export interface ConversationDetail {
   created_at: string;
   other_user: {
     id: string;
-    full_name: string;
+    display_name: string;
+    username: string | null;
+    avatar_path: string | null;
   } | null;
   listing_details: {
     title: string;
@@ -32,6 +34,53 @@ export interface ConversationDetail {
   unread_count: number;
 }
 
+interface RawProfile {
+  id: string;
+  full_name: string | null;
+  username: string | null;
+  avatar_path: string | null;
+}
+
+interface RawListing {
+  title: string;
+  cover_image_path: string | null;
+}
+
+interface RawConversation {
+  id: string;
+  buyer_id: string;
+  seller_id: string;
+  listing_id: string;
+  created_at: string;
+  listings: RawListing | RawListing[] | null;
+  buyer_profile: RawProfile | RawProfile[] | null;
+  seller_profile: RawProfile | RawProfile[] | null;
+}
+
+const MESSAGE_SELECT = 'id, conversation_id, sender_id, content:body, is_read, created_at';
+
+function unwrapRelation<T>(relation: T | T[] | null | undefined): T | null {
+  if (Array.isArray(relation)) {
+    return relation[0] ?? null;
+  }
+
+  return relation ?? null;
+}
+
+function buildDisplayName(profile: RawProfile | null): string {
+  const fullName = profile?.full_name?.trim();
+  if (fullName) {
+    return fullName;
+  }
+
+  const username = profile?.username?.trim();
+  if (username) {
+    return username;
+  }
+
+  return 'Marketplace User';
+}
+
 export async function getConversationsForUser(userId: string): Promise<ConversationDetail[]> {
   const { data: convos, error: convosError } = await supabaseAdmin
     .from('conversations')
@@ -44,6 +93,18 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
       listings (
         title,
         cover_image_path
+      ),
+      buyer_profile:profiles!conversations_buyer_id_fkey (
+        id,
+        full_name,
+        username,
+        avatar_path
+      ),
+      seller_profile:profiles!conversations_seller_id_fkey (
+        id,
+        full_name,
+        username,
+        avatar_path
       )
     `)
     .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
@@ -55,22 +116,22 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
 
   const detailedConvos: ConversationDetail[] = [];
 
-  for (const convo of (convos || [])) {
-    const otherUserId = convo.buyer_id === userId ? convo.seller_id : convo.buyer_id;
+  for (const convo of ((convos ?? []) as RawConversation[])) {
+    const otherProfile = convo.buyer_id === userId
+      ? unwrapRelation(convo.seller_profile)
+      : unwrapRelation(convo.buyer_profile);
 
-    const { data: userData } = await supabaseAdmin
-      .from('users')
-      .select('id, full_name')
-      .eq('id', otherUserId)
-      .single();
-    
-    const { data: latestMsgData } = await supabaseAdmin
+    const { data: latestMsgData, error: latestMsgError } = await supabaseAdmin
       .from('messages')
-      .select('content, created_at, sender_id, is_read')
+      .select('content:body, created_at, sender_id, is_read')
       .eq('conversation_id', convo.id)
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
+
+    if (latestMsgError) {
+      throw new Error(`Failed to fetch the latest message: ${latestMsgError.message}`);
+    }
 
     let unreadCount = 0;
     const { count: unreadRespCount } = await supabaseAdmin
@@ -83,14 +144,12 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
     unreadCount = unreadRespCount || 0;
 
     let listingDetails = null;
-    if (convo.listings) {
-      const listingData = Array.isArray(convo.listings) ? convo.listings[0] : convo.listings;
-      if (listingData) {
+    const listingData = unwrapRelation(convo.listings);
+    if (listingData) {
          listingDetails = {
            title: listingData.title,
            cover_image_path: listingData.cover_image_path
-         }
-      }
+         };
     }
 
     detailedConvos.push({
@@ -99,7 +158,14 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
       seller_id: convo.seller_id,
       listing_id: convo.listing_id,
       created_at: convo.created_at,
-      other_user: userData ? { id: userData.id, full_name: userData.full_name } : null,
+      other_user: otherProfile
+        ? {
+            id: otherProfile.id,
+            display_name: buildDisplayName(otherProfile),
+            username: otherProfile.username ?? null,
+            avatar_path: otherProfile.avatar_path ?? null,
+          }
+        : null,
       listing_details: listingDetails,
       last_message: latestMsgData ? {
         content: latestMsgData.content,
@@ -132,7 +198,7 @@ export async function getConversationMessages(conversationId: string, userId: st
 
   const { data: messages, error } = await supabaseAdmin
     .from('messages')
-    .select('*')
+    .select(MESSAGE_SELECT)
     .eq('conversation_id', conversationId)
     .order('created_at', { ascending: true });
 
@@ -140,7 +206,21 @@ export async function getConversationMessages(conversationId: string, userId: st
   return messages || [];
 }
 
-export async function sendMessage(senderId: string, payload: { listing_id: string, content: string }): Promise<ChatMessage> {
+async function touchConversation(conversationId: string): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from('conversations')
+    .update({ last_message_at: new Date().toISOString() })
+    .eq('id', conversationId);
+
+  if (error) {
+    throw new Error(`Failed to update conversation activity: ${error.message}`);
+  }
+}
+
+export async function sendMessage(
+  senderId: string,
+  payload: { listing_id: string; content: string; recipient_id?: string }
+): Promise<ChatMessage> {
   const { data: listing, error: listingError } = await supabaseAdmin
     .from('listings')
     .select('seller_id')
@@ -155,14 +235,59 @@ export async function sendMessage(senderId: string, payload: { listing_id: strin
   const isSeller = senderId === listing.seller_id;
 
   if (isSeller) {
-     throw new Error("Sellers cannot initiate a conversation just with listing_id.");
+     const recipientId = payload.recipient_id?.trim();
+
+     if (!recipientId) {
+       throw new Error('recipient_id is required when the seller starts a conversation');
+     }
+
+     if (recipientId === senderId) {
+       throw new Error('You cannot start a conversation with yourself');
+     }
+
+     const { data: existingConvo, error: existingConvoError } = await supabaseAdmin
+       .from('conversations')
+       .select('id')
+       .eq('listing_id', payload.listing_id)
+       .eq('buyer_id', recipientId)
+       .eq('seller_id', senderId)
+       .maybeSingle();
+
+     if (existingConvoError) {
+       throw new Error('Failed to check for an existing conversation');
+     }
+
+     if (existingConvo) {
+       conversationId = existingConvo.id;
+     } else {
+       const { data: newConvo, error: createError } = await supabaseAdmin
+         .from('conversations')
+         .insert({
+            listing_id: payload.listing_id,
+            buyer_id: recipientId,
+            seller_id: senderId
+         })
+         .select()
+         .single();
+
+       if (createError || !newConvo) {
+          throw new Error('Failed to create conversation');
+       }
+
+       conversationId = newConvo.id;
+     }
   } else {
-     const { data: existingConvo } = await supabaseAdmin
+     const { data: existingConvo, error: existingConvoError } = await supabaseAdmin
        .from('conversations')
        .select('id')
        .eq('listing_id', payload.listing_id)
        .eq('buyer_id', senderId)
-       .single();
+       .eq('seller_id', listing.seller_id)
+       .maybeSingle();
+
+     if (existingConvoError) {
+       throw new Error('Failed to check for an existing conversation');
+     }
 
      if (existingConvo) {
        conversationId = existingConvo.id;
@@ -188,15 +313,17 @@ export async function sendMessage(senderId: string, payload: { listing_id: strin
     .insert({
       conversation_id: conversationId,
       sender_id: senderId,
-      content: payload.content,
+      body: payload.content,
       is_read: false
     })
-    .select()
+    .select(MESSAGE_SELECT)
     .single();
 
   if (messageError || !message) {
     throw new Error('Failed to insert message');
   }
+
+  await touchConversation(conversationId);
 
   return message;
 }
@@ -218,15 +345,17 @@ export async function sendReply(senderId: string, conversationId: string, conten
     .insert({
       conversation_id: conversationId,
       sender_id: senderId,
-      content,
+      body: content,
       is_read: false
     })
-    .select()
+    .select(MESSAGE_SELECT)
     .single();
 
   if (messageError || !message) {
     throw new Error('Failed to insert message');
   }
+
+  await touchConversation(conversationId);
 
   return message;
 }

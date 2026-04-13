@@ -33,6 +33,16 @@ function formatDate(isoString: string) {
   }).format(date);
 }
 
+function buildMessageHref(listingId: string, recipientId: string, recipientName: string) {
+  const params = new URLSearchParams({
+    listingId,
+    recipientId,
+    recipientName,
+  });
+
+  return `${ROUTES.MESSAGES}?${params.toString()}`;
+}
+
 type OfferTab = 'received' | 'sent';
 type SummaryTone = 'action' | 'waiting' | 'neutral';
 
@@ -72,6 +82,7 @@ function getOfferPresentation(
   const isInitiatedByCurrentUser = currentUserId === initiatorId;
   const isWaitingForCurrentUser =
     offer.status === 'pending' && currentUserId !== null && responderId === currentUserId;
+  const isCompletedSale = offer.status === 'accepted' && offer.listing.status === 'sold';
   const formattedPrice = formatCurrency(offer.offerPrice, offer.listing.currency);
   const typeLabel = getOfferTypeLabel(offer);
   const messageAuthor =
@@ -115,7 +126,14 @@ function getOfferPresentation(
       }
     }
   } else if (offer.status === 'accepted') {
-    if (initiatorId === offer.sellerId) {
+    if (isCompletedSale) {
+      summaryText = isReceived
+        ? `You sold this item to ${offer.buyer.displayName} for ${formattedPrice}.`
+        : `You bought this item for ${formattedPrice}.`;
+      summarySubtext = isReceived
+        ? 'The listing is now marked as sold to this buyer.'
+        : 'The seller accepted your final price, and the listing is now marked as sold to you.';
+    } else if (initiatorId === offer.sellerId) {
       summaryText = isReceived
         ? `Your counter-offer at ${formattedPrice} was accepted.`
         : `You accepted the seller's counter-offer at ${formattedPrice}.`;
@@ -153,7 +171,9 @@ function getOfferPresentation(
       : "Buyer's Price";
 
   const statusLabel =
-    offer.status === 'pending'
+    isCompletedSale
+      ? 'Sold'
+      : offer.status === 'pending'
       ? isWaitingForCurrentUser
         ? 'Action needed'
         : 'Waiting'
@@ -319,6 +339,11 @@ export default function OffersPage() {
             const isReceived = activeTab === 'received';
             const participant = isReceived ? offer.buyer : offer.seller;
             const participantRoleLabel = isReceived ? 'Buyer' : 'Seller';
+            const messageHref = buildMessageHref(
+              offer.listingId,
+              participant.id,
+              participant.displayName
+            );
             const presentation = getOfferPresentation(offer, activeTab, currentUserId);
             const summaryClass =
               presentation.summaryTone === 'action'
@@ -447,7 +472,7 @@ export default function OffersPage() {
                               : 'Reject Offer'}
                         </button>
                         <Link
-                          href={`${ROUTES.MESSAGES}?listingId=${offer.listingId}`}
+                          href={messageHref}
                           className={`${styles.btn} ${styles.btnSecondary}`}
                         >
                           Message Buyer
@@ -479,7 +504,7 @@ export default function OffersPage() {
                           {actionLoadingId === offer.id ? 'Working...' : 'Reject Counter-Offer'}
                         </button>
                         <Link
-                          href={`${ROUTES.MESSAGES}?listingId=${offer.listingId}`}
+                          href={messageHref}
                           className={`${styles.btn} ${styles.btnSecondary}`}
                         >
                           Message Seller
@@ -503,7 +528,7 @@ export default function OffersPage() {
                                 : 'Cancel Offer'}
                         </button>
                         <Link
-                          href={`${ROUTES.MESSAGES}?listingId=${offer.listingId}`}
+                          href={messageHref}
                           className={`${styles.btn} ${styles.btnSecondary}`}
                         >
                           {isReceived ? 'Message Buyer' : 'Message Seller'}
