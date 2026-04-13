@@ -104,6 +104,16 @@ export interface CounterOfferInput {
   message?: string;
 }
 
+interface OfferActionRecord {
+  id: string;
+  listing_id: string;
+  buyer_id: string;
+  seller_id: string;
+  status: string;
+  initiated_by: string | null;
+  offer_kind: string;
+}
+
 export class OfferServiceError extends Error {
   status: number;
   constructor(message: string, status = 400) {
@@ -136,6 +146,23 @@ function buildDisplayName(profile: Pick<RawProfile, 'full_name' | 'username'> | 
   const username = profile.username?.trim();
   if (username) return username;
   return 'User';
+}
+
+function getOfferInitiatorUserId(
+  offer: Pick<OfferActionRecord, 'buyer_id' | 'seller_id' | 'initiated_by' | 'offer_kind'>
+): string {
+  if (offer.initiated_by === offer.buyer_id || offer.initiated_by === offer.seller_id) {
+    return offer.initiated_by;
+  }
+
+  return offer.offer_kind === 'counter_offer' ? offer.seller_id : offer.buyer_id;
+}
+
+function getOfferResponderUserId(
+  offer: Pick<OfferActionRecord, 'buyer_id' | 'seller_id' | 'initiated_by' | 'offer_kind'>
+): string {
+  const initiatorId = getOfferInitiatorUserId(offer);
+  return initiatorId === offer.buyer_id ? offer.seller_id : offer.buyer_id;
 }
 
 function mapOffer(raw: RawOffer): OfferSummary {
@@ -312,15 +339,23 @@ export async function createOffer(
   // Check for existing pending offer from same buyer on same listing
   const { data: existingOffer } = await supabaseAdmin
     .from('offers')
-    .select('id')
+    .select('id, buyer_id, seller_id, initiated_by, offer_kind')
     .eq('listing_id', listingId)
     .eq('buyer_id', buyerId)
     .eq('status', 'pending')
     .maybeSingle();
 
   if (existingOffer) {
+    const pendingOffer = existingOffer as Pick<
+      OfferActionRecord,
+      'buyer_id' | 'seller_id' | 'initiated_by' | 'offer_kind'
+    >;
+    const responderId = getOfferResponderUserId(pendingOffer);
+
     throw new OfferServiceError(
-      'You already have a pending offer on this listing. Cancel it first to submit a new one.',
+      responderId === buyerId
+        ? 'You already have a seller counter-offer waiting on this listing. Respond to it from your Offers page.'
+        : 'You already have a pending offer on this listing. Cancel it first to submit a new one.',
       422
     );
   }
@@ -351,16 +386,15 @@ export async function createOffer(
 }
 
 /**
- * Accept an offer — sets listing to reserved and rejects all other pending offers.
+ * Accept the current pending proposal and reserve the listing for the buyer.
  */
 export async function acceptOffer(
-  sellerId: string,
+  userId: string,
   offerId: string
 ): Promise<OfferSummary> {
-  // Fetch the offer
   const { data: offer, error: fetchErr } = await supabaseAdmin
     .from('offers')
-    .select('id, listing_id, buyer_id, seller_id, status')
+    .select('id, listing_id, buyer_id, seller_id, status, initiated_by, offer_kind')
     .eq('id', offerId)
     .maybeSingle();
 
@@ -368,15 +402,17 @@ export async function acceptOffer(
     throw new OfferServiceError('Offer not found', 404);
   }
 
-  if (offer.seller_id !== sellerId) {
-    throw new OfferServiceError('You can only respond to offers on your own listings', 403);
-  }
-
   if (offer.status !== 'pending') {
     throw new OfferServiceError(`This offer is already ${offer.status}`, 422);
   }
 
-  // Accept the offer
+  const offerRecord = offer as OfferActionRecord;
+  const responderId = getOfferResponderUserId(offerRecord);
+
+  if (responderId !== userId) {
+    throw new OfferServiceError('You can only accept a proposal when it is your turn to respond', 403);
+  }
+
   const { error: updateErr } = await supabaseAdmin
     .from('offers')
     .update({ status: 'accepted', updated_at: new Date().toISOString() })
@@ -387,18 +423,19 @@ export async function acceptOffer(
     throw new OfferServiceError('Unable to accept offer', 500);
   }
 
-  // Set listing to reserved
+  // Mark listing as sold to the buyer who accepted the final price.
   const { error: listingErr } = await supabaseAdmin
     .from('listings')
     .update({
-      status: 'reserved',
+      status: 'sold',
+      sold_at: new Date().toISOString(),
       sold_to_user_id: offer.buyer_id,
       updated_at: new Date().toISOString(),
     })
     .eq('id', offer.listing_id);
 
   if (listingErr) {
-    console.error('[Offers] Failed to reserve listing:', listingErr);
+    console.error('[Offers] Failed to mark listing as sold:', listingErr);
   }
 
   // Reject all other pending offers for this listing
@@ -428,15 +465,15 @@ export async function acceptOffer(
 }
 
 /**
- * Reject an offer.
+ * Reject the current pending proposal.
  */
 export async function rejectOffer(
-  sellerId: string,
+  userId: string,
   offerId: string
 ): Promise<OfferSummary> {
   const { data: offer, error: fetchErr } = await supabaseAdmin
     .from('offers')
-    .select('id, seller_id, status')
+    .select('id, buyer_id, seller_id, status, initiated_by, offer_kind')
     .eq('id', offerId)
     .maybeSingle();
 
@@ -444,12 +481,15 @@ export async function rejectOffer(
     throw new OfferServiceError('Offer not found', 404);
   }
 
-  if (offer.seller_id !== sellerId) {
-    throw new OfferServiceError('You can only respond to offers on your own listings', 403);
-  }
-
   if (offer.status !== 'pending') {
     throw new OfferServiceError(`This offer is already ${offer.status}`, 422);
+  }
+
+  const offerRecord = offer as OfferActionRecord;
+  const responderId = getOfferResponderUserId(offerRecord);
+
+  if (responderId !== userId) {
+    throw new OfferServiceError('You can only reject a proposal when it is your turn to respond', 403);
   }
 
   const { error: updateErr } = await supabaseAdmin
@@ -476,7 +516,7 @@ export async function rejectOffer(
 }
 
 /**
- * Cancel own pending offer (buyer only).
+ * Cancel or withdraw your own pending proposal.
  */
 export async function cancelOffer(
   userId: string,
@@ -484,7 +524,7 @@ export async function cancelOffer(
 ): Promise<OfferSummary> {
   const { data: offer, error: fetchErr } = await supabaseAdmin
     .from('offers')
-    .select('id, buyer_id, initiated_by, status')
+    .select('id, buyer_id, seller_id, initiated_by, offer_kind, status')
     .eq('id', offerId)
     .maybeSingle();
 
@@ -492,14 +532,15 @@ export async function cancelOffer(
     throw new OfferServiceError('Offer not found', 404);
   }
 
-  // Allow cancellation if user is either the buyer or the initiator
-  const canCancel = offer.buyer_id === userId || offer.initiated_by === userId;
-  if (!canCancel) {
-    throw new OfferServiceError('You can only cancel your own offers', 403);
-  }
-
   if (offer.status !== 'pending') {
     throw new OfferServiceError(`This offer is already ${offer.status}`, 422);
+  }
+
+  const offerRecord = offer as OfferActionRecord;
+  const initiatorId = getOfferInitiatorUserId(offerRecord);
+
+  if (initiatorId !== userId) {
+    throw new OfferServiceError('You can only cancel a proposal that you initiated', 403);
   }
 
   const { error: updateErr } = await supabaseAdmin
@@ -526,18 +567,17 @@ export async function cancelOffer(
 }
 
 /**
- * Create a counter-offer. Rejects the original offer and creates a new linked one.
+ * Counter the current pending proposal. Closes the existing row and creates a linked counter row.
  */
 export async function createCounterOffer(
-  sellerId: string,
+  userId: string,
   input: CounterOfferInput
 ): Promise<OfferSummary> {
   const { offerId, counterPrice, message } = input;
 
-  // Fetch the original offer
   const { data: original, error: fetchErr } = await supabaseAdmin
     .from('offers')
-    .select('id, listing_id, buyer_id, seller_id, status')
+    .select('id, listing_id, buyer_id, seller_id, status, initiated_by, offer_kind')
     .eq('id', offerId)
     .maybeSingle();
 
@@ -545,15 +585,17 @@ export async function createCounterOffer(
     throw new OfferServiceError('Original offer not found', 404);
   }
 
-  if (original.seller_id !== sellerId) {
-    throw new OfferServiceError('You can only counter offers on your own listings', 403);
-  }
-
   if (original.status !== 'pending') {
     throw new OfferServiceError(`This offer is already ${original.status}`, 422);
   }
 
-  // Reject the old offer
+  const originalRecord = original as OfferActionRecord;
+  const responderId = getOfferResponderUserId(originalRecord);
+
+  if (responderId !== userId) {
+    throw new OfferServiceError('You can only counter a proposal when it is your turn to respond', 403);
+  }
+
   const { error: rejectErr } = await supabaseAdmin
     .from('offers')
     .update({ status: 'rejected', updated_at: new Date().toISOString() })
@@ -564,18 +606,17 @@ export async function createCounterOffer(
     throw new OfferServiceError('Unable to process counter offer', 500);
   }
 
-  // Create the counter-offer row
   const { data: counterOffer, error: insertErr } = await supabaseAdmin
     .from('offers')
     .insert({
-      listing_id: original.listing_id,
-      buyer_id: original.buyer_id,
-      seller_id: original.seller_id,
+      listing_id: originalRecord.listing_id,
+      buyer_id: originalRecord.buyer_id,
+      seller_id: originalRecord.seller_id,
       offer_price: counterPrice,
       message: message?.trim() || null,
       status: 'pending',
       offer_kind: 'counter_offer',
-      initiated_by: sellerId,
+      initiated_by: userId,
       parent_offer_id: offerId,
     })
     .select(OFFER_SELECT)

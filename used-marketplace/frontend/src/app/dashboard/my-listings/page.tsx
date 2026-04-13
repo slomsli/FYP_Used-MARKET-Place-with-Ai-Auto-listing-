@@ -197,6 +197,10 @@ function parseSort(value: string | null): ListingSortOption {
 }
 
 function getAccent(listing: ListingSummary) {
+  if (listing.status === 'sold') {
+    return listing.soldTo ? 'Completed Sale' : 'Sold';
+  }
+
   if (listing.pendingOffersCount > 0) {
     return `${listing.pendingOffersCount} Pending`;
   }
@@ -636,6 +640,14 @@ export default function MyListingsPage() {
                       {listing.pendingOffersCount} pending offers
                     </span>
                   </div>
+
+                  {listing.status === 'sold' && (
+                    <div className={styles.saleNote}>
+                      {listing.soldTo
+                        ? `Bought by ${listing.soldTo.displayName}`
+                        : 'Marked as sold'}
+                    </div>
+                  )}
 
                   <div className={styles.cardActions}>
                     <div className={styles.cardActionInfo}>

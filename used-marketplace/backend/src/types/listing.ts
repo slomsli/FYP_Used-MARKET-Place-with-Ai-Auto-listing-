@@ -88,6 +88,12 @@ export interface ListingLocationSummary {
   areaName: string | null;
 }
 
+export interface ListingBuyerSummary {
+  id: string;
+  displayName: string;
+  avatarPath: string | null;
+}
+
 export interface ListingSummary {
   id: string;
   title: string;
@@ -111,6 +117,7 @@ export interface ListingSummary {
   pendingOffersCount: number;
   category: ListingCategorySummary | null;
   location: ListingLocationSummary;
+  soldTo: ListingBuyerSummary | null;
 }
 
 export interface MyListingsResponse {

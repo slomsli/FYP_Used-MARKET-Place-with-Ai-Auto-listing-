@@ -186,7 +186,52 @@
   margin-bottom: 1rem;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.offerSummary {
+  margin-bottom: 1rem;
+  padding: 0.95rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid #e2e8f0;
+}
+
+.offerSummaryAction {
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+
+.offerSummaryWaiting {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.offerSummaryNeutral {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+.offerSummaryText {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.offerSummaryAction .offerSummaryText {
+  color: #9a3412;
+}
+
+.offerSummaryWaiting .offerSummaryText {
+  color: #1d4ed8;
+}
+
+.offerSummarySubtext {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #64748b;
 }
 
 .participantName {
@@ -276,6 +321,7 @@
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.75rem;
   margin-top: auto;
 }
@@ -290,7 +336,9 @@
   transition: all 0.2s;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.4rem;
+  text-decoration: none;
 }
 
 .btn:disabled {

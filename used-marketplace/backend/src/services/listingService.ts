@@ -64,9 +64,11 @@ interface RawListing {
   updated_at: string;
   published_at: string | null;
   views_count: unknown;
+  sold_to_user_id: string | null;
   categories: Relation<RawCategory>;
   states: Relation<RawState>;
   areas: Relation<RawArea>;
+  sold_to_profile: Relation<RawProfile>;
 }
 
 interface RawProfile {
@@ -152,7 +154,7 @@ const LISTING_IMAGE_BUCKET =
 const MAX_LISTING_IMAGE_SIZE_BYTES = 8 * 1024 * 1024;
 const LISTING_IMAGE_MIME_TYPES = ['image/*'];
 const PUBLIC_BROWSE_LISTING_STATUS = 'active';
-const PUBLIC_DETAIL_VISIBLE_STATUSES = ['active', 'reserved'] as const;
+const PUBLIC_DETAIL_VISIBLE_STATUSES = ['active', 'reserved', 'sold'] as const;
 
 let listingImageBucketPromise: Promise<void> | null = null;
 
@@ -321,6 +323,7 @@ function buildListingSummary(
 ): ListingSummary {
   const imagePaths = imageMap.get(listing.id) ?? [];
   const coverImagePath = listing.cover_image_path || imagePaths[0] || null;
+  const soldToProfile = unwrapRelation(listing.sold_to_profile);
 
   return {
     id: listing.id,
@@ -345,6 +348,13 @@ function buildListingSummary(
     pendingOffersCount: pendingOfferCountMap.get(listing.id) ?? 0,
     category: buildCategorySummary(listing.categories),
     location: buildLocationSummary(listing.states, listing.areas),
+    soldTo: listing.sold_to_user_id
+      ? {
+          id: listing.sold_to_user_id,
+          displayName: buildBuyerDisplayName(soldToProfile),
+          avatarPath: soldToProfile?.avatar_path ?? null,
+        }
+      : null,
   };
 }
 
@@ -372,6 +382,14 @@ function buildSellerDisplayName(profile: Pick<RawProfile, 'full_name' | 'usernam
   }
 
   return 'Seller';
+}
+
+function buildBuyerDisplayName(profile: Pick<RawProfile, 'full_name' | 'username'> | null): string {
+  if (!profile) {
+    return 'Buyer';
+  }
+
+  return buildSellerDisplayName(profile);
 }
 
 function buildPublicListingSummary(
@@ -580,6 +598,7 @@ async function getListingByIdForSeller(listingId: string, sellerId: string): Pro
       updated_at,
       published_at,
       views_count,
+      sold_to_user_id,
       categories!listings_category_id_fkey (
         id,
         name,
@@ -595,6 +614,12 @@ async function getListingByIdForSeller(listingId: string, sellerId: string): Pro
         name,
         slug,
         state_id
+      ),
+      sold_to_profile:profiles!listings_sold_to_user_id_fkey (
+        id,
+        username,
+        full_name,
+        avatar_path
       )
     `)
     .eq('id', listingId)
@@ -1416,6 +1441,7 @@ export async function getMyListings(
       updated_at,
       published_at,
       views_count,
+      sold_to_user_id,
       categories!listings_category_id_fkey (
         id,
         name,
@@ -1431,6 +1457,12 @@ export async function getMyListings(
         name,
         slug,
         state_id
+      ),
+      sold_to_profile:profiles!listings_sold_to_user_id_fkey (
+        id,
+        username,
+        full_name,
+        avatar_path
       )
     `)
     .eq('seller_id', sellerId);

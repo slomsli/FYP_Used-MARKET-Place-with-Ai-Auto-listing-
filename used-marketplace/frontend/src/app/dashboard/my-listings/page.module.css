@@ -420,6 +420,16 @@
   letter-spacing: 0.08em;
 }
 
+.saleNote {
+  border-radius: 14px;
+  background: #ecfdf5;
+  border: 1px solid rgba(16, 185, 129, 0.18);
+  color: #047857;
+  padding: 0.82rem 0.9rem;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
 .cardActions {
   display: flex;
   gap: 0.6rem;
