@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { ROUTES } from '@/src/config/routes';
+import { useDashboardAccount } from '@/src/components/layout/DashboardAccountContext';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import {
   deleteListing,
@@ -212,9 +213,13 @@ function getAccent(listing: ListingSummary) {
   return listing.negotiable ? 'Negotiable' : 'Fixed Price';
 }
 
+const SUSPENDED_LISTING_NOTICE =
+  'Your account is suspended. Posting, editing, deleting, and listing status changes are disabled until an admin reactivates your account.';
+
 export default function MyListingsPage() {
   const searchParams = useSearchParams();
   const { user, token, loading: authLoading } = useRequireAuth();
+  const { isSuspended } = useDashboardAccount();
   const [status, setStatus] = useState<ListingFilterStatus>(() => parseStatus(searchParams.get('status')));
   const [sort, setSort] = useState<ListingSortOption>(() => parseSort(searchParams.get('sort')));
   const [data, setData] = useState<MyListingsResponse | null>(null);
@@ -323,6 +328,11 @@ export default function MyListingsPage() {
   }, [data]);
 
   async function handleMarkSold(listingId: string, title: string) {
+    if (isSuspended) {
+      setNotice({ type: 'error', message: SUSPENDED_LISTING_NOTICE });
+      return;
+    }
+
     const confirmed = window.confirm(`Mark "${title}" as sold?`);
     if (!confirmed) {
       return;
@@ -354,6 +364,11 @@ export default function MyListingsPage() {
   }
 
   async function handleMarkActive(listing: ListingSummary) {
+    if (isSuspended) {
+      setNotice({ type: 'error', message: SUSPENDED_LISTING_NOTICE });
+      return;
+    }
+
     const confirmed = window.confirm(`Move "${listing.title}" back to active listings?`);
     if (!confirmed) {
       return;
@@ -408,6 +423,11 @@ export default function MyListingsPage() {
   }
 
   async function handleDelete(listingId: string, title: string) {
+    if (isSuspended) {
+      setNotice({ type: 'error', message: SUSPENDED_LISTING_NOTICE });
+      return;
+    }
+
     const confirmed = window.confirm(
       `Delete "${title}"? This only works when the listing has no offers, conversations, reviews, or reports.`
     );
@@ -447,6 +467,12 @@ export default function MyListingsPage() {
     }));
   }
 
+  const headerSubtitle = isSuspended
+    ? 'Your inventory is available in read-only mode while listing activity is suspended by an administrator.'
+    : data
+      ? `You have ${data.statusCounts.all} total listings across active, sold, and draft inventory.`
+      : 'Review listing performance and manage your live inventory.';
+
   if (authLoading || (loading && !data)) {
     return (
       <div className={styles.page}>
@@ -465,16 +491,18 @@ export default function MyListingsPage() {
         <div className={styles.copy}>
           <p className={styles.eyebrow}>Curated Inventory</p>
           <h1 className={styles.title}>Inventory Management</h1>
-          <p className={styles.subtitle}>
-            {data
-              ? `You have ${data.statusCounts.all} total listings across active, sold, and draft inventory.`
-              : 'Review listing performance and manage your live inventory.'}
-          </p>
+          <p className={styles.subtitle}>{headerSubtitle}</p>
         </div>
 
-        <Link href={ROUTES.ADD_LISTING} className={styles.primaryCta}>
-          Post New Item
-        </Link>
+        {isSuspended ? (
+          <span className={`${styles.primaryCta} ${styles.primaryCtaDisabled}`}>
+            Posting Suspended
+          </span>
+        ) : (
+          <Link href={ROUTES.ADD_LISTING} className={styles.primaryCta}>
+            Post New Item
+          </Link>
+        )}
       </section>
 
       <section className={styles.toolbar}>
@@ -548,9 +576,15 @@ export default function MyListingsPage() {
         {data && data.listings.length === 0 ? (
           <div className={styles.emptyState}>
             <p>No listings found for this filter yet.</p>
-            <Link href={ROUTES.ADD_LISTING} className={styles.emptyAction}>
-              Create your first listing
-            </Link>
+            {isSuspended ? (
+              <div className={styles.emptyRestriction}>
+                {SUSPENDED_LISTING_NOTICE}
+              </div>
+            ) : (
+              <Link href={ROUTES.ADD_LISTING} className={styles.emptyAction}>
+                Create your first listing
+              </Link>
+            )}
           </div>
         ) : (
           data?.listings.map((listing, index) => {
@@ -660,49 +694,61 @@ export default function MyListingsPage() {
 
                   <div className={styles.managementActions}>
                     {listing.status !== 'sold' && (
-                      <Link
-                        href={`${ROUTES.ADD_LISTING}?listingId=${listing.id}`}
-                        className={styles.secondaryAction}
-                      >
-                        Edit
-                      </Link>
+                      isSuspended ? (
+                        <span className={`${styles.secondaryAction} ${styles.actionDisabled}`}>
+                          Edit Disabled
+                        </span>
+                      ) : (
+                        <Link
+                          href={`${ROUTES.ADD_LISTING}?listingId=${listing.id}`}
+                          className={styles.secondaryAction}
+                        >
+                          Edit
+                        </Link>
+                      )
                     )}
 
                     {(listing.status === 'active' || listing.status === 'reserved') && (
                       <button
                         type="button"
-                        className={styles.successAction}
+                        className={`${styles.successAction} ${isSuspended ? styles.actionDisabled : ''}`}
                         onClick={() => handleMarkSold(listing.id, listing.title)}
-                        disabled={actingOnId === listing.id}
+                        disabled={isSuspended || actingOnId === listing.id}
                       >
                         {actingOnId === listing.id && actionType === 'sold'
                           ? 'Saving...'
-                          : 'Mark as Sold'}
+                          : isSuspended
+                            ? 'Sale Updates Disabled'
+                            : 'Mark as Sold'}
                       </button>
                     )}
 
                     {listing.status === 'sold' && (
                       <button
                         type="button"
-                        className={styles.successAction}
+                        className={`${styles.successAction} ${isSuspended ? styles.actionDisabled : ''}`}
                         onClick={() => handleMarkActive(listing)}
-                        disabled={actingOnId === listing.id}
+                        disabled={isSuspended || actingOnId === listing.id}
                       >
                         {actingOnId === listing.id && actionType === 'active'
                           ? 'Saving...'
-                          : 'Mark Active'}
+                          : isSuspended
+                            ? 'Reactivation Disabled'
+                            : 'Mark Active'}
                       </button>
                     )}
 
                     <button
                       type="button"
-                      className={styles.dangerAction}
+                      className={`${styles.dangerAction} ${isSuspended ? styles.actionDisabled : ''}`}
                       onClick={() => handleDelete(listing.id, listing.title)}
-                      disabled={actingOnId === listing.id}
+                      disabled={isSuspended || actingOnId === listing.id}
                     >
                       {actingOnId === listing.id && actionType === 'delete'
                         ? 'Deleting...'
-                        : 'Delete'}
+                        : isSuspended
+                          ? 'Delete Disabled'
+                          : 'Delete'}
                     </button>
                   </div>
                 </div>

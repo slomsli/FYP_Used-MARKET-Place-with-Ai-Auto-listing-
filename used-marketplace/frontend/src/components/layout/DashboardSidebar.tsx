@@ -46,9 +46,10 @@ const OffersIcon = () => (
   </svg>
 );
 
-const ProfileIcon = () => (
+const ShieldIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="8" r="5" /><path d="M20 21a8 8 0 1 0-16 0" />
+    <path d="M12 3l7 4v5c0 5-3.2 8.8-7 10-3.8-1.2-7-5-7-10V7l7-4Z" />
+    <path d="m9.5 12 1.8 1.8L14.8 10" />
   </svg>
 );
 
@@ -59,19 +60,21 @@ const SettingsIcon = () => (
   </svg>
 );
 
-const navItems = [
-  { label: 'Dashboard', icon: <DashboardIcon />, href: ROUTES.DASHBOARD },
-  { label: 'My Listings', icon: <ListingsIcon />, href: ROUTES.MY_LISTINGS },
-  { label: 'Favorites', icon: <FavoritesIcon />, href: ROUTES.FAVORITES },
-  { label: 'Messages', icon: <MessagesIcon />, href: ROUTES.MESSAGES },
-  { label: 'Offers', icon: <OffersIcon />, href: ROUTES.OFFERS },
-  { label: 'Settings', icon: <SettingsIcon />, href: ROUTES.SETTINGS },
-];
-
 export default function DashboardSidebar({ userName, userRole, avatarUrl, isOpen, onClose }: DashboardSidebarProps) {
   const pathname = usePathname();
   const displayName = userName || 'User';
-  const memberLabel = userRole === 'admin' ? 'Admin' : 'Premium Member';
+  const memberLabel = userRole === 'admin' ? 'Admin' : 'User';
+  const navItems = [
+    { label: 'Dashboard', icon: <DashboardIcon />, href: ROUTES.DASHBOARD },
+    { label: 'My Listings', icon: <ListingsIcon />, href: ROUTES.MY_LISTINGS },
+    { label: 'Favorites', icon: <FavoritesIcon />, href: ROUTES.FAVORITES },
+    { label: 'Messages', icon: <MessagesIcon />, href: ROUTES.MESSAGES },
+    { label: 'Offers', icon: <OffersIcon />, href: ROUTES.OFFERS },
+    ...(userRole === 'admin'
+      ? [{ label: 'Admin Console', icon: <ShieldIcon />, href: ROUTES.ADMIN_USERS }]
+      : []),
+    { label: 'Settings', icon: <SettingsIcon />, href: ROUTES.SETTINGS },
+  ];
 
   return (
     <>

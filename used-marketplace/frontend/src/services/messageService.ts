@@ -27,6 +27,7 @@ export interface ConversationDetail {
   listing_details: {
     title: string;
     cover_image_path: string | null;
+    is_moderation: boolean;
   } | null;
   last_message: {
     content: string;

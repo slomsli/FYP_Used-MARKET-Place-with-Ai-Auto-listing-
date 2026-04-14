@@ -34,6 +34,7 @@ import {
   getAreasHandler,
 } from '../controllers/profileController';
 import { authenticate } from '../middleware/authenticate';
+import { requireUnsuspendedTransactionUser } from '../middleware/requireUnsuspendedTransactionUser';
 import { validateCreateListing } from '../middleware/listings/validateCreateListing';
 
 const router = Router();
@@ -81,19 +82,19 @@ router.get('/offers/received', getReceivedOffersHandler);
 router.get('/offers/sent', getSentOffersHandler);
 
 // POST /api/dashboard/offers
-router.post('/offers', createOfferHandler);
+router.post('/offers', requireUnsuspendedTransactionUser, createOfferHandler);
 
 // PATCH /api/dashboard/offers/:offerId/accept
-router.patch('/offers/:offerId/accept', acceptOfferHandler);
+router.patch('/offers/:offerId/accept', requireUnsuspendedTransactionUser, acceptOfferHandler);
 
 // PATCH /api/dashboard/offers/:offerId/reject
-router.patch('/offers/:offerId/reject', rejectOfferHandler);
+router.patch('/offers/:offerId/reject', requireUnsuspendedTransactionUser, rejectOfferHandler);
 
 // PATCH /api/dashboard/offers/:offerId/cancel
-router.patch('/offers/:offerId/cancel', cancelOfferHandler);
+router.patch('/offers/:offerId/cancel', requireUnsuspendedTransactionUser, cancelOfferHandler);
 
 // POST /api/dashboard/offers/:offerId/counter
-router.post('/offers/:offerId/counter', counterOfferHandler);
+router.post('/offers/:offerId/counter', requireUnsuspendedTransactionUser, counterOfferHandler);
 
 // ── Listings ───────────────────────────────────────────
 // GET /api/dashboard/listings/metadata
@@ -103,30 +104,30 @@ router.get('/listings/metadata', getListingFormMetadata);
 router.get('/listings', getSellerListings);
 
 // POST /api/dashboard/listings
-router.post('/listings', validateCreateListing, createNewListing);
+router.post('/listings', requireUnsuspendedTransactionUser, validateCreateListing, createNewListing);
 
 // POST /api/dashboard/listings/uploads
-router.post('/listings/uploads', uploadSellerListingImage);
+router.post('/listings/uploads', requireUnsuspendedTransactionUser, uploadSellerListingImage);
 
 // GET /api/dashboard/listings/:listingId
 router.get('/listings/:listingId', getSellerListing);
 
 // PATCH /api/dashboard/listings/:listingId
-router.patch('/listings/:listingId', validateCreateListing, updateSellerListing);
+router.patch('/listings/:listingId', requireUnsuspendedTransactionUser, validateCreateListing, updateSellerListing);
 
 // PATCH /api/dashboard/listings/:listingId/mark-sold
-router.patch('/listings/:listingId/mark-sold', markSellerListingSold);
+router.patch('/listings/:listingId/mark-sold', requireUnsuspendedTransactionUser, markSellerListingSold);
 
 // PATCH /api/dashboard/listings/:listingId/mark-active
-router.patch('/listings/:listingId/mark-active', markSellerListingActive);
+router.patch('/listings/:listingId/mark-active', requireUnsuspendedTransactionUser, markSellerListingActive);
 
 // PATCH /api/dashboard/listings/:listingId/activate
-router.patch('/listings/:listingId/activate', markSellerListingActive);
+router.patch('/listings/:listingId/activate', requireUnsuspendedTransactionUser, markSellerListingActive);
 
 // PATCH /api/dashboard/listings/:listingId/restore
-router.patch('/listings/:listingId/restore', markSellerListingActive);
+router.patch('/listings/:listingId/restore', requireUnsuspendedTransactionUser, markSellerListingActive);
 
 // DELETE /api/dashboard/listings/:listingId
-router.delete('/listings/:listingId', deleteSellerListing);
+router.delete('/listings/:listingId', requireUnsuspendedTransactionUser, deleteSellerListing);
 
 export default router;

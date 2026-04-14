@@ -16,6 +16,8 @@ export interface ProfileData {
   areaId: number | null;
   stateName: string | null;
   areaName: string | null;
+  accountStatus: 'active' | 'pending_verification' | 'suspended';
+  isSuspended: boolean;
 }
 
 export interface UpdateProfilePayload {

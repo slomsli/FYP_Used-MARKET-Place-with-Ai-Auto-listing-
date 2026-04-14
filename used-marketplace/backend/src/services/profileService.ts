@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../config/supabase';
+import { isAccountSuspended } from '../utils/accountStatus';
 
 /* ── Types ─────────────────────────────────────────────── */
 
@@ -16,6 +17,8 @@ export interface ProfileData {
   areaId: number | null;
   stateName: string | null;
   areaName: string | null;
+  accountStatus: 'active' | 'pending_verification' | 'suspended';
+  isSuspended: boolean;
 }
 
 export interface UpdateProfileInput {
@@ -52,6 +55,16 @@ export class ProfileServiceError extends Error {
 
 type Relation<T> = T | T[] | null;
 
+interface AuthProfileUser {
+  email?: string;
+  email_confirmed_at?: string | null;
+  banned_until?: string | null;
+  app_metadata?: {
+    account_status?: unknown;
+    [key: string]: unknown;
+  } | null;
+}
+
 const AVATAR_BUCKET =
   process.env.SUPABASE_AVATARS_BUCKET?.trim() ||
   process.env.NEXT_PUBLIC_SUPABASE_AVATARS_BUCKET?.trim() ||
@@ -64,6 +77,20 @@ let avatarBucketPromise: Promise<void> | null = null;
 function unwrapRelation<T>(relation: Relation<T>): T | null {
   if (Array.isArray(relation)) return relation[0] ?? null;
   return relation ?? null;
+}
+
+function deriveProfileAccountStatus(
+  user: AuthProfileUser | null | undefined
+): 'active' | 'pending_verification' | 'suspended' {
+  if (isAccountSuspended(user)) {
+    return 'suspended';
+  }
+
+  if (!user?.email_confirmed_at) {
+    return 'pending_verification';
+  }
+
+  return 'active';
 }
 
 async function ensureAvatarBucket(): Promise<void> {
@@ -198,6 +225,7 @@ export async function getProfile(userId: string): Promise<ProfileData> {
 
   const state = unwrapRelation(data.states as Relation<{ id: number; name: string }>);
   const area = unwrapRelation(data.areas as Relation<{ id: number; name: string }>);
+  const accountStatus = deriveProfileAccountStatus(authUser?.user as AuthProfileUser | undefined);
 
   return {
     id: data.id,
@@ -213,6 +241,8 @@ export async function getProfile(userId: string): Promise<ProfileData> {
     areaId: data.area_id,
     stateName: state?.name ?? null,
     areaName: area?.name ?? null,
+    accountStatus,
+    isSuspended: accountStatus === 'suspended',
   };
 }
 

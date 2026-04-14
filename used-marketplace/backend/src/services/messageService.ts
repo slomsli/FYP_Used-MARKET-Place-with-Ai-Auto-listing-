@@ -1,4 +1,9 @@
 import { supabaseAdmin } from '../config/supabase';
+import {
+  isModerationListing,
+  parseModerationListingTargetKey,
+} from '../utils/moderationThread';
+import { isAccountSuspended } from '../utils/accountStatus';
 
 export interface ChatMessage {
   id: string;
@@ -24,6 +29,7 @@ export interface ConversationDetail {
   listing_details: {
     title: string;
     cover_image_path: string | null;
+    is_moderation: boolean;
   } | null;
   last_message: {
     content: string;
@@ -42,8 +48,20 @@ interface RawProfile {
 }
 
 interface RawListing {
+  seller_id?: string;
   title: string;
   cover_image_path: string | null;
+  brand: string | null;
+  description?: string | null;
+}
+
+interface MessagingActor {
+  id: string;
+  banned_until?: string | null;
+  app_metadata?: {
+    account_status?: unknown;
+    [key: string]: unknown;
+  } | null;
 }
 
 interface RawConversation {
@@ -81,6 +99,48 @@ function buildDisplayName(profile: RawProfile | null): string {
   return 'Marketplace User';
 }
 
+function assertMessagingAllowed(
+  sender: MessagingActor,
+  listing: Pick<RawListing, 'brand' | 'title'>
+): void {
+  if (!isAccountSuspended(sender) || isModerationListing(listing)) {
+    return;
+  }
+
+  throw new Error(
+    'Your account is suspended. You can still browse the marketplace, but new offers, listings, and messages are disabled until an admin reactivates your account.'
+  );
+}
+
+function assertModerationThreadAccess(
+  senderId: string,
+  listing: Pick<RawListing, 'seller_id' | 'brand' | 'description' | 'title'>,
+  recipientId?: string
+): void {
+  if (!isModerationListing(listing)) {
+    return;
+  }
+
+  const targetUserId = parseModerationListingTargetKey(listing.description);
+
+  if (!targetUserId) {
+    throw new Error('This moderation thread is misconfigured');
+  }
+
+  const isSeller = senderId === listing.seller_id;
+
+  if (isSeller) {
+    if (!recipientId || recipientId !== targetUserId) {
+      throw new Error('This moderation thread can only contact its assigned user');
+    }
+    return;
+  }
+
+  if (senderId !== targetUserId) {
+    throw new Error('This moderation thread is not available for your account');
+  }
+}
+
 export async function getConversationsForUser(userId: string): Promise<ConversationDetail[]> {
   const { data: convos, error: convosError } = await supabaseAdmin
     .from('conversations')
@@ -92,7 +152,8 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
       created_at,
       listings (
         title,
-        cover_image_path
+        cover_image_path,
+        brand
       ),
       buyer_profile:profiles!conversations_buyer_id_fkey (
         id,
@@ -148,7 +209,8 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
     if (listingData) {
          listingDetails = {
            title: listingData.title,
-           cover_image_path: listingData.cover_image_path
+           cover_image_path: listingData.cover_image_path,
+           is_moderation: isModerationListing(listingData),
          };
     }
 
@@ -218,21 +280,24 @@ async function touchConversation(conversationId: string): Promise<void> {
 }
 
 export async function sendMessage(
-  senderId: string,
+  sender: MessagingActor,
   payload: { listing_id: string; content: string; recipient_id?: string }
 ): Promise<ChatMessage> {
   const { data: listing, error: listingError } = await supabaseAdmin
     .from('listings')
-    .select('seller_id')
+    .select('seller_id, title, brand, description')
     .eq('id', payload.listing_id)
     .single();
-    
+
   if (listingError || !listing) {
     throw new Error('Listing not found');
   }
 
+  assertMessagingAllowed(sender, listing as RawListing);
+  assertModerationThreadAccess(sender.id, listing as RawListing, payload.recipient_id?.trim());
+
   let conversationId = '';
-  const isSeller = senderId === listing.seller_id;
+  const isSeller = sender.id === listing.seller_id;
 
   if (isSeller) {
      const recipientId = payload.recipient_id?.trim();
@@ -241,7 +306,7 @@ export async function sendMessage(
        throw new Error('recipient_id is required when the seller starts a conversation');
      }
 
-     if (recipientId === senderId) {
+     if (recipientId === sender.id) {
        throw new Error('You cannot start a conversation with yourself');
      }
 
@@ -250,7 +315,7 @@ export async function sendMessage(
        .select('id')
        .eq('listing_id', payload.listing_id)
        .eq('buyer_id', recipientId)
-       .eq('seller_id', senderId)
+       .eq('seller_id', sender.id)
        .maybeSingle();
 
      if (existingConvoError) {
@@ -265,7 +330,7 @@ export async function sendMessage(
          .insert({
             listing_id: payload.listing_id,
             buyer_id: recipientId,
-            seller_id: senderId
+            seller_id: sender.id
          })
          .select()
          .single();
@@ -281,7 +346,7 @@ export async function sendMessage(
        .from('conversations')
        .select('id')
        .eq('listing_id', payload.listing_id)
-       .eq('buyer_id', senderId)
+       .eq('buyer_id', sender.id)
        .eq('seller_id', listing.seller_id)
        .maybeSingle();
 
@@ -296,7 +361,7 @@ export async function sendMessage(
          .from('conversations')
          .insert({
             listing_id: payload.listing_id,
-            buyer_id: senderId,
+            buyer_id: sender.id,
             seller_id: listing.seller_id
          })
          .select()
@@ -312,7 +377,7 @@ export async function sendMessage(
     .from('messages')
     .insert({
       conversation_id: conversationId,
-      sender_id: senderId,
+      sender_id: sender.id,
       body: payload.content,
       is_read: false
     })
@@ -328,23 +393,44 @@ export async function sendMessage(
   return message;
 }
 
-export async function sendReply(senderId: string, conversationId: string, content: string): Promise<ChatMessage> {
+export async function sendReply(
+  sender: MessagingActor,
+  conversationId: string,
+  content: string
+): Promise<ChatMessage> {
   const { data: convo, error: verifyError } = await supabaseAdmin
     .from('conversations')
-    .select('id')
+    .select(`
+      id,
+      listing_id,
+      listings (
+        seller_id,
+        title,
+        brand,
+        description
+      )
+    `)
     .eq('id', conversationId)
-    .or(`buyer_id.eq.${senderId},seller_id.eq.${senderId}`)
+    .or(`buyer_id.eq.${sender.id},seller_id.eq.${sender.id}`)
     .single();
 
   if (verifyError || !convo) {
     throw new Error('Conversation not found or access denied');
   }
 
+  const listing = unwrapRelation(convo.listings);
+
+  if (!listing) {
+    throw new Error('Conversation listing was not found');
+  }
+
+  assertMessagingAllowed(sender, listing);
+
   const { data: message, error: messageError } = await supabaseAdmin
     .from('messages')
     .insert({
       conversation_id: conversationId,
-      sender_id: senderId,
+      sender_id: sender.id,
       body: content,
       is_read: false
     })

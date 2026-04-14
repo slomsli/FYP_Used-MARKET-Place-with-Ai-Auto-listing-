@@ -53,7 +53,7 @@ export async function sendMessage(req: AuthenticatedRequest, res: Response): Pro
   }
 
   try {
-    const message = await messageService.sendMessage(req.user.id, {
+    const message = await messageService.sendMessage(req.user, {
       listing_id,
       content,
       recipient_id,
@@ -75,6 +75,16 @@ export async function sendMessage(req: AuthenticatedRequest, res: Response): Pro
       sendError(res, error.message, 400);
       return;
     }
+    if (
+      error instanceof Error &&
+      (
+        error.message.includes('suspended') ||
+        error.message.includes('moderation thread')
+      )
+    ) {
+      sendError(res, error.message, 403);
+      return;
+    }
     sendError(res, 'Internal server error while sending message', 500);
   }
 }
@@ -94,13 +104,23 @@ export async function sendReply(req: AuthenticatedRequest, res: Response): Promi
   }
 
   try {
-    const message = await messageService.sendReply(req.user.id, conversationId, content);
+    const message = await messageService.sendReply(req.user, conversationId, content);
     sendSuccess(res, message, 201);
   } catch (error) {
     console.error('Error sending reply:', error);
     if (error instanceof Error && error.message.includes('Conversation not found or access denied')) {
         sendError(res, error.message, 403);
         return;
+    }
+    if (
+      error instanceof Error &&
+      (
+        error.message.includes('suspended') ||
+        error.message.includes('moderation thread')
+      )
+    ) {
+      sendError(res, error.message, 403);
+      return;
     }
     sendError(res, 'Internal server error while sending reply', 500);
   }

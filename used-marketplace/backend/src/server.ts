@@ -4,6 +4,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import authRoutes from './routes/authRoutes';
+import adminRoutes from './routes/adminRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
 import listingRoutes from './routes/listingRoutes';
 import messageRoutes from './routes/messageRoutes';
@@ -96,6 +97,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/api/listings', listingRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/messages', messageRoutes);

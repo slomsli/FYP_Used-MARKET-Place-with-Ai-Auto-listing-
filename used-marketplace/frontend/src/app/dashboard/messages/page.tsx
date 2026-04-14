@@ -78,13 +78,22 @@ interface DraftConversationTarget {
   listingTitle: string;
   otherUserName: string;
   coverImagePath: string | null;
+  isModeration: boolean;
 }
 
 const getRole = (convo: ConversationDetail, userId?: string) =>
   convo.buyer_id === userId ? 'buying' : 'seller';
 
-const getRoleLabel = (convo: ConversationDetail, userId?: string) =>
-  getRole(convo, userId) === 'buying' ? 'Buying' : 'Selling';
+const isModerationConversation = (convo: ConversationDetail | null | undefined) =>
+  Boolean(convo?.listing_details?.is_moderation);
+
+const getRoleLabel = (convo: ConversationDetail, userId?: string) => {
+  if (isModerationConversation(convo)) {
+    return 'Moderation';
+  }
+
+  return getRole(convo, userId) === 'buying' ? 'Buying' : 'Selling';
+};
 
 const getConversationName = (convo: ConversationDetail) =>
   convo.other_user?.display_name || convo.other_user?.username || 'Marketplace User';
@@ -207,8 +216,10 @@ export default function MessagesPage() {
 
   const requestedConversationId = searchParams.get('conversationId');
   const requestedListingId = searchParams.get('listingId');
+  const requestedListingTitle = searchParams.get('listingTitle')?.trim() || null;
   const requestedRecipientId = searchParams.get('recipientId') ?? searchParams.get('sellerId');
   const requestedRecipientName = searchParams.get('recipientName')?.trim() || null;
+  const requestedTopicType = searchParams.get('topicType')?.trim() || null;
 
   const [conversations, setConversations] = useState<ConversationDetail[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
@@ -233,13 +244,17 @@ export default function MessagesPage() {
   const requestKey =
     requestedConversationId ||
     requestedListingId ||
+    requestedListingTitle ||
     requestedRecipientId ||
-    requestedRecipientName
+    requestedRecipientName ||
+    requestedTopicType
       ? [
           requestedConversationId ?? '',
           requestedListingId ?? '',
+          requestedListingTitle ?? '',
           requestedRecipientId ?? '',
           requestedRecipientName ?? '',
+          requestedTopicType ?? '',
         ].join('|')
       : null;
 
@@ -525,14 +540,16 @@ export default function MessagesPage() {
           listingTitle: result.data.listing.title,
           otherUserName: inferredName,
           coverImagePath: result.data.listing.coverImagePath,
+          isModeration: requestedTopicType === 'moderation',
         });
       } else {
         setDraftTarget({
           listingId: requestedListingId,
           recipientId: requestedRecipientId,
-          listingTitle: 'Listing',
+          listingTitle: requestedListingTitle || 'Listing',
           otherUserName: requestedRecipientName || 'Marketplace User',
           coverImagePath: null,
+          isModeration: requestedTopicType === 'moderation',
         });
       }
       completeInboxRequest();
@@ -549,8 +566,10 @@ export default function MessagesPage() {
     conversations,
     requestKey,
     requestedListingId,
+    requestedListingTitle,
     requestedRecipientId,
     requestedRecipientName,
+    requestedTopicType,
   ]);
 
   useEffect(() => {
@@ -704,6 +723,8 @@ export default function MessagesPage() {
   const isActiveConversationArchived = activeConversation
     ? archivedConversationIdSet.has(activeConversation.id)
     : false;
+  const isActiveModerationThread =
+    isModerationConversation(activeConversation) || Boolean(draftTarget?.isModeration);
   const activeListingId = activeConversation?.listing_id ?? draftTarget?.listingId ?? null;
   const activeListingTitle =
     activeConversation?.listing_details?.title ?? draftTarget?.listingTitle ?? 'Listing';
@@ -712,10 +733,15 @@ export default function MessagesPage() {
   const activeOtherUserAvatar = activeConversation?.other_user?.avatar_path ?? null;
   const activeOtherUserUsername = activeConversation?.other_user?.username ?? null;
   const activeRoleLabel = activeConversation
-    ? getRole(activeConversation, user?.id) === 'buying'
-      ? 'Seller'
-      : 'Buyer'
-    : 'Seller';
+    ? isModerationConversation(activeConversation)
+      ? 'User'
+      : getRole(activeConversation, user?.id) === 'buying'
+        ? 'Seller'
+        : 'Buyer'
+    : draftTarget?.isModeration
+      ? 'User'
+      : 'Seller';
+  const canOpenActiveListing = Boolean(activeListingId) && !isActiveModerationThread;
 
   const handleArchiveConversation = useCallback(
     (conversationId: string) => {
@@ -1039,6 +1065,8 @@ export default function MessagesPage() {
                     {activeOtherUserUsername ? `@${activeOtherUserUsername} | ` : ''}
                     {draftTarget
                       ? 'New conversation'
+                      : isActiveModerationThread
+                        ? 'Account moderation thread'
                       : isActiveConversationArchived
                         ? 'Archived conversation'
                         : `${activeRoleLabel} for this listing`}
@@ -1059,14 +1087,16 @@ export default function MessagesPage() {
                     )}
                   </div>
                   <div className={styles.productInfo}>
-                    <span className={styles.productDiscussLabel}>Discussing</span>
+                    <span className={styles.productDiscussLabel}>
+                      {isActiveModerationThread ? 'Topic' : 'Discussing'}
+                    </span>
                     <span className={styles.productDiscussName}>{activeListingTitle}</span>
                   </div>
                 </div>
               </div>
 
               <div className={styles.chatHeaderActions}>
-                {activeListingId && (
+                {canOpenActiveListing && (
                   <Link
                     href={`/product/${activeListingId}`}
                     className={`${styles.chatHeaderActionLink} ${styles.chatHeaderActionPrimary}`}
@@ -1100,7 +1130,9 @@ export default function MessagesPage() {
                 <div className={styles.composerCard}>
                   <h2 className={styles.composerTitle}>Start the conversation</h2>
                   <p className={styles.composerText}>
-                    Send the first message to {draftTarget.otherUserName} about {draftTarget.listingTitle}.
+                    {draftTarget.isModeration
+                      ? `Send the first moderation message to ${draftTarget.otherUserName} about this account review.`
+                      : `Send the first message to ${draftTarget.otherUserName} about ${draftTarget.listingTitle}.`}
                   </p>
                 </div>
               ) : loadingMessages && messages.length === 0 ? (
@@ -1195,7 +1227,7 @@ export default function MessagesPage() {
 
               <div className={styles.chatActionsBar}>
                 <div className={styles.chatActionsLeft}>
-                  {activeListingId && (
+                  {canOpenActiveListing && (
                     <Link href={`/product/${activeListingId}`} className={styles.chatActionBtn}>
                       <ExternalLinkIcon />
                       View Listing

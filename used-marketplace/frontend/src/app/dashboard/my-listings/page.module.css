@@ -84,6 +84,17 @@
   box-shadow: 0 20px 34px rgba(24, 34, 74, 0.26);
 }
 
+.primaryCtaDisabled {
+  background: linear-gradient(135deg, #9aa3bd, #7f88a6);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.primaryCtaDisabled:hover {
+  transform: none;
+  box-shadow: none;
+}
+
 .toolbar {
   display: flex;
   justify-content: space-between;
@@ -501,6 +512,14 @@
   transform: none;
 }
 
+.actionDisabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+  pointer-events: none;
+  box-shadow: none;
+  transform: none;
+}
+
 .editButton,
 .moreButton {
   border: none;
@@ -661,6 +680,17 @@
   font-size: 0.88rem;
   font-weight: 700;
   cursor: pointer;
+}
+
+.emptyRestriction {
+  margin-top: 1rem;
+  padding: 0.88rem 0.95rem;
+  border-radius: 16px;
+  background: #fff7ed;
+  border: 1px solid rgba(249, 115, 22, 0.16);
+  color: #9a3412;
+  font-size: 0.85rem;
+  line-height: 1.6;
 }
 
 @media (max-width: 1100px) {

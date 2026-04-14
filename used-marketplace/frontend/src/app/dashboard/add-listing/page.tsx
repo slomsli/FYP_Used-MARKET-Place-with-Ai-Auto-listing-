@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ROUTES } from '@/src/config/routes';
+import { useDashboardAccount } from '@/src/components/layout/DashboardAccountContext';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import {
   createListing,
@@ -78,6 +79,9 @@ function formatCurrency(amount: number) {
   }).format(amount);
 }
 
+const SUSPENDED_LISTING_NOTICE =
+  'Your account is suspended. You can stay signed in, but creating or editing listings is disabled until an admin reactivates your account.';
+
 function getStoredImageUrls(listing: Pick<ListingSummary, 'imagePaths' | 'coverImagePath'>) {
   const seenUrls = new Set<string>();
 
@@ -141,6 +145,7 @@ export default function AddListingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, token, loading } = useRequireAuth();
+  const { isSuspended } = useDashboardAccount();
   const listingId = searchParams.get('listingId');
   const isEditMode = Boolean(listingId);
 
@@ -501,7 +506,7 @@ export default function AddListingPage() {
 
   const displayedAreas = stateId ? areas : [];
 
-  const disabled = metadataLoading || listingLoading || submittingStatus !== null;
+  const disabled = metadataLoading || listingLoading || submittingStatus !== null || isSuspended;
 
   const openFilePicker = useCallback(() => {
     if (disabled) {
@@ -540,6 +545,11 @@ export default function AddListingPage() {
   }, [areaId, categoryId, condition, price, stateId, title]);
 
   const submitListing = useCallback(async (status: CreateableListingStatus) => {
+    if (isSuspended) {
+      showToast(SUSPENDED_LISTING_NOTICE);
+      return;
+    }
+
     const validationError = validateForm();
     if (validationError) {
       showToast(validationError);
@@ -664,6 +674,7 @@ export default function AddListingPage() {
     validateForm,
     isEditMode,
     listingId,
+    isSuspended,
   ]);
 
   if (loading || metadataLoading || listingLoading) {
@@ -708,6 +719,12 @@ export default function AddListingPage() {
       {metadataError && (
         <div className={styles.alert}>
           {metadataError}
+        </div>
+      )}
+
+      {isSuspended && (
+        <div className={styles.alert}>
+          {SUSPENDED_LISTING_NOTICE}
         </div>
       )}
 
