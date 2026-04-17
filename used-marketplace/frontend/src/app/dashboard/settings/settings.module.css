@@ -15,7 +15,7 @@
 .title {
   font-size: 2rem;
   font-weight: 800;
-  color: #0f1d36;
+  color: #0e144a;
   margin: 0 0 0.25rem;
   letter-spacing: -0.03em;
 }
@@ -43,7 +43,7 @@
 /* ── Cards ────────────────────────────────── */
 .card {
   background: #ffffff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid rgba(0,0,0,0.04);
   border-radius: 1.5rem;
   padding: 2rem;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.02);
@@ -61,7 +61,7 @@
 /* ── Avatar Section (Left Card) ──────────── */
 .avatarCard {
   background: linear-gradient(145deg, #f8f9fc, #eef1f8);
-  border: 1px solid #e0e4ef;
+  border: 1px solid rgba(0,0,0,0.04);
   border-radius: 1.5rem;
   padding: 2rem;
   display: flex;
@@ -76,7 +76,7 @@
   width: 130px;
   height: 130px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #1b2a4a, #4164a5);
+  background: linear-gradient(135deg, var(--dash-primary), #4164a5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -170,8 +170,8 @@
   justify-content: center;
   padding: 0.55rem 1.1rem;
   background: transparent;
-  color: #ef4444;
-  border: 1px solid #fca5a5;
+  color: var(--dash-tertiary);
+  border: 1px solid rgba(0,0,0,0.04);
   border-radius: 0.75rem;
   font-size: 0.82rem;
   font-weight: 600;
@@ -231,11 +231,11 @@
   border: 1.5px solid #e2e5ec;
   border-radius: 0.75rem;
   font-size: 0.92rem;
-  color: #111827;
+  color: var(--dash-primary);
   background: #f9fafb;
   outline: none;
   transition: border-color 0.2s, box-shadow 0.2s;
-  font-family: inherit;
+  
 }
 
 .fieldInput:focus {
@@ -245,7 +245,7 @@
 }
 
 .fieldInput::placeholder {
-  color: #9ca3af;
+  color: var(--dash-neutral);
 }
 
 .fieldInputReadonly {
@@ -253,11 +253,11 @@
   border: 1.5px solid #e2e5ec;
   border-radius: 0.75rem;
   font-size: 0.92rem;
-  color: #6b7280;
+  color: var(--dash-neutral);
   background: #f1f5f9;
   outline: none;
   cursor: not-allowed;
-  font-family: inherit;
+  
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -273,11 +273,11 @@
   border: 1.5px solid #e2e5ec;
   border-radius: 0.75rem;
   font-size: 0.92rem;
-  color: #111827;
+  color: var(--dash-primary);
   background: #f9fafb;
   outline: none;
   transition: border-color 0.2s, box-shadow 0.2s;
-  font-family: inherit;
+  
   cursor: pointer;
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
@@ -295,7 +295,7 @@
 /* ── Provenance Status (Left Card) ───────── */
 .provenanceCard {
   background: linear-gradient(145deg, #f0fdf4, #e6f7ed);
-  border: 1px solid #bbf7d0;
+  border: 1px solid rgba(0,0,0,0.04);
   border-radius: 1.5rem;
   padding: 1.75rem;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.02);
@@ -324,7 +324,7 @@
 
 .provenanceText {
   font-size: 0.85rem;
-  color: #374151;
+  color: var(--dash-neutral);
   line-height: 1.6;
   margin: 0;
 }
@@ -373,7 +373,7 @@
 
 .cancelBtn:hover {
   background: #f9fafb;
-  border-color: #9ca3af;
+  border-color: var(--dash-neutral);
 }
 
 .saveBtn {
@@ -402,7 +402,7 @@
 /* ── Account Access / Logout ─────────────── */
 .logoutCard {
   background: #ffffff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid rgba(0,0,0,0.04);
   border-radius: 1.5rem;
   padding: 2rem;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.02);
@@ -419,8 +419,8 @@
   align-items: center;
   padding: 0.75rem 1.5rem;
   background: #fef2f2;
-  color: #dc2626;
-  border: 1px solid #fecaca;
+  color: var(--dash-tertiary);
+  border: 1px solid rgba(0,0,0,0.04);
   border-radius: 0.75rem;
   font-size: 0.95rem;
   font-weight: 600;
@@ -452,7 +452,7 @@
 }
 
 .toastError {
-  background: #dc2626;
+  background: var(--dash-tertiary);
 }
 
 @keyframes slideUp {

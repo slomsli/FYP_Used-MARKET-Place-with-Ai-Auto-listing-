@@ -197,6 +197,7 @@ export default function OffersPage() {
   const [offers, setOffers] = useState<OfferSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [showCounterModal, setShowCounterModal] = useState<OfferSummary | null>(null);
   const [counterPrice, setCounterPrice] = useState('');
   const [counterMessage, setCounterMessage] = useState('');
@@ -230,13 +231,26 @@ export default function OffersPage() {
     return () => window.clearTimeout(timeoutId);
   }, [user, token, fetchOffers]);
 
+  useEffect(() => {
+    if (!notice) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setNotice(null), 3200);
+    return () => window.clearTimeout(timeoutId);
+  }, [notice]);
+
   const handleAccept = async (offerId: string) => {
     if (!token) return;
     setActionLoadingId(offerId);
     const res = await acceptOffer(token, offerId);
     setActionLoadingId(null);
-    if (res.data) fetchOffers();
-    else alert(res.error || 'Failed to accept offer');
+    if (res.data) {
+      setNotice({ type: 'success', message: 'Offer accepted successfully.' });
+      fetchOffers();
+    } else {
+      setNotice({ type: 'error', message: res.error || 'Failed to accept offer' });
+    }
   };
 
   const handleReject = async (offerId: string) => {
@@ -245,8 +259,12 @@ export default function OffersPage() {
     setActionLoadingId(offerId);
     const res = await rejectOffer(token, offerId);
     setActionLoadingId(null);
-    if (res.data) fetchOffers();
-    else alert(res.error || 'Failed to reject offer');
+    if (res.data) {
+      setNotice({ type: 'success', message: 'Offer rejected successfully.' });
+      fetchOffers();
+    } else {
+      setNotice({ type: 'error', message: res.error || 'Failed to reject offer' });
+    }
   };
 
   const handleCancel = async (offerId: string) => {
@@ -255,8 +273,12 @@ export default function OffersPage() {
     setActionLoadingId(offerId);
     const res = await cancelOffer(token, offerId);
     setActionLoadingId(null);
-    if (res.data) fetchOffers();
-    else alert(res.error || 'Failed to cancel offer');
+    if (res.data) {
+      setNotice({ type: 'success', message: 'Offer cancelled successfully.' });
+      fetchOffers();
+    } else {
+      setNotice({ type: 'error', message: res.error || 'Failed to cancel offer' });
+    }
   };
 
   const openCounterModal = (offer: OfferSummary) => {
@@ -278,9 +300,10 @@ export default function OffersPage() {
 
     if (res.data) {
       setShowCounterModal(null);
+      setNotice({ type: 'success', message: 'Counter-offer submitted successfully.' });
       fetchOffers();
     } else {
-      alert(res.error || 'Failed to submit counter offer');
+      setNotice({ type: 'error', message: res.error || 'Failed to submit counter offer' });
     }
   };
 
@@ -318,6 +341,12 @@ export default function OffersPage() {
           </button>
         </div>
       </header>
+
+      {notice && (
+        <div className={notice.type === 'success' ? styles.noticeSuccess : styles.noticeError}>
+          {notice.message}
+        </div>
+      )}
 
       {errorMsg ? (
         <div className={styles.emptyState}>

@@ -158,6 +158,12 @@ interface RawAdminOverviewConversation {
   }>;
 }
 
+interface AdminReportListingSignals {
+  totalReportCount: number;
+  openReportCount: number;
+  latestOpenReasonLabel: string | null;
+}
+
 interface AuthAdminUser {
   id: string;
   email?: string;
@@ -400,6 +406,11 @@ export interface AdminReportListItem {
     statusLabel: string;
     coverImagePath: string | null;
     locationLabel: string;
+    totalReportCount: number;
+    openReportCount: number;
+    latestOpenReasonLabel: string | null;
+    hiddenFromBrowse: boolean;
+    moderationSummary: string;
   };
   reporter: {
     id: string;
@@ -696,6 +707,36 @@ function humanizeAdminListingStatus(value: string): string {
   return value === 'archived' ? 'Paused' : humanizeValue(value);
 }
 
+function isListingHiddenFromBrowse(status: string): boolean {
+  return status === 'archived' || status === 'draft' || status === 'rejected';
+}
+
+function buildReportModerationSummary(
+  listing: RawAdminListing,
+  signals: AdminReportListingSignals,
+  fallbackReasonLabel: string
+): string {
+  const activeReason = signals.latestOpenReasonLabel ?? fallbackReasonLabel;
+
+  if (listing.status === 'archived') {
+    if (signals.openReportCount > 0) {
+      return `Hidden from public browse while ${signals.openReportCount} open report(s) are reviewed. Latest open reason: ${activeReason}.`;
+    }
+
+    return 'Hidden from public browse by admin action. Review the seller context before resuming this listing.';
+  }
+
+  if (signals.openReportCount > 0) {
+    return `${signals.openReportCount} open report(s) still need moderation review. Latest open reason: ${activeReason}.`;
+  }
+
+  if (isListingHiddenFromBrowse(listing.status)) {
+    return `This listing is not visible on browse because its current status is ${humanizeAdminListingStatus(listing.status).toLowerCase()}.`;
+  }
+
+  return 'This listing is still visible to shoppers because there are no open reports linked to it right now.';
+}
+
 function deriveUserStatus(user: AuthAdminUser | undefined): AdminUserStatus {
   if (isAccountSuspended(user)) {
     return 'suspended';
@@ -823,7 +864,8 @@ function buildAdminReportListItem(
   report: RawAdminReport,
   listing: RawAdminListing,
   reporterProfile: RawProfile,
-  sellerProfile: RawProfile
+  sellerProfile: RawProfile,
+  signals: AdminReportListingSignals
 ): AdminReportListItem {
   const listingState = unwrapRelation(listing.states);
   const listingArea = unwrapRelation(listing.areas);
@@ -831,11 +873,12 @@ function buildAdminReportListItem(
   const reporterArea = unwrapRelation(reporterProfile.areas);
   const sellerState = unwrapRelation(sellerProfile.states);
   const sellerArea = unwrapRelation(sellerProfile.areas);
+  const reasonLabel = REPORT_REASON_LABELS[report.reason] ?? humanizeValue(report.reason);
 
   return {
     id: report.id,
     reason: report.reason,
-    reasonLabel: REPORT_REASON_LABELS[report.reason] ?? humanizeValue(report.reason),
+    reasonLabel,
     details: report.details,
     status: report.status,
     statusLabel: REPORT_STATUS_LABELS[report.status] ?? humanizeValue(report.status),
@@ -850,6 +893,11 @@ function buildAdminReportListItem(
       statusLabel: humanizeAdminListingStatus(listing.status),
       coverImagePath: listing.cover_image_path,
       locationLabel: buildLocationLabel(listingState?.name ?? null, listingArea?.name ?? null),
+      totalReportCount: signals.totalReportCount,
+      openReportCount: signals.openReportCount,
+      latestOpenReasonLabel: signals.latestOpenReasonLabel,
+      hiddenFromBrowse: isListingHiddenFromBrowse(listing.status),
+      moderationSummary: buildReportModerationSummary(listing, signals, reasonLabel),
     },
     reporter: {
       id: reporterProfile.id,
@@ -1693,14 +1741,33 @@ export async function getAdminReports(query: AdminReportsQuery): Promise<AdminRe
     throw new AdminServiceError('Unable to load listing reports', 500);
   }
 
+  const rawReports = (reports ?? []) as RawAdminReport[];
   const profileMap = new Map(
     ((profiles ?? []) as RawProfile[]).map((profile) => [profile.id, profile])
   );
   const listingMap = new Map(
     ((listings ?? []) as RawAdminListing[]).map((listing) => [listing.id, listing])
   );
+  const totalReportCountMap = new Map<string, number>();
+  const openReportCountMap = new Map<string, number>();
+  const latestOpenReasonLabelMap = new Map<string, string>();
 
-  const allReports = ((reports ?? []) as RawAdminReport[])
+  rawReports.forEach((report) => {
+    incrementStringMapCount(totalReportCountMap, report.listing_id);
+
+    if (report.status === 'pending' || report.status === 'reviewed') {
+      incrementStringMapCount(openReportCountMap, report.listing_id);
+
+      if (!latestOpenReasonLabelMap.has(report.listing_id)) {
+        latestOpenReasonLabelMap.set(
+          report.listing_id,
+          REPORT_REASON_LABELS[report.reason] ?? humanizeValue(report.reason)
+        );
+      }
+    }
+  });
+
+  const allReports = rawReports
     .map((report) => {
       const listing = listingMap.get(report.listing_id);
       const reporterProfile = profileMap.get(report.reporter_id);
@@ -1716,7 +1783,11 @@ export async function getAdminReports(query: AdminReportsQuery): Promise<AdminRe
         return null;
       }
 
-      return buildAdminReportListItem(report, listing, reporterProfile, sellerProfile);
+      return buildAdminReportListItem(report, listing, reporterProfile, sellerProfile, {
+        totalReportCount: totalReportCountMap.get(report.listing_id) ?? 0,
+        openReportCount: openReportCountMap.get(report.listing_id) ?? 0,
+        latestOpenReasonLabel: latestOpenReasonLabelMap.get(report.listing_id) ?? null,
+      });
     })
     .filter((report): report is AdminReportListItem => report !== null);
 

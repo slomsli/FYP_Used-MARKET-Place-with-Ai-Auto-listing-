@@ -97,6 +97,19 @@
   gap: 0.55rem;
 }
 
+.detailPrompt {
+  padding: 0.85rem 0.95rem;
+  border-radius: 16px;
+  background: #f3f7ff;
+  color: #42516d;
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+.detailPrompt strong {
+  color: #15224a;
+}
+
 .label {
   color: #36405c;
   font-size: 0.82rem;

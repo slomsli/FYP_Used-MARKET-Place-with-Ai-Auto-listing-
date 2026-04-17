@@ -3,18 +3,19 @@
 
 import Link from 'next/link';
 import { useDeferredValue, useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ROUTES } from '@/src/config/routes';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import {
+  ensureAdminModerationThread,
   getAdminReports,
   updateAdminListingStatus,
   updateAdminReportStatus,
 } from '@/src/services/adminService';
 import type {
   AdminReportListItem,
-  AdminReportsResponse,
   AdminReportStatusFilter,
+  AdminReportsResponse,
 } from '@/src/types/admin';
 import styles from './page.module.css';
 
@@ -50,6 +51,14 @@ function PauseIcon() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <rect x="6" y="4" width="4" height="16" rx="1" />
       <rect x="14" y="4" width="4" height="16" rx="1" />
+    </svg>
+  );
+}
+
+function MessageIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     </svg>
   );
 }
@@ -129,19 +138,27 @@ function getReasonTone(reason: AdminReportListItem['reason']) {
   return styles.reasonNeutral;
 }
 
+function parseStatusFilter(value: string | null): AdminReportStatusFilter {
+  return value === 'pending' || value === 'reviewed' || value === 'resolved' || value === 'rejected'
+    ? value
+    : 'all';
+}
+
 export default function AdminReportsPage() {
+  const router = useRouter();
   const { token } = useRequireAuth();
   const searchParams = useSearchParams();
   const deferredSearch = useDeferredValue(searchParams.get('q') ?? '');
+  const requestedStatusFilter = parseStatusFilter(searchParams.get('status'));
 
   const [data, setData] = useState<AdminReportsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState<AdminReportStatusFilter>('all');
   const [refreshKey, setRefreshKey] = useState(0);
   const [busyReportId, setBusyReportId] = useState<string | null>(null);
   const [busyListingId, setBusyListingId] = useState<string | null>(null);
+  const [messageSellerId, setMessageSellerId] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
@@ -155,7 +172,7 @@ export default function AdminReportsPage() {
       page,
       pageSize: 6,
       search: deferredSearch,
-      status: statusFilter,
+      status: requestedStatusFilter,
     }).then((response) => {
       if (cancelled) {
         return;
@@ -178,7 +195,7 @@ export default function AdminReportsPage() {
     return () => {
       cancelled = true;
     };
-  }, [deferredSearch, page, refreshKey, statusFilter, token]);
+  }, [deferredSearch, page, refreshKey, requestedStatusFilter, token]);
 
   useEffect(() => {
     if (!notice) {
@@ -249,6 +266,34 @@ export default function AdminReportsPage() {
     setRefreshKey((value) => value + 1);
   }
 
+  async function handleMessageSeller(report: AdminReportListItem) {
+    if (!token) {
+      return;
+    }
+
+    setMessageSellerId(report.seller.id);
+    const response = await ensureAdminModerationThread(token, report.seller.id);
+    setMessageSellerId(null);
+
+    if (!response.data) {
+      setNotice({
+        type: 'error',
+        message: response.error || 'Failed to prepare a moderation chat with the seller',
+      });
+      return;
+    }
+
+    const params = new URLSearchParams({
+      listingId: response.data.listingId,
+      listingTitle: response.data.listingTitle,
+      recipientId: response.data.recipientId,
+      recipientName: response.data.recipientName,
+      topicType: response.data.topicType,
+    });
+
+    router.push(`${ROUTES.ADMIN_MESSAGES}?${params.toString()}`);
+  }
+
   const pagination = buildPagination(page, data?.pagination.totalPages ?? 1);
 
   return (
@@ -267,11 +312,22 @@ export default function AdminReportsPage() {
           <label className={styles.selectField}>
             <AlertIcon />
             <select
-              value={statusFilter}
+              value={requestedStatusFilter}
               onChange={(event) => {
+                const nextStatus = event.target.value as AdminReportStatusFilter;
+                const nextParams = new URLSearchParams(searchParams.toString());
                 setLoading(true);
                 setPage(1);
-                setStatusFilter(event.target.value as AdminReportStatusFilter);
+
+                if (nextStatus === 'all') {
+                  nextParams.delete('status');
+                } else {
+                  nextParams.set('status', nextStatus);
+                }
+
+                router.replace(
+                  `${ROUTES.ADMIN_REPORTS}${nextParams.size ? `?${nextParams.toString()}` : ''}`
+                );
               }}
             >
               <option value="all">All Statuses</option>
@@ -362,6 +418,7 @@ export default function AdminReportsPage() {
           data.reports.map((report) => {
             const reportBusy = busyReportId === report.id;
             const listingBusy = busyListingId === report.listing.id;
+            const sellerBusy = messageSellerId === report.seller.id;
 
             return (
               <article key={report.id} className={styles.reportCard}>
@@ -391,8 +448,8 @@ export default function AdminReportsPage() {
 
                       <h2 className={styles.listingTitle}>{report.listing.title}</h2>
                       <p className={styles.listingMeta}>
-                        {formatCurrency(report.listing.price, report.listing.currency)} •{' '}
-                        {report.listing.locationLabel} • Seller @{report.seller.username}
+                        {formatCurrency(report.listing.price, report.listing.currency)} -{' '}
+                        {report.listing.locationLabel} - Seller @{report.seller.username}
                       </p>
                     </div>
                   </div>
@@ -421,7 +478,7 @@ export default function AdminReportsPage() {
                       <div>
                         <strong>{report.reporter.fullName}</strong>
                         <p>
-                          @{report.reporter.username} • {report.reporter.locationLabel}
+                          @{report.reporter.username} - {report.reporter.locationLabel}
                         </p>
                       </div>
                     </div>
@@ -431,9 +488,21 @@ export default function AdminReportsPage() {
                     <span className={styles.detailLabel}>Listing State</span>
                     <strong>{report.listing.statusLabel}</strong>
                     <p>
-                      {report.listing.status === 'archived'
+                      {report.listing.hiddenFromBrowse
                         ? 'This listing is currently hidden from public browse.'
-                        : 'This listing is still eligible for visibility controls.'}
+                        : 'This listing is still visible to shoppers and eligible for visibility controls.'}
+                    </p>
+                  </div>
+
+                  <div className={styles.detailCard}>
+                    <span className={styles.detailLabel}>Moderation Signal</span>
+                    <strong>
+                      {report.listing.openReportCount} open / {report.listing.totalReportCount} total report(s)
+                    </strong>
+                    <p>
+                      {report.listing.latestOpenReasonLabel
+                        ? `Latest open reason: ${report.listing.latestOpenReasonLabel}.`
+                        : 'No open reports remain on this listing right now.'}
                     </p>
                   </div>
                 </div>
@@ -444,6 +513,11 @@ export default function AdminReportsPage() {
                     {report.details?.trim() ||
                       'No extra notes were provided. The reason tag above is the only complaint on file.'}
                   </p>
+                </div>
+
+                <div className={styles.notesCard}>
+                  <span className={styles.detailLabel}>Moderation Summary</span>
+                  <p>{report.listing.moderationSummary}</p>
                 </div>
 
                 <div className={styles.actionRow}>
@@ -489,6 +563,16 @@ export default function AdminReportsPage() {
                         : 'Pause Listing'}
                   </button>
 
+                  <button
+                    type="button"
+                    className={styles.linkButton}
+                    onClick={() => void handleMessageSeller(report)}
+                    disabled={sellerBusy}
+                  >
+                    <MessageIcon />
+                    <span>{sellerBusy ? 'Opening chat...' : 'Message Seller'}</span>
+                  </button>
+
                   <Link
                     href={`${ROUTES.ADMIN_LISTINGS}?q=${encodeURIComponent(report.listing.title)}`}
                     className={styles.linkButton}
@@ -504,7 +588,7 @@ export default function AdminReportsPage() {
         {data && (
           <div className={styles.paginationBar}>
             <p>
-              Showing page {data.pagination.page} of {data.pagination.totalPages} •{' '}
+              Showing page {data.pagination.page} of {data.pagination.totalPages} -{' '}
               {data.pagination.totalItems} matching report(s)
             </p>
 

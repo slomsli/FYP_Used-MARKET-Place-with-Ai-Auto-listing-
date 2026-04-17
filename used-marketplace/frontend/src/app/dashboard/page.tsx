@@ -531,10 +531,12 @@ export default function DashboardPage() {
                 return (
                   <div key={bucket.week} className={styles.chartBarGroup}>
                     <div className={styles.chartBarWrapper}>
-                      <button
-                        type="button"
-                        className={styles.chartBarButton}
+                      <div
+                        className={styles.chartBarSurface}
                         title={`${bucket.rangeLabel}: ${value} ${metricLabel}`}
+                        tabIndex={0}
+                        role="img"
+                        aria-label={`${bucket.rangeLabel}: ${value} ${metricLabel}`}
                       >
                         <span className={styles.chartTooltip}>
                           <strong>{bucket.rangeLabel}</strong>
@@ -546,7 +548,7 @@ export default function DashboardPage() {
                           className={styles.chartBar}
                           style={{ height: `${barHeight}%` }}
                         />
-                      </button>
+                      </div>
                     </div>
                     <span className={styles.chartBarLabel}>{bucket.shortLabel}</span>
                   </div>
@@ -569,9 +571,9 @@ export default function DashboardPage() {
             <p className={styles.conciergeDesc}>
               As a premium member, you have access to our direct concierge line for luxury authentications and shipment logistics.
             </p>
-            <button className={styles.conciergeBtn} type="button">
+            <Link href={ROUTES.SUPPORT} className={styles.conciergeBtn}>
               Contact Support
-            </button>
+            </Link>
           </div>
 
           <div className={styles.recommendedCard}>
@@ -648,9 +650,13 @@ export default function DashboardPage() {
                   <div className={styles.activityPriceLabel}>{item.priceLabel}</div>
                   <div className={styles.activityPrice}>{item.price}</div>
                 </div>
-                <button className={styles.activityMore} aria-label="More actions" type="button">
+                <Link
+                  href={`${ROUTES.ADD_LISTING}?listingId=${item.id}`}
+                  className={styles.activityMore}
+                  aria-label={`Manage ${item.name}`}
+                >
                   <MoreIcon />
-                </button>
+                </Link>
               </div>
             ))
           )}

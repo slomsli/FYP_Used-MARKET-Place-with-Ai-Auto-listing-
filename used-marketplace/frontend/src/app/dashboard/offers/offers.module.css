@@ -21,6 +21,24 @@
   gap: 1.5rem;
 }
 
+.noticeSuccess,
+.noticeError {
+  margin-bottom: 1.25rem;
+  padding: 0.95rem 1rem;
+  border-radius: 1rem;
+  font-weight: 700;
+}
+
+.noticeSuccess {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--dash-secondary);
+}
+
+.noticeError {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--dash-tertiary);
+}
+
 .title {
   font-size: 2rem;
   font-weight: 800;
@@ -102,7 +120,7 @@
   background: #ffffff;
   padding: 1.5rem;
   border-radius: 1.5rem;
-  border: 1px solid #e2e8f0;
+  border: 1px solid rgba(0,0,0,0.04);
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.02);
   transition: transform 0.2s, box-shadow 0.2s;
   flex-wrap: wrap;
@@ -177,7 +195,7 @@
 
 .statusPending { background: #fef3c7; color: #d97706; }
 .statusAccepted { background: #dcfce7; color: #15803d; }
-.statusRejected { background: #fee2e2; color: #b91c1c; }
+.statusRejected { background: #fee2e2; color: var(--dash-tertiary); }
 .statusCancelled { background: #f1f5f9; color: #64748b; }
 
 .metaInfo {
@@ -194,7 +212,7 @@
   margin-bottom: 1rem;
   padding: 0.95rem 1rem;
   border-radius: 1rem;
-  border: 1px solid #e2e8f0;
+  border: 1px solid rgba(0,0,0,0.04);
 }
 
 .offerSummaryAction {
@@ -269,7 +287,7 @@
   background: #f8fafc;
   padding: 0.8rem 1rem;
   border-radius: 1rem;
-  border: 1px solid #f1f5f9;
+  border: 1px solid rgba(0,0,0,0.04);
   margin-bottom: 1rem;
 }
 
@@ -367,7 +385,7 @@
 
 .btnDanger {
   background: #fee2e2;
-  color: #b91c1c;
+  color: var(--dash-tertiary);
 }
 
 .btnDanger:hover:not(:disabled) {
@@ -375,12 +393,12 @@
 }
 
 .btnAccept {
-  background: #10b981;
+  background: var(--dash-secondary);
   color: #ffffff;
 }
 
 .btnAccept:hover:not(:disabled) {
-  background: #059669;
+  background: var(--dash-secondary);
 }
 
 .kindPill {
@@ -469,7 +487,7 @@
 .inputWrap {
   display: flex;
   align-items: center;
-  border: 1px solid #cbd5e1;
+  border: 1px solid rgba(0,0,0,0.04);
   border-radius: 0.75rem;
   overflow: hidden;
   background: #f8fafc;
@@ -489,7 +507,7 @@
   border: none;
   background: transparent;
   font-size: 1rem;
-  font-family: inherit;
+  
   font-weight: 600;
   color: #0f172a;
   outline: none;
@@ -498,11 +516,11 @@
 .textareaField {
   width: 100%;
   padding: 0.75rem 1rem;
-  border: 1px solid #cbd5e1;
+  border: 1px solid rgba(0,0,0,0.04);
   border-radius: 0.75rem;
   background: #f8fafc;
   font-size: 0.95rem;
-  font-family: inherit;
+  
   color: #0f172a;
   resize: vertical;
   min-height: 80px;

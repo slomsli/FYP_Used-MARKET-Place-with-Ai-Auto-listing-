@@ -190,6 +190,11 @@ export interface AdminReportListItem {
     statusLabel: string;
     coverImagePath: string | null;
     locationLabel: string;
+    totalReportCount: number;
+    openReportCount: number;
+    latestOpenReasonLabel: string | null;
+    hiddenFromBrowse: boolean;
+    moderationSummary: string;
   };
   reporter: {
     id: string;

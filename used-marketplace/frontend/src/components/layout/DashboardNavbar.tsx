@@ -1,6 +1,8 @@
 'use client';
 
 import Link from 'next/link';
+import { FormEvent, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { ROUTES } from '@/src/config/routes';
 import styles from './DashboardNavbar.module.css';
 
@@ -31,9 +33,18 @@ const MailIcon = () => (
 );
 
 export default function DashboardNavbar({ userName, avatarUrl }: DashboardNavbarProps) {
+  const router = useRouter();
+  const [searchQuery, setSearchQuery] = useState('');
   const initials = userName
     ? userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     : 'U';
+
+  function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const nextQuery = searchQuery.trim();
+    router.push(nextQuery ? `${ROUTES.BROWSE}?q=${encodeURIComponent(nextQuery)}` : ROUTES.BROWSE);
+  }
 
   return (
     <nav className={styles.navbar}>
@@ -52,23 +63,25 @@ export default function DashboardNavbar({ userName, avatarUrl }: DashboardNavbar
 
       {/* Right: Search + Icons */}
       <div className={styles.right}>
-        <div className={styles.searchWrapper}>
+        <form className={styles.searchWrapper} onSubmit={handleSearchSubmit}>
           <span className={styles.searchIcon}><SearchIcon /></span>
           <input
             type="text"
             placeholder="Search marketplace..."
             className={styles.searchInput}
             id="dashboard-search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
           />
-        </div>
+        </form>
 
         <div className={styles.iconGroup}>
-          <button className={styles.iconBtn} aria-label="Notifications" id="notifications-btn">
+          <Link href={ROUTES.OFFERS} className={styles.iconBtn} aria-label="Notifications" id="notifications-btn">
             <BellIcon />
-          </button>
-          <button className={styles.iconBtn} aria-label="Messages" id="messages-btn">
+          </Link>
+          <Link href={ROUTES.MESSAGES} className={styles.iconBtn} aria-label="Messages" id="messages-btn">
             <MailIcon />
-          </button>
+          </Link>
           <Link href={ROUTES.PROFILE} className={styles.avatarBtn} id="user-avatar-btn">
             {avatarUrl ? (
               <img src={avatarUrl} alt={userName || 'User'} className={styles.avatarImg} />

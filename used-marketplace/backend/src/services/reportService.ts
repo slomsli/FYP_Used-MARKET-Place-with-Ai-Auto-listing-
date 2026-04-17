@@ -47,9 +47,17 @@ export async function createListingReport(
   input: CreateListingReportInput
 ): Promise<ListingReportSummary> {
   const details = input.details?.trim() || null;
+  const minimumDetailsLength = 20;
 
   if (details && details.length > 1000) {
     throw new ReportServiceError('Report details must be 1000 characters or fewer', 422);
+  }
+
+  if (!details || details.length < minimumDetailsLength) {
+    throw new ReportServiceError(
+      `Report details must be at least ${minimumDetailsLength} characters so the admin can review the issue`,
+      422
+    );
   }
 
   const [listingResult, reporterResult] = await Promise.all([

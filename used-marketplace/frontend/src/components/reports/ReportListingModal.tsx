@@ -26,6 +26,7 @@ export default function ReportListingModal({
   onClose,
   onReported,
 }: ReportListingModalProps) {
+  const minimumDetailsLength = 20;
   const [reason, setReason] = useState<ListingReportReason>('scam');
   const [details, setDetails] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -40,6 +41,7 @@ export default function ReportListingModal({
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const normalizedDetails = details.trim();
 
     if (!token) {
       setError('Please sign in again before submitting a report.');
@@ -51,13 +53,18 @@ export default function ReportListingModal({
       return;
     }
 
+    if (normalizedDetails.length < minimumDetailsLength) {
+      setError(`Please include at least ${minimumDetailsLength} characters so the admin can review the report properly.`);
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
 
     const response = await createListingReport(token, {
       listingId: listing.id,
       reason,
-      details,
+      details: normalizedDetails,
     });
 
     setSubmitting(false);
@@ -112,15 +119,22 @@ export default function ReportListingModal({
 
           <label className={styles.field}>
             <span className={styles.label}>Details</span>
+            <div className={styles.detailPrompt}>
+              <strong>What the admin needs:</strong> {selectedReason.detailsPrompt}
+            </div>
             <textarea
               className={styles.textarea}
               value={details}
               onChange={(event) => setDetails(event.target.value)}
-              placeholder="Tell the admin team what you noticed, including any suspicious payment requests, fake photos, or policy issues."
+              placeholder="Explain what happened, how you noticed it, and any proof the admin should review."
               maxLength={1000}
+              minLength={minimumDetailsLength}
+              required
               disabled={submitting}
             />
-            <span className={styles.hint}>{details.length}/1000 characters</span>
+            <span className={styles.hint}>
+              The admin will read this note directly. Minimum {minimumDetailsLength} characters. {details.length}/1000 characters
+            </span>
           </label>
 
           {error && <div className={styles.error}>{error}</div>}

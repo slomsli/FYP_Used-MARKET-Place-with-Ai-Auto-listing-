@@ -69,7 +69,7 @@
   justify-content: center;
   min-width: 144px;
   padding: 0.78rem 1.1rem;
-  border-radius: 14px;
+  border-radius: 20px;
   background: linear-gradient(135deg, var(--navy-950), var(--navy-800));
   color: #ffffff;
   text-decoration: none;
@@ -108,7 +108,7 @@
   display: inline-flex;
   gap: 0.25rem;
   padding: 0.22rem;
-  border-radius: 16px;
+  border-radius: 20px;
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid rgba(24, 34, 74, 0.06);
   box-shadow: 0 14px 26px rgba(17, 24, 39, 0.04);
@@ -164,7 +164,7 @@
   border: 1px solid rgba(24, 34, 74, 0.08);
   background: rgba(255, 255, 255, 0.72);
   color: #1c2137;
-  border-radius: 14px;
+  border-radius: 20px;
   padding: 0.72rem 1rem;
   font: inherit;
   font-size: 0.9rem;
@@ -191,7 +191,7 @@
 .noticeBar {
   margin-bottom: 1rem;
   padding: 0.95rem 1rem;
-  border-radius: 16px;
+  border-radius: 20px;
   font-size: 0.88rem;
   line-height: 1.5;
 }
@@ -199,7 +199,7 @@
 .noticeSuccess {
   background: #ecfdf5;
   border: 1px solid rgba(16, 185, 129, 0.18);
-  color: #047857;
+  color: var(--dash-secondary);
 }
 
 .noticeError {
@@ -432,10 +432,10 @@
 }
 
 .saleNote {
-  border-radius: 14px;
+  border-radius: 20px;
   background: #ecfdf5;
   border: 1px solid rgba(16, 185, 129, 0.18);
-  color: #047857;
+  color: var(--dash-secondary);
   padding: 0.82rem 0.9rem;
   font-size: 0.84rem;
   font-weight: 700;
@@ -449,7 +449,7 @@
 
 .cardActionInfo {
   flex: 1;
-  border-radius: 14px;
+  border-radius: 20px;
   background: #eef1fb;
   color: #2f3553;
   padding: 0.82rem 0.9rem;
@@ -469,7 +469,7 @@
 .dangerAction {
   flex: 1;
   min-height: 44px;
-  border-radius: 14px;
+  border-radius: 20px;
   padding: 0.8rem 0.9rem;
   font: inherit;
   font-size: 0.84rem;
@@ -530,7 +530,7 @@
 
 .editButton {
   flex: 1;
-  border-radius: 14px;
+  border-radius: 20px;
   background: #e6eaf8;
   color: #18224a;
   padding: 0.82rem 0.9rem;
@@ -545,7 +545,7 @@
 
 .moreButton {
   width: 50px;
-  border-radius: 14px;
+  border-radius: 20px;
   background: #eef1fb;
   color: #2f3553;
   display: inline-flex;
@@ -671,7 +671,7 @@
   justify-content: center;
   margin-top: 1rem;
   padding: 0.78rem 1.1rem;
-  border-radius: 14px;
+  border-radius: 20px;
   background: linear-gradient(135deg, var(--navy-950), var(--navy-800));
   color: #ffffff;
   text-decoration: none;
@@ -685,7 +685,7 @@
 .emptyRestriction {
   margin-top: 1rem;
   padding: 0.88rem 0.95rem;
-  border-radius: 16px;
+  border-radius: 20px;
   background: #fff7ed;
   border: 1px solid rgba(249, 115, 22, 0.16);
   color: #9a3412;

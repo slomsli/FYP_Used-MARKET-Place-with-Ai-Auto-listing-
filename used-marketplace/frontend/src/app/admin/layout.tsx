@@ -223,6 +223,7 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
       { label: 'Listings', href: ROUTES.ADMIN_LISTINGS, icon: <ListingsIcon />, active: pathname === ROUTES.ADMIN_LISTINGS },
       { label: 'Users', href: ROUTES.ADMIN_USERS, icon: <UsersIcon />, active: pathname === ROUTES.ADMIN_USERS },
       { label: 'Messages', href: ROUTES.ADMIN_MESSAGES, icon: <MessageIcon />, active: pathname === ROUTES.ADMIN_MESSAGES },
+      { label: 'Guide', href: ROUTES.ADMIN_GUIDE, icon: <HelpIcon />, active: pathname === ROUTES.ADMIN_GUIDE },
       { label: 'Structure', href: ROUTES.ADMIN_STRUCTURE, icon: <CategoryIcon />, active: pathname === ROUTES.ADMIN_STRUCTURE },
     ],
     [pathname]
@@ -312,15 +313,19 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
           </label>
 
           <div className={styles.topbarActions}>
-            <button type="button" className={styles.iconButton} aria-label="Notifications">
+            <Link
+              href={`${ROUTES.ADMIN_REPORTS}?status=pending`}
+              className={styles.iconButton}
+              aria-label="Pending reports"
+            >
               <BellIcon />
-            </button>
-            <button type="button" className={styles.iconButton} aria-label="Help">
+            </Link>
+            <Link href={ROUTES.ADMIN_GUIDE} className={styles.iconButton} aria-label="Admin guide">
               <HelpIcon />
-            </button>
-            <button type="button" className={styles.iconButton} aria-label="Settings">
+            </Link>
+            <Link href={ROUTES.ADMIN_STRUCTURE} className={styles.iconButton} aria-label="Admin structure settings">
               <SettingsIcon />
-            </button>
+            </Link>
           </div>
         </header>
 
