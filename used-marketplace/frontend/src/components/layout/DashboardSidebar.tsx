@@ -71,7 +71,7 @@ export default function DashboardSidebar({ userName, userRole, avatarUrl, isOpen
     { label: 'Messages', icon: <MessagesIcon />, href: ROUTES.MESSAGES },
     { label: 'Offers', icon: <OffersIcon />, href: ROUTES.OFFERS },
     ...(userRole === 'admin'
-      ? [{ label: 'Admin Console', icon: <ShieldIcon />, href: ROUTES.ADMIN_USERS }]
+      ? [{ label: 'Admin Console', icon: <ShieldIcon />, href: ROUTES.ADMIN }]
       : []),
     { label: 'Settings', icon: <SettingsIcon />, href: ROUTES.SETTINGS },
   ];

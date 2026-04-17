@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ROUTES } from '@/src/config/routes';
 import { useAuth } from '@/src/hooks/useAuth';
+import { getProfile } from '@/src/services/profileService';
 import { getPublicListings } from '@/src/services/listingService';
 import {
   toggleFavorite,
@@ -198,13 +199,49 @@ export default function BrowsePage() {
   const [response, setResponse] = useState<PublicListingsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewerRole, setViewerRole] = useState<string | null>(null);
   const [favoriteMap, setFavoriteMap] = useState<Record<string, boolean>>({});
   const [favoriteLoadingIds, setFavoriteLoadingIds] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!user || !session?.access_token) {
+      setViewerRole(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    getProfile(session.access_token).then((response) => {
+      if (cancelled) {
+        return;
+      }
+
+      setViewerRole(
+        response.data?.role ||
+          (typeof user.user_metadata?.role === 'string' ? user.user_metadata.role : null)
+      );
+    }).catch(() => {
+      if (!cancelled) {
+        setViewerRole(typeof user.user_metadata?.role === 'string' ? user.user_metadata.role : null);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.access_token, user]);
+
+  const resolvedViewerRole =
+    viewerRole || (typeof user?.user_metadata?.role === 'string' ? user.user_metadata.role : null);
+  const isAdminViewer = resolvedViewerRole === 'admin';
+  const showMemberActions = !user || resolvedViewerRole === 'user';
+  const accountHubRoute = isAdminViewer ? ROUTES.ADMIN : ROUTES.DASHBOARD;
+  const inboxRoute = isAdminViewer ? ROUTES.ADMIN_MESSAGES : ROUTES.MESSAGES;
+
   // Check favorite status when listings load and user is authenticated
   useEffect(() => {
-    if (!user || !session?.access_token || !response?.listings?.length) return;
+    if (!user || !session?.access_token || !response?.listings?.length || resolvedViewerRole !== 'user') return;
     let cancelled = false;
 
     const listingIds = response.listings.map((item) => item.id);
@@ -215,7 +252,7 @@ export default function BrowsePage() {
     });
 
     return () => { cancelled = true; };
-  }, [user, session, response]);
+  }, [resolvedViewerRole, session, user, response]);
 
   // Toast auto-dismiss
   useEffect(() => {
@@ -230,6 +267,11 @@ export default function BrowsePage() {
 
     if (!user || !session?.access_token) {
       router.push(`${ROUTES.LOGIN}?redirect=${encodeURIComponent(ROUTES.BROWSE)}`);
+      return;
+    }
+
+    if (resolvedViewerRole !== 'user') {
+      setToast('Admin accounts cannot save marketplace favorites.');
       return;
     }
 
@@ -404,14 +446,14 @@ export default function BrowsePage() {
           </Link>
 
           <nav className={styles.nav}>
-            <Link href={ROUTES.DASHBOARD} className={styles.navLink}>
-              Dashboard
+            <Link href={accountHubRoute} className={styles.navLink}>
+              {isAdminViewer ? 'Admin Console' : 'Dashboard'}
             </Link>
             <Link href={ROUTES.BROWSE} className={`${styles.navLink} ${styles.navLinkActive}`}>
               Browse
             </Link>
-            <Link href={ROUTES.ADD_LISTING} className={styles.navLink}>
-              Sell
+            <Link href={isAdminViewer ? ROUTES.ADMIN_USERS : ROUTES.ADD_LISTING} className={styles.navLink}>
+              {isAdminViewer ? 'Users' : 'Sell'}
             </Link>
           </nav>
         </div>
@@ -430,18 +472,20 @@ export default function BrowsePage() {
             />
           </label>
 
-          <Link href={ROUTES.DASHBOARD} className={styles.iconButton} aria-label="Dashboard alerts">
+          <Link href={accountHubRoute} className={styles.iconButton} aria-label="Dashboard alerts">
             <BellIcon />
           </Link>
-          <Link href={ROUTES.MESSAGES} className={styles.iconButton} aria-label="Messages">
+          <Link href={inboxRoute} className={styles.iconButton} aria-label="Messages">
             <MailIcon />
           </Link>
-          <Link href={ROUTES.FAVORITES} className={styles.iconButton} aria-label="Favorites">
-            <HeartIcon />
-          </Link>
+          {showMemberActions && (
+            <Link href={ROUTES.FAVORITES} className={styles.iconButton} aria-label="Favorites">
+              <HeartIcon />
+            </Link>
+          )}
 
-          <Link href={ROUTES.DASHBOARD} className={styles.avatarButton}>
-            Hub
+          <Link href={accountHubRoute} className={styles.avatarButton}>
+            {isAdminViewer ? 'Admin' : 'Hub'}
           </Link>
         </div>
       </header>
@@ -658,15 +702,17 @@ export default function BrowsePage() {
                           <span className={styles.cardBadge}>
                             {listing.negotiable ? 'Negotiable' : 'Fixed Price'}
                           </span>
-                          <button
-                            type="button"
-                            className={`${styles.cardHeart} ${favoriteMap[listing.id] ? styles.cardHeartActive : ''}`}
-                            onClick={(e) => handleFavoriteToggle(e, listing.id)}
-                            disabled={favoriteLoadingIds.has(listing.id)}
-                            aria-label={favoriteMap[listing.id] ? 'Remove from favorites' : 'Add to favorites'}
-                          >
-                            <HeartIcon />
-                          </button>
+                          {showMemberActions && (
+                            <button
+                              type="button"
+                              className={`${styles.cardHeart} ${favoriteMap[listing.id] ? styles.cardHeartActive : ''}`}
+                              onClick={(e) => handleFavoriteToggle(e, listing.id)}
+                              disabled={favoriteLoadingIds.has(listing.id)}
+                              aria-label={favoriteMap[listing.id] ? 'Remove from favorites' : 'Add to favorites'}
+                            >
+                              <HeartIcon />
+                            </button>
+                          )}
                           <div className={styles.mediaGlow} />
                           {imageUrl ? (
                             <img

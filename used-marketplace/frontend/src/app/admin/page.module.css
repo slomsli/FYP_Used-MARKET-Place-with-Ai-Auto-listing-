@@ -1,0 +1,453 @@
+.page {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1.25rem;
+}
+
+.heroCopy {
+  max-width: 760px;
+}
+
+.eyebrow,
+.sectionEyebrow,
+.spotlightLabel {
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+}
+
+.eyebrow,
+.sectionEyebrow {
+  color: #1a7267;
+}
+
+.spotlightLabel {
+  color: #7b89a7;
+}
+
+.title {
+  margin-top: 0.4rem;
+  font-size: clamp(2.5rem, 5vw, 3.6rem);
+  line-height: 0.96;
+  letter-spacing: -0.04em;
+  color: #172033;
+}
+
+.subtitle {
+  margin-top: 0.9rem;
+  color: #677590;
+  line-height: 1.75;
+}
+
+.heroActions {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.primaryButton,
+.secondaryButton,
+.quickAction,
+.inlineLink {
+  border: none;
+  border-radius: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.primaryButton {
+  padding: 0.95rem 1.2rem;
+  background: linear-gradient(135deg, #141f7c, #2f3fa8);
+  color: #ffffff;
+  box-shadow: 0 18px 34px rgba(20, 31, 124, 0.24);
+}
+
+.secondaryButton {
+  padding: 0.95rem 1.15rem;
+  background: #eff2fb;
+  color: #42516d;
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.statCard {
+  min-height: 210px;
+  padding: 1.35rem;
+  border-radius: 28px;
+  border: 1px solid rgba(24, 31, 92, 0.08);
+  box-shadow: 0 22px 54px rgba(30, 35, 84, 0.08);
+}
+
+.statCardInk {
+  background: linear-gradient(160deg, #141f7c, #2939a2);
+  color: #ffffff;
+}
+
+.statCardMint {
+  background: linear-gradient(160deg, rgba(173, 238, 224, 0.86), rgba(241, 255, 251, 0.96));
+}
+
+.statCardPeach {
+  background: linear-gradient(160deg, rgba(255, 220, 207, 0.92), rgba(255, 246, 240, 0.98));
+}
+
+.statCardSoft {
+  background: linear-gradient(160deg, #ffffff, #f4f6ff);
+}
+
+.statCardNavy {
+  background: linear-gradient(160deg, rgba(222, 228, 255, 0.9), rgba(246, 248, 255, 0.98));
+}
+
+.statIcon {
+  width: 50px;
+  height: 50px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.22);
+  color: inherit;
+}
+
+.statLabel {
+  margin-top: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.76rem;
+  font-weight: 800;
+  opacity: 0.82;
+}
+
+.statValue {
+  margin-top: 1rem;
+  font-size: clamp(2.1rem, 4vw, 3rem);
+  line-height: 1;
+}
+
+.statDetail {
+  margin-top: 0.9rem;
+  line-height: 1.7;
+  opacity: 0.84;
+}
+
+.contentGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(320px, 0.95fr);
+  gap: 1rem;
+}
+
+.chartCard,
+.panel,
+.activityCard {
+  border-radius: 32px;
+  background: #ffffff;
+  border: 1px solid rgba(24, 31, 92, 0.08);
+  box-shadow: 0 24px 60px rgba(30, 35, 84, 0.1);
+  padding: 1.5rem;
+}
+
+.sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.sectionHeader h2 {
+  margin-top: 0.35rem;
+  color: #172033;
+  font-size: 1.85rem;
+}
+
+.chartLegend {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #63728f;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.legendDot {
+  width: 0.72rem;
+  height: 0.72rem;
+  border-radius: 999px;
+}
+
+.legendUsers,
+.chartUsers {
+  background: #1a237e;
+}
+
+.legendListings,
+.chartListings {
+  background: #207867;
+}
+
+.legendReports,
+.chartReports {
+  background: #e8895d;
+}
+
+.chartGrid {
+  margin-top: 1.5rem;
+  min-height: 320px;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: end;
+}
+
+.chartColumn {
+  display: grid;
+  gap: 0.85rem;
+  justify-items: center;
+}
+
+.chartBars {
+  width: 100%;
+  min-height: 260px;
+  padding: 1rem 0.7rem 0;
+  border-radius: 24px;
+  background: linear-gradient(180deg, #f8f9ff 0%, #eef2fb 100%);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+  align-items: end;
+}
+
+.chartBar {
+  width: 100%;
+  min-height: 4px;
+  border-radius: 999px 999px 12px 12px;
+}
+
+.chartLabel {
+  color: #657592;
+  font-weight: 700;
+  text-align: center;
+}
+
+.chartSummary {
+  margin-top: 1.2rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.chartSummary div {
+  padding: 1rem;
+  border-radius: 18px;
+  background: #f4f7fe;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.chartSummary span {
+  color: #7685a0;
+  font-size: 0.88rem;
+}
+
+.chartSummary strong {
+  color: #172033;
+  font-size: 1.15rem;
+}
+
+.sideColumn {
+  display: grid;
+  gap: 1rem;
+}
+
+.metricList {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.metricRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  color: #5f7090;
+}
+
+.metricRow strong {
+  color: #172033;
+}
+
+.spotlightCard {
+  margin-top: 1rem;
+  padding: 1.15rem;
+  border-radius: 22px;
+  background: #f6f8fe;
+}
+
+.spotlightCard strong {
+  display: block;
+  margin-top: 0.55rem;
+  color: #172033;
+  font-size: 1.1rem;
+}
+
+.spotlightCard p {
+  margin-top: 0.65rem;
+  color: #6d7b98;
+  line-height: 1.7;
+}
+
+.spotlightCardWarning {
+  background: linear-gradient(160deg, rgba(255, 232, 221, 0.86), rgba(255, 247, 243, 0.98));
+}
+
+.quickActionsPanel {
+  background: linear-gradient(160deg, #141f7c, #2838a3);
+  color: #ffffff;
+}
+
+.quickActionsPanel .sectionEyebrow {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.quickActions {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.quickAction {
+  padding: 0.95rem 1rem;
+  justify-content: flex-start;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.activityList {
+  margin-top: 1.2rem;
+  display: grid;
+}
+
+.activityRow {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.1fr) minmax(180px, 1.1fr) auto auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem 0;
+  border-top: 1px solid rgba(24, 31, 92, 0.08);
+}
+
+.activityRow:first-child {
+  border-top: none;
+}
+
+.activityPrimary {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.activityPrimary strong,
+.activityTarget {
+  color: #172033;
+}
+
+.activityPrimary span,
+.activityTime {
+  color: #74839f;
+}
+
+.statusPill {
+  padding: 0.44rem 0.82rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.statusNeutral {
+  background: #eef2fb;
+  color: #50617e;
+}
+
+.statusSuccess {
+  background: rgba(173, 238, 224, 0.82);
+  color: #145c52;
+}
+
+.statusAttention {
+  background: rgba(255, 220, 207, 0.86);
+  color: #b9542a;
+}
+
+.inlineLink {
+  padding: 0.8rem 1rem;
+  background: #eff2fb;
+  color: #44526d;
+}
+
+.emptyState,
+.emptyInline {
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: #70809d;
+}
+
+@media (max-width: 1280px) {
+  .statsGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1080px) {
+  .contentGrid,
+  .statsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .chartGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .hero,
+  .sectionHeader,
+  .activityRow,
+  .chartSummary {
+    grid-template-columns: 1fr;
+  }
+
+  .hero,
+  .sectionHeader {
+    display: grid;
+  }
+
+  .activityRow {
+    display: grid;
+  }
+
+  .chartGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

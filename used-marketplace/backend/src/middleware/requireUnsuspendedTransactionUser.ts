@@ -1,15 +1,42 @@
 import type { NextFunction, Response } from 'express';
 import type { AuthenticatedRequest } from '../types/auth';
+import { supabaseAdmin } from '../config/supabase';
 import { sendError } from '../utils/apiResponse';
 import { isAccountSuspended } from '../utils/accountStatus';
 
-export function requireUnsuspendedTransactionUser(
+export async function requireMarketplaceUser(
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
-): void {
+): Promise<void> {
   if (!req.user) {
     sendError(res, 'Unauthorized', 401);
+    return;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('role')
+    .eq('id', req.user.id)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[Marketplace] Failed to verify user role:', error);
+    sendError(res, 'Unable to verify marketplace access', 500);
+    return;
+  }
+
+  if (!data) {
+    sendError(res, 'Unable to verify marketplace access', 403);
+    return;
+  }
+
+  if (data.role === 'admin') {
+    sendError(
+      res,
+      'Admin accounts can browse and manage the marketplace, but buying, selling, favorites, and standard member actions are disabled for this role.',
+      403
+    );
     return;
   }
 
@@ -24,3 +51,5 @@ export function requireUnsuspendedTransactionUser(
     403
   );
 }
+
+export const requireUnsuspendedTransactionUser = requireMarketplaceUser;

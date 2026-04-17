@@ -1,0 +1,504 @@
+.page {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1.25rem;
+}
+
+.eyebrow,
+.insightEyebrow {
+  font-size: 0.84rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+}
+
+.eyebrow {
+  color: #1a7267;
+}
+
+.insightEyebrow {
+  color: #7d8ca8;
+}
+
+.title {
+  margin-top: 0.35rem;
+  font-size: clamp(2.5rem, 5vw, 3.5rem);
+  line-height: 0.96;
+  letter-spacing: -0.04em;
+  color: #172033;
+}
+
+.subtitle {
+  max-width: 760px;
+  margin-top: 0.9rem;
+  color: #677590;
+  line-height: 1.75;
+}
+
+.heroActions {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.selectField {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.85rem 1rem;
+  border-radius: 18px;
+  background: #ebeff9;
+  border: 1px solid rgba(20, 34, 125, 0.08);
+  color: #44526b;
+  font-weight: 700;
+}
+
+.selectField select {
+  border: none;
+  background: transparent;
+  color: #172033;
+  font-weight: 700;
+}
+
+.secondaryButton,
+.messageButton,
+.deleteButton,
+.paginationButton {
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.secondaryButton {
+  padding: 0.9rem 1.1rem;
+  border-radius: 18px;
+  background: #eff2fb;
+  color: #42516d;
+}
+
+.secondaryButton:hover {
+  background: #e7ebf8;
+}
+
+.noticeBanner {
+  padding: 1rem 1.2rem;
+  border-radius: 20px;
+  font-weight: 700;
+}
+
+.noticeBannerSuccess {
+  background: rgba(20, 111, 96, 0.12);
+  color: #146f60;
+}
+
+.noticeBannerError {
+  background: rgba(188, 27, 27, 0.1);
+  color: #bc1b1b;
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.statCard {
+  min-height: 215px;
+  padding: 1.45rem;
+  border-radius: 30px;
+  border: 1px solid rgba(24, 31, 92, 0.08);
+  box-shadow: 0 24px 56px rgba(30, 35, 84, 0.08);
+}
+
+.statCardDark {
+  background: linear-gradient(160deg, #141f7c, #2d35a5);
+  color: #ffffff;
+}
+
+.statCardSoft {
+  background: linear-gradient(160deg, #ffffff, #f5f7ff);
+}
+
+.statCardPeach {
+  background: linear-gradient(160deg, rgba(255, 218, 206, 0.9), rgba(255, 244, 239, 0.98));
+}
+
+.statCardMint {
+  background: linear-gradient(160deg, rgba(170, 240, 228, 0.84), rgba(230, 255, 251, 0.96));
+}
+
+.statIcon {
+  width: 50px;
+  height: 50px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.statLabel {
+  margin-top: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.76rem;
+  font-weight: 800;
+  opacity: 0.82;
+}
+
+.statValue {
+  margin-top: 1rem;
+  font-size: clamp(2.2rem, 4vw, 3rem);
+  line-height: 1;
+}
+
+.statDetail {
+  margin-top: 0.95rem;
+  line-height: 1.7;
+  opacity: 0.84;
+}
+
+.tableCard {
+  overflow: hidden;
+  border-radius: 32px;
+  background: #ffffff;
+  border: 1px solid rgba(24, 31, 92, 0.08);
+  box-shadow: 0 24px 60px rgba(30, 35, 84, 0.1);
+}
+
+.tableHeader,
+.listingRow {
+  display: grid;
+  grid-template-columns: minmax(260px, 2.2fr) minmax(180px, 1.2fr) minmax(180px, 1fr) minmax(140px, 0.8fr) minmax(180px, 1fr);
+  gap: 1rem;
+  align-items: center;
+}
+
+.tableHeader {
+  padding: 1.35rem 1.75rem;
+  background: #eef1fb;
+  color: #95a3bb;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.listingRow {
+  padding: 1.4rem 1.75rem;
+  border-top: 1px solid rgba(24, 31, 92, 0.06);
+}
+
+.listingCell,
+.sellerCell {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.media,
+.sellerAvatar {
+  width: 68px;
+  height: 68px;
+  border-radius: 22px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #121d67, #3950b1);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.sellerAvatar {
+  width: 54px;
+  height: 54px;
+  border-radius: 18px;
+}
+
+.mediaImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.listingCopy {
+  min-width: 0;
+}
+
+.listingTitle,
+.sellerName {
+  color: #172033;
+}
+
+.listingTitle {
+  font-size: 1.18rem;
+}
+
+.listingMeta,
+.sellerMeta,
+.statusNote {
+  margin-top: 0.28rem;
+  color: #74839f;
+}
+
+.listingHighlights {
+  margin-top: 0.55rem;
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.listingHighlights span {
+  padding: 0.34rem 0.62rem;
+  border-radius: 999px;
+  background: #f3f5fc;
+  color: #4c5e7e;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.signalGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.signalCell {
+  min-width: 0;
+}
+
+.signalGrid div {
+  padding: 0.8rem 0.9rem;
+  border-radius: 18px;
+  background: #f5f7fe;
+  display: grid;
+  gap: 0.22rem;
+}
+
+.signalGrid span {
+  color: #8090ac;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.signalGrid strong {
+  color: #1b2946;
+  font-size: 1.05rem;
+}
+
+.statusCell {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.statusPill {
+  justify-self: flex-start;
+  padding: 0.48rem 0.82rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.statusFlagged {
+  background: rgba(255, 218, 206, 0.9);
+  color: #bb5224;
+}
+
+.statusActive {
+  background: rgba(171, 239, 225, 0.8);
+  color: #116658;
+}
+
+.statusSold {
+  background: rgba(20, 31, 124, 0.1);
+  color: #26338d;
+}
+
+.statusNeutral {
+  background: #eff2fb;
+  color: #54627e;
+}
+
+.actionCell {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.messageButton,
+.deleteButton {
+  width: 100%;
+  padding: 0.82rem 0.95rem;
+  border-radius: 16px;
+}
+
+.messageButton {
+  background: #eef2fb;
+  color: #243459;
+}
+
+.messageButton:hover:not(:disabled) {
+  background: #e6ebf8;
+}
+
+.deleteButton {
+  background: rgba(188, 27, 27, 0.08);
+  color: #bc1b1b;
+}
+
+.deleteButton:hover:not(:disabled) {
+  background: rgba(188, 27, 27, 0.14);
+}
+
+.messageButton:disabled,
+.deleteButton:disabled,
+.paginationButton:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.paginationBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.3rem 1.75rem 1.6rem;
+  color: #667490;
+}
+
+.paginationButtons {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.paginationButton {
+  min-width: 42px;
+  padding: 0.72rem 0.82rem;
+  border-radius: 14px;
+  border: 1px solid rgba(24, 31, 92, 0.08);
+  background: #ffffff;
+  color: #50607d;
+}
+
+.paginationButtonActive {
+  background: #141f7c;
+  color: #ffffff;
+}
+
+.emptyState {
+  padding: 3rem 1.5rem;
+  text-align: center;
+  color: #7181a0;
+}
+
+.insightGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.insightCard {
+  padding: 1.45rem;
+  border-radius: 28px;
+  background: #ffffff;
+  border: 1px solid rgba(24, 31, 92, 0.08);
+  box-shadow: 0 20px 48px rgba(30, 35, 84, 0.08);
+}
+
+.insightCard h3 {
+  margin-top: 0.55rem;
+  color: #172033;
+  font-size: 1.3rem;
+}
+
+.insightCard p:last-child {
+  margin-top: 0.75rem;
+  color: #6d7b98;
+  line-height: 1.75;
+}
+
+.insightCardWarning {
+  background: linear-gradient(160deg, rgba(255, 236, 226, 0.88), rgba(255, 248, 244, 0.98));
+}
+
+@media (max-width: 1280px) {
+  .statsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tableHeader,
+  .listingRow {
+    grid-template-columns: minmax(240px, 2fr) minmax(170px, 1.1fr) minmax(170px, 1fr) minmax(140px, 0.8fr);
+  }
+
+  .actionCell {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .hero,
+  .paginationBar,
+  .insightGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero,
+  .paginationBar {
+    display: grid;
+  }
+
+  .heroActions {
+    justify-content: flex-start;
+  }
+
+  .tableHeader {
+    display: none;
+  }
+
+  .listingRow {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .statsGrid,
+  .insightGrid,
+  .actionCell {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .statsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .listingRow,
+  .paginationBar {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .signalGrid {
+    grid-template-columns: 1fr;
+  }
+}

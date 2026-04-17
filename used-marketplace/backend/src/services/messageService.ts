@@ -99,11 +99,29 @@ function buildDisplayName(profile: RawProfile | null): string {
   return 'Marketplace User';
 }
 
-function assertMessagingAllowed(
+async function assertMessagingAllowed(
   sender: MessagingActor,
   listing: Pick<RawListing, 'brand' | 'title'>
-): void {
-  if (!isAccountSuspended(sender) || isModerationListing(listing)) {
+): Promise<void> {
+  if (isModerationListing(listing)) {
+    return;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('role')
+    .eq('id', sender.id)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error('Unable to verify messaging access');
+  }
+
+  if (data?.role === 'admin') {
+    return;
+  }
+
+  if (!isAccountSuspended(sender)) {
     return;
   }
 
@@ -293,7 +311,7 @@ export async function sendMessage(
     throw new Error('Listing not found');
   }
 
-  assertMessagingAllowed(sender, listing as RawListing);
+  await assertMessagingAllowed(sender, listing as RawListing);
   assertModerationThreadAccess(sender.id, listing as RawListing, payload.recipient_id?.trim());
 
   let conversationId = '';
@@ -424,7 +442,7 @@ export async function sendReply(
     throw new Error('Conversation listing was not found');
   }
 
-  assertMessagingAllowed(sender, listing);
+  await assertMessagingAllowed(sender, listing);
 
   const { data: message, error: messageError } = await supabaseAdmin
     .from('messages')

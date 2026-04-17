@@ -1,5 +1,14 @@
 export type AdminRole = 'user' | 'admin';
 export type AdminUserStatus = 'active' | 'pending_verification' | 'suspended';
+export type AdminListingStatusFilter =
+  | 'all'
+  | 'active'
+  | 'draft'
+  | 'reserved'
+  | 'sold'
+  | 'rejected'
+  | 'archived'
+  | 'reported';
 
 export interface AdminUserListItem {
   id: string;
@@ -77,6 +86,81 @@ export interface AdminModerationThreadResponse {
   topicType: 'moderation';
 }
 
+export interface AdminListingListItem {
+  id: string;
+  title: string;
+  price: number;
+  currency: string;
+  status: string;
+  statusLabel: string;
+  coverImagePath: string | null;
+  createdAt: string;
+  updatedAt: string;
+  viewsCount: number;
+  locationLabel: string;
+  categoryName: string | null;
+  seller: {
+    id: string;
+    fullName: string;
+    username: string;
+    avatarPath: string | null;
+    locationLabel: string;
+  };
+  offerCount: number;
+  conversationCount: number;
+  reportCount: number;
+  pendingReportCount: number;
+  isFlagged: boolean;
+}
+
+export interface AdminListingsResponse {
+  stats: {
+    totalListings: number;
+    activeListings: number;
+    soldListings: number;
+    flaggedListings: number;
+    pendingReports: number;
+  };
+  filters: {
+    search: string;
+    status: AdminListingStatusFilter;
+    categoryId: number | null;
+    stateId: number | null;
+  };
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalItems: number;
+    totalPages: number;
+  };
+  lookups: {
+    categories: Array<{
+      id: number;
+      name: string;
+    }>;
+    states: Array<{
+      id: number;
+      name: string;
+    }>;
+  };
+  listings: AdminListingListItem[];
+}
+
+export interface AdminDeleteListingResponse {
+  id: string;
+  deleted: true;
+  deletedRecords: {
+    messages: number;
+    conversations: number;
+    offers: number;
+    reports: number;
+    reviews: number;
+    favorites: number;
+    images: number;
+    dailyViews: number;
+  };
+}
+
 export interface AdminStructureCategoryNode {
   id: number;
   name: string;
@@ -131,6 +215,53 @@ export interface AdminStructureResponse {
     id: string;
     title: string;
     detail: string;
+    timestamp: string;
+  }>;
+}
+
+export interface AdminOverviewResponse {
+  stats: {
+    totalUsers: number;
+    activeListings: number;
+    soldItems: number;
+    pendingReports: number;
+    pendingOffers: number;
+  };
+  health: {
+    verificationRate: number;
+    pendingVerificationUsers: number;
+    suspendedUsers: number;
+    activeRegions: number;
+    moderationThreads: number;
+  };
+  activity: {
+    months: Array<{
+      value: string;
+      label: string;
+      users: number;
+      listings: number;
+      soldItems: number;
+      reports: number;
+    }>;
+  };
+  spotlight: {
+    busiestState: {
+      name: string;
+      listingCount: number;
+    } | null;
+    mostReportedListing: {
+      id: string;
+      title: string;
+      reportCount: number;
+    } | null;
+  };
+  recentActivity: Array<{
+    id: string;
+    actorLabel: string;
+    actionLabel: string;
+    targetLabel: string;
+    statusLabel: string;
+    statusTone: 'neutral' | 'success' | 'attention';
     timestamp: string;
   }>;
 }

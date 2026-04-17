@@ -1,4 +1,8 @@
 import type {
+  AdminDeleteListingResponse,
+  AdminListingsResponse,
+  AdminListingStatusFilter,
+  AdminOverviewResponse,
   AdminModerationThreadResponse,
   AdminStructureResponse,
   AdminUserDetailResponse,
@@ -27,6 +31,15 @@ export interface AdminUsersQuery {
   status?: 'all' | 'active' | 'pending_verification' | 'suspended';
 }
 
+export interface AdminListingsQuery {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: AdminListingStatusFilter;
+  categoryId?: number | null;
+  stateId?: number | null;
+}
+
 export interface CreateAdminUserPayload {
   fullName: string;
   username: string;
@@ -44,6 +57,14 @@ export interface CreateCategoryPayload {
 export interface CreateLocationPayload {
   stateName: string;
   areaNames?: string[];
+}
+
+export async function getAdminOverview(
+  token: string
+): Promise<ServiceResponse<AdminOverviewResponse>> {
+  return authorizedRequest<AdminOverviewResponse>('/api/admin/overview', token, {
+    method: 'GET',
+  });
 }
 
 async function parseJsonResponse(response: Response): Promise<ApiResult | null> {
@@ -108,6 +129,25 @@ export async function getAdminUsers(
   });
 }
 
+export async function getAdminListings(
+  token: string,
+  query: AdminListingsQuery = {}
+): Promise<ServiceResponse<AdminListingsResponse>> {
+  const params = new URLSearchParams();
+
+  if (query.page) params.set('page', String(query.page));
+  if (query.pageSize) params.set('pageSize', String(query.pageSize));
+  if (query.search?.trim()) params.set('search', query.search.trim());
+  if (query.status && query.status !== 'all') params.set('status', query.status);
+  if (query.categoryId) params.set('categoryId', String(query.categoryId));
+  if (query.stateId) params.set('stateId', String(query.stateId));
+
+  const suffix = params.size ? `?${params.toString()}` : '';
+  return authorizedRequest<AdminListingsResponse>(`/api/admin/listings${suffix}`, token, {
+    method: 'GET',
+  });
+}
+
 export async function createAdminUser(
   token: string,
   payload: CreateAdminUserPayload
@@ -144,6 +184,15 @@ export async function ensureAdminModerationThread(
 ): Promise<ServiceResponse<AdminModerationThreadResponse>> {
   return authorizedRequest<AdminModerationThreadResponse>(`/api/admin/users/${userId}/moderation-thread`, token, {
     method: 'POST',
+  });
+}
+
+export async function deleteAdminListing(
+  token: string,
+  listingId: string
+): Promise<ServiceResponse<AdminDeleteListingResponse>> {
+  return authorizedRequest<AdminDeleteListingResponse>(`/api/admin/listings/${listingId}`, token, {
+    method: 'DELETE',
   });
 }
 

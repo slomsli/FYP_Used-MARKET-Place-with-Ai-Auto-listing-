@@ -14,6 +14,15 @@ type AdminRole = 'user' | 'admin';
 type AdminUserStatus = 'active' | 'pending_verification' | 'suspended';
 type AdminUserRoleFilter = 'all' | AdminRole;
 type AdminUserStatusFilter = 'all' | AdminUserStatus;
+type AdminListingStatusFilter =
+  | 'all'
+  | 'active'
+  | 'draft'
+  | 'reserved'
+  | 'sold'
+  | 'rejected'
+  | 'archived'
+  | 'reported';
 
 type Relation<T> = T | T[] | null;
 
@@ -50,6 +59,23 @@ interface RawAdminUserListing {
   categories: Relation<{ id: number; name: string }>;
 }
 
+interface RawAdminListing {
+  id: string;
+  seller_id: string;
+  title: string;
+  price: unknown;
+  currency: string;
+  status: string;
+  cover_image_path: string | null;
+  created_at: string;
+  updated_at: string;
+  views_count: unknown;
+  brand: string | null;
+  states: Relation<{ id: number; name: string }>;
+  areas: Relation<{ id: number; name: string }>;
+  categories: Relation<{ id: number; name: string }>;
+}
+
 interface RawCategory {
   id: number | string;
   name: string;
@@ -78,6 +104,41 @@ interface RawCategoryListing {
   area_id: number | string | null;
 }
 
+interface RawAdminOverviewProfile {
+  id: string;
+  username: string;
+  full_name: string | null;
+  created_at: string;
+}
+
+interface RawAdminOverviewListing {
+  id: string;
+  title: string;
+  brand: string | null;
+  status: string;
+  created_at: string;
+  sold_at: string | null;
+  state_id: number | string | null;
+}
+
+interface RawAdminOverviewReport {
+  id: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  listings: Relation<{
+    id: string;
+    title: string;
+  }>;
+}
+
+interface RawAdminOverviewConversation {
+  id: string;
+  listings: Relation<{
+    brand: string | null;
+  }>;
+}
+
 interface AuthAdminUser {
   id: string;
   email?: string;
@@ -96,6 +157,15 @@ export interface AdminUsersQuery {
   search?: string;
   role?: string;
   status?: string;
+}
+
+export interface AdminListingsQuery {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: string;
+  categoryId?: number;
+  stateId?: number;
 }
 
 export interface CreateAdminUserInput {
@@ -203,6 +273,81 @@ export interface AdminModerationThreadResponse {
   topicType: 'moderation';
 }
 
+export interface AdminListingListItem {
+  id: string;
+  title: string;
+  price: number;
+  currency: string;
+  status: string;
+  statusLabel: string;
+  coverImagePath: string | null;
+  createdAt: string;
+  updatedAt: string;
+  viewsCount: number;
+  locationLabel: string;
+  categoryName: string | null;
+  seller: {
+    id: string;
+    fullName: string;
+    username: string;
+    avatarPath: string | null;
+    locationLabel: string;
+  };
+  offerCount: number;
+  conversationCount: number;
+  reportCount: number;
+  pendingReportCount: number;
+  isFlagged: boolean;
+}
+
+export interface AdminListingsResponse {
+  stats: {
+    totalListings: number;
+    activeListings: number;
+    soldListings: number;
+    flaggedListings: number;
+    pendingReports: number;
+  };
+  filters: {
+    search: string;
+    status: AdminListingStatusFilter;
+    categoryId: number | null;
+    stateId: number | null;
+  };
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalItems: number;
+    totalPages: number;
+  };
+  lookups: {
+    categories: Array<{
+      id: number;
+      name: string;
+    }>;
+    states: Array<{
+      id: number;
+      name: string;
+    }>;
+  };
+  listings: AdminListingListItem[];
+}
+
+export interface AdminDeleteListingResponse {
+  id: string;
+  deleted: true;
+  deletedRecords: {
+    messages: number;
+    conversations: number;
+    offers: number;
+    reports: number;
+    reviews: number;
+    favorites: number;
+    images: number;
+    dailyViews: number;
+  };
+}
+
 export interface AdminStructureCategoryNode {
   id: number;
   name: string;
@@ -261,6 +406,53 @@ export interface AdminStructureResponse {
   }>;
 }
 
+export interface AdminOverviewResponse {
+  stats: {
+    totalUsers: number;
+    activeListings: number;
+    soldItems: number;
+    pendingReports: number;
+    pendingOffers: number;
+  };
+  health: {
+    verificationRate: number;
+    pendingVerificationUsers: number;
+    suspendedUsers: number;
+    activeRegions: number;
+    moderationThreads: number;
+  };
+  activity: {
+    months: Array<{
+      value: string;
+      label: string;
+      users: number;
+      listings: number;
+      soldItems: number;
+      reports: number;
+    }>;
+  };
+  spotlight: {
+    busiestState: {
+      name: string;
+      listingCount: number;
+    } | null;
+    mostReportedListing: {
+      id: string;
+      title: string;
+      reportCount: number;
+    } | null;
+  };
+  recentActivity: Array<{
+    id: string;
+    actorLabel: string;
+    actionLabel: string;
+    targetLabel: string;
+    statusLabel: string;
+    statusTone: 'neutral' | 'success' | 'attention';
+    timestamp: string;
+  }>;
+}
+
 export class AdminServiceError extends Error {
   status: number;
 
@@ -315,6 +507,22 @@ function normalizeStatusFilter(value: string | undefined): AdminUserStatusFilter
   return 'all';
 }
 
+function normalizeAdminListingStatusFilter(value: string | undefined): AdminListingStatusFilter {
+  if (
+    value === 'active' ||
+    value === 'draft' ||
+    value === 'reserved' ||
+    value === 'sold' ||
+    value === 'rejected' ||
+    value === 'archived' ||
+    value === 'reported'
+  ) {
+    return value;
+  }
+
+  return 'all';
+}
+
 function slugify(value: string): string {
   return value
     .trim()
@@ -358,6 +566,10 @@ function buildLocationLabel(stateName: string | null, areaName: string | null): 
   return 'No location set';
 }
 
+function buildProfileDisplayName(profile: Pick<RawProfile, 'full_name' | 'username'>): string {
+  return profile.full_name?.trim() || profile.username || 'Marketplace User';
+}
+
 function humanizeValue(value: string): string {
   return value
     .split('_')
@@ -375,6 +587,51 @@ function deriveUserStatus(user: AuthAdminUser | undefined): AdminUserStatus {
   }
 
   return 'active';
+}
+
+function buildMonthKey(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) {
+    return null;
+  }
+
+  return `${parsed.getUTCFullYear()}-${String(parsed.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function buildRecentMonthBuckets(monthCount = 6): AdminOverviewResponse['activity']['months'] {
+  const now = new Date();
+
+  return Array.from({ length: monthCount }, (_, index) => {
+    const monthDate = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (monthCount - 1 - index), 1)
+    );
+    const value = `${monthDate.getUTCFullYear()}-${String(monthDate.getUTCMonth() + 1).padStart(2, '0')}`;
+
+    return {
+      value,
+      label: new Intl.DateTimeFormat('en-MY', {
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'UTC',
+      }).format(monthDate),
+      users: 0,
+      listings: 0,
+      soldItems: 0,
+      reports: 0,
+    };
+  });
+}
+
+function buildActorLabel(profile: Pick<RawAdminOverviewProfile, 'full_name' | 'username'>): string {
+  return profile.full_name?.trim() || profile.username || 'Marketplace User';
+}
+
+function formatRecentStatusLabel(status: string): string {
+  return humanizeValue(status || 'updated');
 }
 
 function buildAdminUserListItem(
@@ -397,6 +654,58 @@ function buildAdminUserListItem(
     locationLabel: buildLocationLabel(state?.name ?? null, area?.name ?? null),
     listingCount: listingCountMap.get(profile.id) ?? 0,
   };
+}
+
+function buildAdminListingListItem(
+  listing: RawAdminListing,
+  sellerProfile: RawProfile,
+  counts: {
+    offerCount: number;
+    conversationCount: number;
+    reportCount: number;
+    pendingReportCount: number;
+  }
+): AdminListingListItem {
+  const listingState = unwrapRelation(listing.states);
+  const listingArea = unwrapRelation(listing.areas);
+  const listingCategory = unwrapRelation(listing.categories);
+  const sellerState = unwrapRelation(sellerProfile.states);
+  const sellerArea = unwrapRelation(sellerProfile.areas);
+
+  return {
+    id: listing.id,
+    title: listing.title,
+    price: Number(listing.price ?? 0),
+    currency: listing.currency,
+    status: listing.status,
+    statusLabel: humanizeValue(listing.status),
+    coverImagePath: listing.cover_image_path,
+    createdAt: listing.created_at,
+    updatedAt: listing.updated_at,
+    viewsCount: Number(listing.views_count ?? 0),
+    locationLabel: buildLocationLabel(listingState?.name ?? null, listingArea?.name ?? null),
+    categoryName: listingCategory?.name ?? null,
+    seller: {
+      id: sellerProfile.id,
+      fullName: buildProfileDisplayName(sellerProfile),
+      username: sellerProfile.username,
+      avatarPath: sellerProfile.avatar_path,
+      locationLabel: buildLocationLabel(sellerState?.name ?? null, sellerArea?.name ?? null),
+    },
+    offerCount: counts.offerCount,
+    conversationCount: counts.conversationCount,
+    reportCount: counts.reportCount,
+    pendingReportCount: counts.pendingReportCount,
+    isFlagged: counts.pendingReportCount > 0,
+  };
+}
+
+function incrementStringMapCount(map: Map<string, number>, key: string | null | undefined): void {
+  if (!key) {
+    return;
+  }
+
+  map.set(key, (map.get(key) ?? 0) + 1);
 }
 
 async function listAllAuthUsers(): Promise<AuthAdminUser[]> {
@@ -617,6 +926,250 @@ async function getFallbackCategoryId(): Promise<number> {
   return categoryId;
 }
 
+export async function getAdminOverview(): Promise<AdminOverviewResponse> {
+  const [
+    { data: profiles, error: profileError },
+    authUsers,
+    { data: listings, error: listingError },
+    { data: reports, error: reportError },
+    pendingOffersResult,
+    { data: conversations, error: conversationError },
+    { data: states, error: stateError },
+  ] = await Promise.all([
+    supabaseAdmin
+      .from('profiles')
+      .select('id, username, full_name, created_at')
+      .order('created_at', { ascending: false }),
+    listAllAuthUsers(),
+    supabaseAdmin
+      .from('listings')
+      .select('id, title, brand, status, created_at, sold_at, state_id')
+      .order('created_at', { ascending: false }),
+    supabaseAdmin
+      .from('reports')
+      .select(`
+        id,
+        status,
+        created_at,
+        updated_at,
+        listings!reports_listing_id_fkey ( id, title )
+      `)
+      .order('updated_at', { ascending: false }),
+    supabaseAdmin.from('offers').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+    supabaseAdmin
+      .from('conversations')
+      .select(`
+        id,
+        listings!conversations_listing_id_fkey ( brand )
+      `),
+    supabaseAdmin.from('states').select('id, name, slug').order('name'),
+  ]);
+
+  if (profileError) {
+    console.error('[Admin] Failed to load overview profiles:', profileError);
+    throw new AdminServiceError('Unable to load admin overview users', 500);
+  }
+
+  if (listingError) {
+    console.error('[Admin] Failed to load overview listings:', listingError);
+    throw new AdminServiceError('Unable to load admin overview listings', 500);
+  }
+
+  if (reportError) {
+    console.error('[Admin] Failed to load overview reports:', reportError);
+    throw new AdminServiceError('Unable to load admin overview reports', 500);
+  }
+
+  if (pendingOffersResult.error) {
+    console.error('[Admin] Failed to count pending offers:', pendingOffersResult.error);
+    throw new AdminServiceError('Unable to load admin overview offers', 500);
+  }
+
+  if (conversationError) {
+    console.error('[Admin] Failed to load moderation threads:', conversationError);
+    throw new AdminServiceError('Unable to load moderation thread overview', 500);
+  }
+
+  if (stateError) {
+    console.error('[Admin] Failed to load states for overview:', stateError);
+    throw new AdminServiceError('Unable to load admin overview locations', 500);
+  }
+
+  const profileRows = (profiles ?? []) as RawAdminOverviewProfile[];
+  const listingRows = ((listings ?? []) as RawAdminOverviewListing[]).filter(
+    (listing) => listing.brand !== MODERATION_LISTING_BRAND
+  );
+  const reportRows = (reports ?? []) as RawAdminOverviewReport[];
+  const conversationRows = (conversations ?? []) as RawAdminOverviewConversation[];
+  const stateRows = (states ?? []) as RawState[];
+
+  const authUserMap = new Map(authUsers.map((user) => [user.id, user]));
+  const monthBuckets = buildRecentMonthBuckets();
+  const monthBucketMap = new Map(monthBuckets.map((bucket) => [bucket.value, bucket]));
+  const pendingVerificationUsers = profileRows.filter(
+    (profile) => !authUserMap.get(profile.id)?.email_confirmed_at
+  ).length;
+  const suspendedUsers = profileRows.filter((profile) =>
+    isAccountSuspended(authUserMap.get(profile.id))
+  ).length;
+  const verifiedUsers = profileRows.length - pendingVerificationUsers;
+  const verificationRate = profileRows.length
+    ? Math.round((verifiedUsers / profileRows.length) * 100)
+    : 0;
+  const activeListings = listingRows.filter((listing) => listing.status === 'active').length;
+  const soldItems = listingRows.filter((listing) => listing.status === 'sold').length;
+  const pendingReports = reportRows.filter((report) => report.status === 'pending').length;
+  const activeRegions = new Set(
+    listingRows
+      .map((listing) => normalizeId(listing.state_id))
+      .filter((stateId): stateId is number => stateId !== null)
+  ).size;
+  const moderationThreads = conversationRows.filter(
+    (conversation) => unwrapRelation(conversation.listings)?.brand === MODERATION_LISTING_BRAND
+  ).length;
+
+  for (const profile of profileRows) {
+    const monthKey = buildMonthKey(profile.created_at);
+    if (monthKey && monthBucketMap.has(monthKey)) {
+      monthBucketMap.get(monthKey)!.users += 1;
+    }
+  }
+
+  for (const listing of listingRows) {
+    const createdMonthKey = buildMonthKey(listing.created_at);
+    if (createdMonthKey && monthBucketMap.has(createdMonthKey)) {
+      monthBucketMap.get(createdMonthKey)!.listings += 1;
+    }
+
+    if (listing.status === 'sold') {
+      const soldMonthKey = buildMonthKey(listing.sold_at ?? listing.created_at);
+      if (soldMonthKey && monthBucketMap.has(soldMonthKey)) {
+        monthBucketMap.get(soldMonthKey)!.soldItems += 1;
+      }
+    }
+  }
+
+  for (const report of reportRows) {
+    const monthKey = buildMonthKey(report.created_at);
+    if (monthKey && monthBucketMap.has(monthKey)) {
+      monthBucketMap.get(monthKey)!.reports += 1;
+    }
+  }
+
+  const stateNameMap = new Map(
+    stateRows.map((state) => [normalizeId(state.id) ?? 0, state.name])
+  );
+  const stateListingCounts = new Map<number, number>();
+
+  for (const listing of listingRows) {
+    const stateId = normalizeId(listing.state_id);
+    if (stateId === null) {
+      continue;
+    }
+
+    stateListingCounts.set(stateId, (stateListingCounts.get(stateId) ?? 0) + 1);
+  }
+
+  const busiestStateEntry = [...stateListingCounts.entries()].sort(
+    (left, right) => right[1] - left[1]
+  )[0];
+  const busiestState = busiestStateEntry
+    ? {
+        name: stateNameMap.get(busiestStateEntry[0]) ?? 'Unknown region',
+        listingCount: busiestStateEntry[1],
+      }
+    : null;
+
+  const reportCountsByListing = new Map<string, { title: string; reportCount: number }>();
+
+  for (const report of reportRows) {
+    const relatedListing = unwrapRelation(report.listings);
+    if (!relatedListing) {
+      continue;
+    }
+
+    const current = reportCountsByListing.get(relatedListing.id) ?? {
+      title: relatedListing.title,
+      reportCount: 0,
+    };
+
+    current.reportCount += 1;
+    reportCountsByListing.set(relatedListing.id, current);
+  }
+
+  const mostReportedListingEntry = [...reportCountsByListing.entries()].sort(
+    (left, right) => right[1].reportCount - left[1].reportCount
+  )[0];
+  const mostReportedListing = mostReportedListingEntry
+    ? {
+        id: mostReportedListingEntry[0],
+        title: mostReportedListingEntry[1].title,
+        reportCount: mostReportedListingEntry[1].reportCount,
+      }
+    : null;
+
+  const recentActivity = [
+    ...profileRows.slice(0, 4).map((profile) => ({
+      id: `profile-${profile.id}`,
+      actorLabel: buildActorLabel(profile),
+      actionLabel: 'Joined platform',
+      targetLabel: 'New marketplace account',
+      statusLabel: 'New User',
+      statusTone: 'neutral' as const,
+      timestamp: profile.created_at,
+    })),
+    ...listingRows.slice(0, 4).map((listing) => ({
+      id: `listing-${listing.id}`,
+      actorLabel: 'Marketplace',
+      actionLabel: listing.status === 'sold' ? 'Sale completed' : 'Listing published',
+      targetLabel: listing.title,
+      statusLabel: formatRecentStatusLabel(listing.status),
+      statusTone: listing.status === 'sold' ? ('success' as const) : ('neutral' as const),
+      timestamp: listing.status === 'sold' ? listing.sold_at ?? listing.created_at : listing.created_at,
+    })),
+    ...reportRows.slice(0, 4).map((report) => {
+      const relatedListing = unwrapRelation(report.listings);
+
+      return {
+        id: `report-${report.id}`,
+        actorLabel: 'Moderation',
+        actionLabel: report.status === 'pending' ? 'Report queued' : 'Report updated',
+        targetLabel: relatedListing?.title ?? 'Listing review',
+        statusLabel: formatRecentStatusLabel(report.status),
+        statusTone: report.status === 'pending' ? ('attention' as const) : ('success' as const),
+        timestamp: report.updated_at || report.created_at,
+      };
+    }),
+  ]
+    .sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime())
+    .slice(0, 8);
+
+  return {
+    stats: {
+      totalUsers: profileRows.length,
+      activeListings,
+      soldItems,
+      pendingReports,
+      pendingOffers: pendingOffersResult.count ?? 0,
+    },
+    health: {
+      verificationRate,
+      pendingVerificationUsers,
+      suspendedUsers,
+      activeRegions,
+      moderationThreads,
+    },
+    activity: {
+      months: monthBuckets,
+    },
+    spotlight: {
+      busiestState,
+      mostReportedListing,
+    },
+    recentActivity,
+  };
+}
+
 export async function getAdminUsers(query: AdminUsersQuery): Promise<AdminUsersResponse> {
   const page = normalizePage(query.page);
   const pageSize = normalizePageSize(query.pageSize);
@@ -704,6 +1257,345 @@ export async function getAdminUsers(query: AdminUsersQuery): Promise<AdminUsersR
       totalPages,
     },
     users: paginatedUsers,
+  };
+}
+
+export async function getAdminListings(query: AdminListingsQuery): Promise<AdminListingsResponse> {
+  const page = normalizePage(query.page);
+  const pageSize = normalizePageSize(query.pageSize);
+  const search = (query.search ?? '').trim().toLowerCase();
+  const status = normalizeAdminListingStatusFilter(query.status);
+  const categoryId = normalizeId(query.categoryId ?? null);
+  const stateId = normalizeId(query.stateId ?? null);
+
+  const [
+    { data: profiles, error: profileError },
+    { data: listings, error: listingError },
+    { data: reports, error: reportError },
+    { data: conversations, error: conversationError },
+    { data: offers, error: offerError },
+    { data: categories, error: categoryError },
+    { data: states, error: stateError },
+  ] = await Promise.all([
+    supabaseAdmin
+      .from('profiles')
+      .select(`
+        id, username, full_name, avatar_path, role, created_at, updated_at, state_id, area_id,
+        states!profiles_state_id_fkey ( id, name ),
+        areas!profiles_area_id_fkey ( id, name )
+      `),
+    supabaseAdmin
+      .from('listings')
+      .select(`
+        id,
+        seller_id,
+        title,
+        price,
+        currency,
+        status,
+        cover_image_path,
+        created_at,
+        updated_at,
+        views_count,
+        brand,
+        states!listings_state_id_fkey ( id, name ),
+        areas!listings_area_id_fkey ( id, name ),
+        categories!listings_category_id_fkey ( id, name )
+      `)
+      .or(`brand.is.null,brand.neq.${MODERATION_LISTING_BRAND}`)
+      .order('created_at', { ascending: false }),
+    supabaseAdmin.from('reports').select('listing_id, status'),
+    supabaseAdmin.from('conversations').select('listing_id'),
+    supabaseAdmin.from('offers').select('listing_id'),
+    supabaseAdmin.from('categories').select('id, name').order('name'),
+    supabaseAdmin.from('states').select('id, name').order('name'),
+  ]);
+
+  if (profileError) {
+    console.error('[Admin] Failed to load seller profiles:', profileError);
+    throw new AdminServiceError('Unable to load seller profiles', 500);
+  }
+
+  if (listingError) {
+    console.error('[Admin] Failed to load listings for admin management:', listingError);
+    throw new AdminServiceError('Unable to load marketplace listings', 500);
+  }
+
+  if (reportError) {
+    console.error('[Admin] Failed to load listing reports:', reportError);
+    throw new AdminServiceError('Unable to load listing reports', 500);
+  }
+
+  if (conversationError) {
+    console.error('[Admin] Failed to load listing conversations:', conversationError);
+    throw new AdminServiceError('Unable to load listing conversations', 500);
+  }
+
+  if (offerError) {
+    console.error('[Admin] Failed to load listing offers:', offerError);
+    throw new AdminServiceError('Unable to load listing offers', 500);
+  }
+
+  if (categoryError) {
+    console.error('[Admin] Failed to load category filters:', categoryError);
+    throw new AdminServiceError('Unable to load listing categories', 500);
+  }
+
+  if (stateError) {
+    console.error('[Admin] Failed to load state filters:', stateError);
+    throw new AdminServiceError('Unable to load listing locations', 500);
+  }
+
+  const sellerProfileMap = new Map(
+    ((profiles ?? []) as RawProfile[]).map((profile) => [profile.id, profile])
+  );
+  const categoryLookup = ((categories ?? []) as Array<{ id: number | string; name: string }>).map(
+    (category) => ({
+      id: normalizeId(category.id) ?? 0,
+      name: category.name,
+    })
+  );
+  const stateLookup = ((states ?? []) as Array<{ id: number | string; name: string }>).map((state) => ({
+    id: normalizeId(state.id) ?? 0,
+    name: state.name,
+  }));
+  const selectedCategoryName =
+    categoryId === null ? null : categoryLookup.find((category) => category.id === categoryId)?.name ?? null;
+  const selectedStateName =
+    stateId === null ? null : stateLookup.find((state) => state.id === stateId)?.name ?? null;
+  const offerCountMap = new Map<string, number>();
+  const conversationCountMap = new Map<string, number>();
+  const reportCountMap = new Map<string, number>();
+  const pendingReportCountMap = new Map<string, number>();
+
+  ((offers ?? []) as Array<{ listing_id: string }>).forEach((offer) => {
+    incrementStringMapCount(offerCountMap, offer.listing_id);
+  });
+
+  ((conversations ?? []) as Array<{ listing_id: string }>).forEach((conversation) => {
+    incrementStringMapCount(conversationCountMap, conversation.listing_id);
+  });
+
+  ((reports ?? []) as Array<{ listing_id: string; status: string }>).forEach((report) => {
+    incrementStringMapCount(reportCountMap, report.listing_id);
+
+    if (report.status === 'pending') {
+      incrementStringMapCount(pendingReportCountMap, report.listing_id);
+    }
+  });
+
+  const allListings = ((listings ?? []) as RawAdminListing[])
+    .map((listing) => {
+      const sellerProfile = sellerProfileMap.get(listing.seller_id);
+
+      if (!sellerProfile || sellerProfile.role === 'admin' || listing.brand === MODERATION_LISTING_BRAND) {
+        return null;
+      }
+
+      return buildAdminListingListItem(listing, sellerProfile, {
+        offerCount: offerCountMap.get(listing.id) ?? 0,
+        conversationCount: conversationCountMap.get(listing.id) ?? 0,
+        reportCount: reportCountMap.get(listing.id) ?? 0,
+        pendingReportCount: pendingReportCountMap.get(listing.id) ?? 0,
+      });
+    })
+    .filter((listing): listing is AdminListingListItem => listing !== null);
+
+  const filteredListings = allListings.filter((listing) => {
+    const matchesSearch =
+      !search ||
+      listing.title.toLowerCase().includes(search) ||
+      listing.id.toLowerCase().includes(search) ||
+      listing.seller.fullName.toLowerCase().includes(search) ||
+      listing.seller.username.toLowerCase().includes(search) ||
+      listing.categoryName?.toLowerCase().includes(search) ||
+      listing.locationLabel.toLowerCase().includes(search) ||
+      listing.seller.locationLabel.toLowerCase().includes(search);
+
+    const matchesStatus =
+      status === 'all'
+        ? true
+        : status === 'reported'
+          ? listing.pendingReportCount > 0
+          : listing.status === status;
+
+    const matchesCategory =
+      categoryId === null ? true : Boolean(selectedCategoryName && listing.categoryName === selectedCategoryName);
+
+    const matchesState =
+      stateId === null
+        ? true
+        : Boolean(
+            selectedStateName &&
+              listing.locationLabel.toLowerCase().includes(selectedStateName.toLowerCase())
+          );
+
+    return matchesSearch && matchesStatus && matchesCategory && matchesState;
+  });
+
+  const totalItems = filteredListings.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const startIndex = (safePage - 1) * pageSize;
+  const paginatedListings = filteredListings.slice(startIndex, startIndex + pageSize);
+
+  return {
+    stats: {
+      totalListings: allListings.length,
+      activeListings: allListings.filter((listing) => listing.status === 'active').length,
+      soldListings: allListings.filter((listing) => listing.status === 'sold').length,
+      flaggedListings: allListings.filter((listing) => listing.isFlagged).length,
+      pendingReports: (reports ?? []).filter((report) => report.status === 'pending').length,
+    },
+    filters: {
+      search: query.search?.trim() ?? '',
+      status,
+      categoryId,
+      stateId,
+    },
+    pagination: {
+      page: safePage,
+      pageSize,
+      totalItems,
+      totalPages,
+    },
+    lookups: {
+      categories: categoryLookup.filter((category) => category.id > 0),
+      states: stateLookup.filter((state) => state.id > 0),
+    },
+    listings: paginatedListings,
+  };
+}
+
+export async function deleteAdminListing(listingId: string): Promise<AdminDeleteListingResponse> {
+  const { data: listing, error: listingError } = await supabaseAdmin
+    .from('listings')
+    .select('id, seller_id, title, brand')
+    .eq('id', listingId)
+    .maybeSingle();
+
+  if (listingError) {
+    console.error('[Admin] Failed to inspect listing before deletion:', listingError);
+    throw new AdminServiceError('Unable to inspect the selected listing', 500);
+  }
+
+  if (!listing) {
+    throw new AdminServiceError('Listing was not found', 404);
+  }
+
+  if (listing.brand === MODERATION_LISTING_BRAND) {
+    throw new AdminServiceError('Moderation thread listings cannot be deleted from listing management', 403);
+  }
+
+  const sellerProfile = await getProfileById(listing.seller_id);
+
+  if (sellerProfile.role === 'admin') {
+    throw new AdminServiceError('Admin-owned listings cannot be deleted from listing management', 403);
+  }
+
+  const { data: conversations, error: conversationsError } = await supabaseAdmin
+    .from('conversations')
+    .select('id')
+    .eq('listing_id', listingId);
+
+  if (conversationsError) {
+    console.error('[Admin] Failed to inspect related conversations before listing deletion:', conversationsError);
+    throw new AdminServiceError('Unable to inspect related conversation records', 500);
+  }
+
+  const conversationIds = ((conversations ?? []) as Array<{ id: string }>).map((conversation) => conversation.id);
+  const [
+    offersResult,
+    reportsResult,
+    reviewsResult,
+    favoritesResult,
+    imagesResult,
+    dailyViewsResult,
+    messageCountResult,
+  ] = await Promise.all([
+    supabaseAdmin.from('offers').select('id', { count: 'exact', head: true }).eq('listing_id', listingId),
+    supabaseAdmin.from('reports').select('id', { count: 'exact', head: true }).eq('listing_id', listingId),
+    supabaseAdmin.from('reviews').select('id', { count: 'exact', head: true }).eq('listing_id', listingId),
+    supabaseAdmin.from('favorites').select('listing_id', { count: 'exact', head: true }).eq('listing_id', listingId),
+    supabaseAdmin.from('listing_images').select('id', { count: 'exact', head: true }).eq('listing_id', listingId),
+    supabaseAdmin
+      .from('listing_daily_views')
+      .select('id', { count: 'exact', head: true })
+      .eq('listing_id', listingId),
+    conversationIds.length === 0
+      ? Promise.resolve({ count: 0, error: null })
+      : supabaseAdmin
+          .from('messages')
+          .select('id', { count: 'exact', head: true })
+          .in('conversation_id', conversationIds),
+  ]);
+
+  const guardedResults = [
+    ['offers', offersResult.error],
+    ['reports', reportsResult.error],
+    ['reviews', reviewsResult.error],
+    ['favorites', favoritesResult.error],
+    ['listing images', imagesResult.error],
+    ['daily views', dailyViewsResult.error],
+    ['messages', messageCountResult.error],
+  ];
+
+  for (const [scope, error] of guardedResults) {
+    if (error) {
+      console.error(`[Admin] Failed to count ${scope} before listing deletion:`, error);
+      throw new AdminServiceError('Unable to inspect related listing records before deletion', 500);
+    }
+  }
+
+  if (conversationIds.length > 0) {
+    const { error: deleteMessagesError } = await supabaseAdmin
+      .from('messages')
+      .delete()
+      .in('conversation_id', conversationIds);
+
+    if (deleteMessagesError) {
+      console.error('[Admin] Failed to delete listing messages:', deleteMessagesError);
+      throw new AdminServiceError('Unable to remove related messages before deleting the listing', 500);
+    }
+  }
+
+  const cleanupResults = await Promise.all([
+    supabaseAdmin.from('favorites').delete().eq('listing_id', listingId),
+    supabaseAdmin.from('listing_images').delete().eq('listing_id', listingId),
+    supabaseAdmin.from('listing_daily_views').delete().eq('listing_id', listingId),
+    supabaseAdmin.from('reports').delete().eq('listing_id', listingId),
+    supabaseAdmin.from('reviews').delete().eq('listing_id', listingId),
+    supabaseAdmin.from('offers').delete().eq('listing_id', listingId),
+    supabaseAdmin.from('conversations').delete().eq('listing_id', listingId),
+  ]);
+
+  for (const cleanupResult of cleanupResults) {
+    if (cleanupResult.error) {
+      console.error('[Admin] Failed during admin listing cleanup:', cleanupResult.error);
+      throw new AdminServiceError('Unable to clean up related records before deleting the listing', 500);
+    }
+  }
+
+  const { error: deleteError } = await supabaseAdmin.from('listings').delete().eq('id', listingId);
+
+  if (deleteError) {
+    console.error('[Admin] Failed to delete listing from admin management:', deleteError);
+    throw new AdminServiceError('Unable to delete the listing', 500);
+  }
+
+  return {
+    id: listingId,
+    deleted: true,
+    deletedRecords: {
+      messages: messageCountResult.count ?? 0,
+      conversations: conversationIds.length,
+      offers: offersResult.count ?? 0,
+      reports: reportsResult.count ?? 0,
+      reviews: reviewsResult.count ?? 0,
+      favorites: favoritesResult.count ?? 0,
+      images: imagesResult.count ?? 0,
+      dailyViews: dailyViewsResult.count ?? 0,
+    },
   };
 }
 

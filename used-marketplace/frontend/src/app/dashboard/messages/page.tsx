@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ROUTES } from '@/src/config/routes';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
@@ -211,8 +211,14 @@ function isDesktopViewport() {
 
 export default function MessagesPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { user, token, loading: authLoading } = useRequireAuth();
+  const isAdminWorkspace = pathname.startsWith('/admin');
+  const inboxRoute = isAdminWorkspace ? ROUTES.ADMIN_MESSAGES : ROUTES.MESSAGES;
+  const browseRoute = isAdminWorkspace ? ROUTES.ADMIN : ROUTES.BROWSE;
+  const secondaryRoute = isAdminWorkspace ? ROUTES.ADMIN_USERS : ROUTES.OFFERS;
+  const secondaryLabel = isAdminWorkspace ? 'User Directory' : 'Open Offers';
 
   const requestedConversationId = searchParams.get('conversationId');
   const requestedListingId = searchParams.get('listingId');
@@ -264,8 +270,8 @@ export default function MessagesPage() {
     }
 
     handledRequestKeyRef.current = requestKey;
-    router.replace(ROUTES.MESSAGES, { scroll: false });
-  }, [requestKey, router]);
+    router.replace(inboxRoute, { scroll: false });
+  }, [inboxRoute, requestKey, router]);
 
   useEffect(() => {
     if (!requestKey) {
@@ -956,7 +962,9 @@ export default function MessagesPage() {
                     ? 'Try a different search term.'
                     : filterTab === 'archived'
                       ? 'Archived chats stay here until you restore them.'
-                      : 'Start browsing to connect with other users.'}
+                      : isAdminWorkspace
+                        ? 'Use moderation threads to coordinate with marketplace members.'
+                        : 'Start browsing to connect with other users.'}
                 </div>
               </div>
             ) : (
@@ -1233,12 +1241,12 @@ export default function MessagesPage() {
                       View Listing
                     </Link>
                   )}
-                  <Link href={ROUTES.OFFERS} className={styles.chatActionBtn}>
-                    <ExternalLinkIcon />
-                    Open Offers
-                  </Link>
-                </div>
-                <span className={styles.chatActionHint}>Press Enter to send</span>
+                    <Link href={secondaryRoute} className={styles.chatActionBtn}>
+                      <ExternalLinkIcon />
+                      {secondaryLabel}
+                    </Link>
+                  </div>
+                  <span className={styles.chatActionHint}>Press Enter to send</span>
               </div>
             </div>
           </div>
@@ -1249,14 +1257,16 @@ export default function MessagesPage() {
             </div>
             <div className={styles.emptyChatTitle}>Select a conversation</div>
             <div className={styles.emptyChatDesc}>
-              Choose a conversation from the sidebar to start messaging, or browse listings to connect with sellers.
+              {isAdminWorkspace
+                ? 'Choose a moderation conversation from the sidebar to continue helping marketplace members.'
+                : 'Choose a conversation from the sidebar to start messaging, or browse listings to connect with sellers.'}
             </div>
             <div className={styles.emptyChatActions}>
-              <Link href={ROUTES.BROWSE} className={styles.emptyChatAction}>
-                Browse Listings
+              <Link href={browseRoute} className={styles.emptyChatAction}>
+                {isAdminWorkspace ? 'Open Overview' : 'Browse Listings'}
               </Link>
-              <Link href={ROUTES.OFFERS} className={styles.emptyChatActionSecondary}>
-                View Offers
+              <Link href={secondaryRoute} className={styles.emptyChatActionSecondary}>
+                {isAdminWorkspace ? 'Review Users' : 'View Offers'}
               </Link>
             </div>
           </div>

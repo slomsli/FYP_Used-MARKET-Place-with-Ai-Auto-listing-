@@ -2,7 +2,10 @@ import type { Request, Response } from 'express';
 import type { AuthenticatedRequest } from '../types/auth';
 import {
   AdminServiceError,
+  deleteAdminListing,
   ensureAdminModerationThread,
+  getAdminListings,
+  getAdminOverview,
   createAdminUser,
   createCategory,
   createLocation,
@@ -21,6 +24,15 @@ function handleAdminError(res: Response, error: unknown, fallbackMessage: string
 
   console.error(fallbackMessage, error);
   sendError(res, fallbackMessage, 500);
+}
+
+export async function getAdminOverviewHandler(req: Request, res: Response): Promise<void> {
+  try {
+    const data = await getAdminOverview();
+    sendSuccess(res, data);
+  } catch (error) {
+    handleAdminError(res, error, 'Internal server error while fetching the admin overview');
+  }
 }
 
 export async function getAdminUsersHandler(req: Request, res: Response): Promise<void> {
@@ -53,6 +65,23 @@ export async function createAdminUserHandler(req: Request, res: Response): Promi
     sendSuccess(res, data, 201);
   } catch (error) {
     handleAdminError(res, error, 'Internal server error while creating a user');
+  }
+}
+
+export async function getAdminListingsHandler(req: Request, res: Response): Promise<void> {
+  try {
+    const data = await getAdminListings({
+      page: req.query.page ? Number(req.query.page) : undefined,
+      pageSize: req.query.pageSize ? Number(req.query.pageSize) : undefined,
+      search: typeof req.query.search === 'string' ? req.query.search : undefined,
+      status: typeof req.query.status === 'string' ? req.query.status : undefined,
+      categoryId: req.query.categoryId ? Number(req.query.categoryId) : undefined,
+      stateId: req.query.stateId ? Number(req.query.stateId) : undefined,
+    });
+
+    sendSuccess(res, data);
+  } catch (error) {
+    handleAdminError(res, error, 'Internal server error while fetching admin listings');
   }
 }
 
@@ -110,6 +139,22 @@ export async function ensureAdminModerationThreadHandler(
     sendSuccess(res, data, 201);
   } catch (error) {
     handleAdminError(res, error, 'Internal server error while preparing a moderation thread');
+  }
+}
+
+export async function deleteAdminListingHandler(req: Request, res: Response): Promise<void> {
+  const listingId = typeof req.params.listingId === 'string' ? req.params.listingId.trim() : '';
+
+  if (!listingId) {
+    sendError(res, 'listingId is required', 422);
+    return;
+  }
+
+  try {
+    const data = await deleteAdminListing(listingId);
+    sendSuccess(res, data);
+  } catch (error) {
+    handleAdminError(res, error, 'Internal server error while deleting a listing from admin management');
   }
 }
 

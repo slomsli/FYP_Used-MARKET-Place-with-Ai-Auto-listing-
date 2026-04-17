@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ROUTES } from '@/src/config/routes';
 import { useAuth } from '@/src/hooks/useAuth';
+import { getProfile } from '@/src/services/profileService';
 import {
   getPublicListingById,
   recordPublicListingView,
@@ -169,6 +170,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [searchText, setSearchText] = useState('');
+  const [viewerRole, setViewerRole] = useState<string | null>(null);
   const [isFavorited, setIsFavorited] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -246,9 +248,45 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
     };
   }, [listingId, response]);
 
+  useEffect(() => {
+    if (!user || !session?.access_token) {
+      setViewerRole(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    getProfile(session.access_token).then((profileResponse) => {
+      if (cancelled) {
+        return;
+      }
+
+      setViewerRole(
+        profileResponse.data?.role ||
+          (typeof user.user_metadata?.role === 'string' ? user.user_metadata.role : null)
+      );
+    }).catch(() => {
+      if (!cancelled) {
+        setViewerRole(typeof user.user_metadata?.role === 'string' ? user.user_metadata.role : null);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.access_token, user]);
+
+  const resolvedViewerRole =
+    viewerRole || (typeof user?.user_metadata?.role === 'string' ? user.user_metadata.role : null);
+  const isAdminViewer = resolvedViewerRole === 'admin';
+  const memberAccessResolved = !user || resolvedViewerRole !== null;
+  const showMemberActions = !user || resolvedViewerRole === 'user';
+  const accountHubRoute = isAdminViewer ? ROUTES.ADMIN : ROUTES.DASHBOARD;
+  const inboxRoute = isAdminViewer ? ROUTES.ADMIN_MESSAGES : ROUTES.MESSAGES;
+
   // Check favorite status when user is authenticated
   useEffect(() => {
-    if (!user || !session?.access_token || !response) return;
+    if (!user || !session?.access_token || !response || resolvedViewerRole !== 'user') return;
     let cancelled = false;
 
     async function checkStatus() {
@@ -260,7 +298,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
 
     checkStatus();
     return () => { cancelled = true; };
-  }, [user, session, listingId, response]);
+  }, [listingId, resolvedViewerRole, response, session, user]);
 
   useEffect(() => {
     if (!toast) {
@@ -294,6 +332,11 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
       return;
     }
 
+    if (resolvedViewerRole !== 'user') {
+      setToast('Admin accounts cannot save marketplace favorites.');
+      return;
+    }
+
     if (favoriteLoading) return;
     setFavoriteLoading(true);
 
@@ -315,6 +358,11 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
   async function handleOfferSubmit() {
     if (!user || !session?.access_token || !response) return;
     if (offerSubmitting) return;
+
+    if (resolvedViewerRole !== 'user') {
+      setToast('Admin accounts cannot place offers or purchase requests.');
+      return;
+    }
 
     const { createOffer } = await import('@/src/services/offerService');
     setOfferSubmitting(true);
@@ -408,11 +456,13 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
     listing.brand?.trim()
       ? `The seller listed this piece under ${listing.brand.trim()} and marked it as ${listing.conditionLabel.toLowerCase()}.`
       : `The seller marked this item as ${listing.conditionLabel.toLowerCase()} and published it from ${listing.locationLabel}.`,
-    isSoldOut
-      ? 'This listing is now sold out. Buyers can still review the listing history here, but new offers and messages are closed.'
-      : listing.negotiable
-      ? 'The asking price is currently negotiable, so buyers can reach out or submit an offer from the marketplace flow.'
-      : 'The listing is currently set to a fixed asking price, but buyers can still contact the seller through the marketplace flow.',
+    isAdminViewer
+      ? 'Administrators can review this listing and seller history here, but offers, favorites, and direct marketplace actions stay disabled in admin mode.'
+      : isSoldOut
+        ? 'This listing is now sold out. Buyers can still review the listing history here, but new offers and messages are closed.'
+        : listing.negotiable
+          ? 'The asking price is currently negotiable, so buyers can reach out or submit an offer from the marketplace flow.'
+          : 'The listing is currently set to a fixed asking price, but buyers can still contact the seller through the marketplace flow.',
   ];
   const highlights = [
     `${listing.favoritesCount} saves and ${listing.totalOffersCount} recorded offer${listing.totalOffersCount === 1 ? '' : 's'}.`,
@@ -435,14 +485,14 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
           </Link>
 
           <nav className={styles.nav}>
-            <Link href={ROUTES.DASHBOARD} className={styles.navLink}>
-              Dashboard
+            <Link href={accountHubRoute} className={styles.navLink}>
+              {isAdminViewer ? 'Admin Console' : 'Dashboard'}
             </Link>
             <Link href={ROUTES.BROWSE} className={`${styles.navLink} ${styles.navLinkActive}`}>
               Browse
             </Link>
-            <Link href={ROUTES.ADD_LISTING} className={styles.navLink}>
-              Sell
+            <Link href={isAdminViewer ? ROUTES.ADMIN_USERS : ROUTES.ADD_LISTING} className={styles.navLink}>
+              {isAdminViewer ? 'Users' : 'Sell'}
             </Link>
           </nav>
         </div>
@@ -461,14 +511,16 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
             />
           </form>
 
-          <Link href={ROUTES.DASHBOARD} className={styles.iconButton} aria-label="Dashboard alerts">
+          <Link href={accountHubRoute} className={styles.iconButton} aria-label="Dashboard alerts">
             <BellIcon />
           </Link>
-          <Link href={ROUTES.FAVORITES} className={styles.iconButton} aria-label="Saved listings">
-            <HeartIcon />
-          </Link>
-          <Link href={ROUTES.DASHBOARD} className={styles.avatarButton}>
-            Hub
+          {showMemberActions && (
+            <Link href={ROUTES.FAVORITES} className={styles.iconButton} aria-label="Saved listings">
+              <HeartIcon />
+            </Link>
+          )}
+          <Link href={accountHubRoute} className={styles.avatarButton}>
+            {isAdminViewer ? 'Admin' : 'Hub'}
           </Link>
         </div>
       </header>
@@ -492,15 +544,17 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
                   <span className={styles.badgeSoft}>{availabilityLabel}</span>
                   <span className={styles.badgeMint}>{listing.conditionLabel}</span>
                 </div>
-                <button
-                  type="button"
-                  className={`${styles.saveButton} ${isFavorited ? styles.saveButtonActive : ''}`}
-                  aria-label={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
-                  onClick={handleFavoriteToggle}
-                  disabled={favoriteLoading}
-                >
-                  <HeartIcon />
-                </button>
+                {showMemberActions && (
+                  <button
+                    type="button"
+                    className={`${styles.saveButton} ${isFavorited ? styles.saveButtonActive : ''}`}
+                    aria-label={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
+                    onClick={handleFavoriteToggle}
+                    disabled={favoriteLoading}
+                  >
+                    <HeartIcon />
+                  </button>
+                )}
               </div>
 
               <div className={styles.heroGlow} />
@@ -611,6 +665,17 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
 
             <div className={styles.actionStack}>
               {listing.status === 'active' ? (
+                !memberAccessResolved ? (
+                  <div className={styles.statusNotice}>
+                    Checking account permissions for marketplace actions...
+                  </div>
+                ) : isAdminViewer ? (
+                  <div className={styles.statusNotice}>
+                    <strong>Admin view only.</strong> You can inspect listings and seller history here,
+                    but favorites, offers, and purchase requests are disabled for administrator
+                    accounts. Seller outreach stays inside the admin console listing-management flow.
+                  </div>
+                ) : (
                 <>
                   <button
                     type="button"
@@ -633,7 +698,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
                       className={styles.secondaryAction}
                       onClick={() =>
                         handleProtectedNavigation(
-                          `${ROUTES.MESSAGES}?${new URLSearchParams({
+                          `${inboxRoute}?${new URLSearchParams({
                             listingId: listing.id,
                             recipientId: seller.id,
                             recipientName: seller.displayName,
@@ -662,6 +727,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
                     </button>
                   </div>
                 </>
+                )
               ) : (
                 <div className={styles.statusNotice}>
                   {isSoldOut ? (
@@ -794,15 +860,25 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
             </div>
             <div>
               <h3>Support</h3>
-              <Link href={ROUTES.MESSAGES}>Messages</Link>
-              <Link href={ROUTES.OFFERS}>Offers</Link>
-              <Link href={ROUTES.SETTINGS}>Contact</Link>
+              <Link href={inboxRoute}>{isAdminViewer ? 'Admin inbox' : 'Messages'}</Link>
+              <Link href={isAdminViewer ? ROUTES.ADMIN_USERS : ROUTES.OFFERS}>
+                {isAdminViewer ? 'User review' : 'Offers'}
+              </Link>
+              <Link href={isAdminViewer ? ROUTES.ADMIN_STRUCTURE : ROUTES.SETTINGS}>
+                {isAdminViewer ? 'Structure' : 'Contact'}
+              </Link>
             </div>
             <div>
-              <h3>Account</h3>
-              <Link href={ROUTES.FAVORITES}>Saved items</Link>
-              <Link href={ROUTES.MY_LISTINGS}>My listings</Link>
-              <Link href={ROUTES.PROFILE}>Profile</Link>
+              <h3>{isAdminViewer ? 'Admin' : 'Account'}</h3>
+              <Link href={isAdminViewer ? ROUTES.ADMIN : ROUTES.FAVORITES}>
+                {isAdminViewer ? 'Overview' : 'Saved items'}
+              </Link>
+              <Link href={isAdminViewer ? ROUTES.ADMIN_USERS : ROUTES.MY_LISTINGS}>
+                {isAdminViewer ? 'Users' : 'My listings'}
+              </Link>
+              <Link href={isAdminViewer ? ROUTES.ADMIN_STRUCTURE : ROUTES.PROFILE}>
+                {isAdminViewer ? 'Structure' : 'Profile'}
+              </Link>
             </div>
           </div>
         </footer>

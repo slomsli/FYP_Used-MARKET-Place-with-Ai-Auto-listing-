@@ -79,6 +79,7 @@ export async function sendMessage(req: AuthenticatedRequest, res: Response): Pro
       error instanceof Error &&
       (
         error.message.includes('suspended') ||
+        error.message.includes('disabled for this role') ||
         error.message.includes('moderation thread')
       )
     ) {
@@ -116,6 +117,7 @@ export async function sendReply(req: AuthenticatedRequest, res: Response): Promi
       error instanceof Error &&
       (
         error.message.includes('suspended') ||
+        error.message.includes('disabled for this role') ||
         error.message.includes('moderation thread')
       )
     ) {

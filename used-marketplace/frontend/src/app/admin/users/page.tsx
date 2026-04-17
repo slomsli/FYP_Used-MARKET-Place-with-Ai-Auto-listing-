@@ -424,7 +424,7 @@ export default function AdminUsersPage() {
       topicType: response.data.topicType,
     });
 
-    router.push(`${ROUTES.MESSAGES}?${params.toString()}`);
+    router.push(`${ROUTES.ADMIN_MESSAGES}?${params.toString()}`);
   }
 
   const detailTarget = details?.user ?? null;

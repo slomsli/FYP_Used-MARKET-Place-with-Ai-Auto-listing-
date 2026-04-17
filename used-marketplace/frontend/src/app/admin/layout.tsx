@@ -58,6 +58,25 @@ function UsersIcon() {
   );
 }
 
+function ListingsIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M4 5h16" />
+      <path d="M4 12h16" />
+      <path d="M4 19h16" />
+      <path d="M8 5v14" />
+    </svg>
+  );
+}
+
+function MessageIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
 function CategoryIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -65,15 +84,6 @@ function CategoryIcon() {
       <path d="M14 3h7v7h-7z" />
       <path d="M14 14h7v7h-7z" />
       <path d="M10 10l4-4" />
-    </svg>
-  );
-}
-
-function LocationIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M12 21s-6-4.5-6-10a6 6 0 1 1 12 0c0 5.5-6 10-6 10Z" />
-      <circle cx="12" cy="11" r="2" />
     </svg>
   );
 }
@@ -179,16 +189,27 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
 
   const displayName = profileName?.trim() || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Admin User';
   const isAdmin = (profileRole || user?.user_metadata?.role) === 'admin';
-  const searchPlaceholder = pathname.startsWith(ROUTES.ADMIN_STRUCTURE)
-    ? 'Search categories, regions, or districts...'
-    : 'Search by name, email or ID...';
+  const canSearch =
+    pathname === ROUTES.ADMIN_USERS ||
+    pathname === ROUTES.ADMIN_LISTINGS ||
+    pathname === ROUTES.ADMIN_STRUCTURE;
+  const searchPlaceholder = pathname === ROUTES.ADMIN_USERS
+    ? 'Search by name, email or ID...'
+    : pathname === ROUTES.ADMIN_LISTINGS
+      ? 'Search listings, sellers, category, or location...'
+    : pathname === ROUTES.ADMIN_STRUCTURE
+      ? 'Search categories, regions, or districts...'
+      : pathname === ROUTES.ADMIN_MESSAGES
+        ? 'Inbox search stays inside the messages workspace.'
+        : 'Overview metrics refresh automatically.';
 
   const navItems = useMemo(
     () => [
+      { label: 'Overview', href: ROUTES.ADMIN, icon: <DashboardIcon />, active: pathname === ROUTES.ADMIN },
+      { label: 'Listings', href: ROUTES.ADMIN_LISTINGS, icon: <ListingsIcon />, active: pathname === ROUTES.ADMIN_LISTINGS },
       { label: 'Users', href: ROUTES.ADMIN_USERS, icon: <UsersIcon />, active: pathname === ROUTES.ADMIN_USERS },
-      { label: 'Structure', href: ROUTES.ADMIN_STRUCTURE, icon: <DashboardIcon />, active: pathname === ROUTES.ADMIN_STRUCTURE },
-      { label: 'Categories', href: `${ROUTES.ADMIN_STRUCTURE}#categories`, icon: <CategoryIcon />, active: pathname === ROUTES.ADMIN_STRUCTURE },
-      { label: 'Locations', href: `${ROUTES.ADMIN_STRUCTURE}#locations`, icon: <LocationIcon />, active: pathname === ROUTES.ADMIN_STRUCTURE },
+      { label: 'Messages', href: ROUTES.ADMIN_MESSAGES, icon: <MessageIcon />, active: pathname === ROUTES.ADMIN_MESSAGES },
+      { label: 'Structure', href: ROUTES.ADMIN_STRUCTURE, icon: <CategoryIcon />, active: pathname === ROUTES.ADMIN_STRUCTURE },
     ],
     [pathname]
   );
@@ -203,6 +224,10 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
   }
 
   const handleSearchChange = (value: string) => {
+    if (!canSearch) {
+      return;
+    }
+
     const nextParams = new URLSearchParams(searchParams.toString());
 
     if (value.trim()) {
@@ -251,9 +276,9 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
 
-        <Link href={ROUTES.DASHBOARD} className={styles.dashboardLink}>
+        <Link href={ROUTES.BROWSE} className={styles.dashboardLink}>
           <DashboardIcon />
-          <span>Back to Dashboard</span>
+          <span>Marketplace View</span>
         </Link>
       </aside>
 
@@ -264,10 +289,11 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
               <SearchIcon />
             </span>
             <input
-              value={searchValue}
+              value={canSearch ? searchValue : ''}
               onChange={(event) => handleSearchChange(event.target.value)}
               placeholder={searchPlaceholder}
               aria-label={searchPlaceholder}
+              disabled={!canSearch}
             />
           </label>
 
