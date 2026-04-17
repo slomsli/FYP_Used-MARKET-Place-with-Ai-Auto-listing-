@@ -224,6 +224,10 @@ export default function AdminPage() {
             <ListingIcon />
             <span>Manage Listings</span>
           </Link>
+          <Link href={ROUTES.ADMIN_REPORTS} className={styles.secondaryButton}>
+            <AlertIcon />
+            <span>Open Reports</span>
+          </Link>
           <Link href={ROUTES.ADMIN_MESSAGES} className={styles.secondaryButton}>
             <MessageIcon />
             <span>Open Inbox</span>
@@ -362,6 +366,10 @@ export default function AdminPage() {
               <Link href={ROUTES.ADMIN_LISTINGS} className={styles.quickAction}>
                 <ListingIcon />
                 <span>Listing review</span>
+              </Link>
+              <Link href={ROUTES.ADMIN_REPORTS} className={styles.quickAction}>
+                <AlertIcon />
+                <span>Report queue</span>
               </Link>
               <Link href={ROUTES.ADMIN_USERS} className={styles.quickAction}>
                 <UsersIcon />

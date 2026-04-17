@@ -6,12 +6,15 @@ import {
   ensureAdminModerationThreadHandler,
   getAdminListingsHandler,
   getAdminOverviewHandler,
+  getAdminReportsHandler,
   createAdminUserHandler,
   createCategoryHandler,
   createLocationHandler,
   getAdminStructureHandler,
   getAdminUserDetailsHandler,
   getAdminUsersHandler,
+  updateAdminListingStatusHandler,
+  updateAdminReportStatusHandler,
   updateAdminUserStatusHandler,
 } from '../controllers/adminController';
 
@@ -23,10 +26,13 @@ router.use(requireAdmin);
 router.get('/overview', getAdminOverviewHandler);
 router.get('/users', getAdminUsersHandler);
 router.get('/listings', getAdminListingsHandler);
+router.get('/reports', getAdminReportsHandler);
 router.post('/users', createAdminUserHandler);
 router.get('/users/:userId', getAdminUserDetailsHandler);
 router.patch('/users/:userId/status', updateAdminUserStatusHandler);
 router.post('/users/:userId/moderation-thread', ensureAdminModerationThreadHandler);
+router.patch('/reports/:reportId/status', updateAdminReportStatusHandler);
+router.patch('/listings/:listingId/status', updateAdminListingStatusHandler);
 router.delete('/listings/:listingId', deleteAdminListingHandler);
 
 router.get('/structure', getAdminStructureHandler);

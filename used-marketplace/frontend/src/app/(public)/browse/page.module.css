@@ -744,6 +744,13 @@
   gap: 0.75rem;
 }
 
+.cardPills {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
 .cardCategory,
 .cardCondition {
   display: inline-flex;
@@ -760,8 +767,27 @@
 }
 
 .cardCondition {
-  background: rgba(17, 106, 93, 0.08);
+  background: rgba(17, 106, 93, 0.12);
   color: #116a5d;
+}
+
+.cardReport {
+  border: none;
+  background: transparent;
+  color: #b55445;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.cardReport:hover {
+  color: #8e3e32;
 }
 
 .footerControls {

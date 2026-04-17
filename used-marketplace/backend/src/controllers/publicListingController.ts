@@ -1,16 +1,22 @@
 import type { Request, Response } from 'express';
+import type { AuthenticatedRequest } from '../types/auth';
 import {
   LISTING_CONDITIONS,
   PUBLIC_LISTING_SORT_OPTIONS,
   type ListingCondition,
   type PublicListingSortOption,
 } from '../types/listing';
+import { REPORT_REASONS, type ReportReason } from '../types/report';
 import {
   getPublicListingById,
   getPublicListings,
   incrementPublicListingView,
   ListingServiceError,
 } from '../services/listingService';
+import {
+  createListingReport,
+  ReportServiceError,
+} from '../services/reportService';
 import { sendError, sendSuccess } from '../utils/apiResponse';
 
 function handlePublicListingError(
@@ -18,7 +24,7 @@ function handlePublicListingError(
   error: unknown,
   fallbackMessage: string
 ): void {
-  if (error instanceof ListingServiceError) {
+  if (error instanceof ListingServiceError || error instanceof ReportServiceError) {
     sendError(res, error.message, error.status);
     return;
   }
@@ -108,6 +114,17 @@ function parseOptionalPositiveInteger(value: unknown, label: string): number | u
   }
 
   return Number(value);
+}
+
+function parseReportReason(value: unknown): ReportReason {
+  if (typeof value !== 'string' || !REPORT_REASONS.includes(value as ReportReason)) {
+    throw new ReportServiceError(
+      `reason must be one of: ${REPORT_REASONS.join(', ')}`,
+      422
+    );
+  }
+
+  return value as ReportReason;
 }
 
 function parseOptionalNonNegativeNumber(value: unknown, label: string): number | undefined {
@@ -218,5 +235,27 @@ export async function recordPublicListingView(req: Request, res: Response): Prom
     sendSuccess(res, response);
   } catch (error) {
     handlePublicListingError(res, error, 'Internal server error while recording listing view');
+  }
+}
+
+export async function createPublicListingReport(
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> {
+  if (!req.user) {
+    sendError(res, 'Unauthorized', 401);
+    return;
+  }
+
+  try {
+    const response = await createListingReport({
+      listingId: parseListingId(req.params.listingId),
+      reporterId: req.user.id,
+      reason: parseReportReason(req.body?.reason),
+      details: typeof req.body?.details === 'string' ? req.body.details : undefined,
+    });
+    sendSuccess(res, response, 201);
+  } catch (error) {
+    handlePublicListingError(res, error, 'Internal server error while creating listing report');
   }
 }

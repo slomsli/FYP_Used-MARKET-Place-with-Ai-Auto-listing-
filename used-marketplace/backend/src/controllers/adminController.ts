@@ -6,12 +6,15 @@ import {
   ensureAdminModerationThread,
   getAdminListings,
   getAdminOverview,
+  getAdminReports,
   createAdminUser,
   createCategory,
   createLocation,
   getAdminStructure,
   getAdminUserDetails,
   getAdminUsers,
+  updateAdminListingStatus,
+  updateAdminReportStatus,
   updateAdminUserStatus,
 } from '../services/adminService';
 import { sendError, sendSuccess } from '../utils/apiResponse';
@@ -85,6 +88,21 @@ export async function getAdminListingsHandler(req: Request, res: Response): Prom
   }
 }
 
+export async function getAdminReportsHandler(req: Request, res: Response): Promise<void> {
+  try {
+    const data = await getAdminReports({
+      page: req.query.page ? Number(req.query.page) : undefined,
+      pageSize: req.query.pageSize ? Number(req.query.pageSize) : undefined,
+      search: typeof req.query.search === 'string' ? req.query.search : undefined,
+      status: typeof req.query.status === 'string' ? req.query.status : undefined,
+    });
+
+    sendSuccess(res, data);
+  } catch (error) {
+    handleAdminError(res, error, 'Internal server error while fetching admin reports');
+  }
+}
+
 export async function getAdminUserDetailsHandler(
   req: Request,
   res: Response
@@ -155,6 +173,59 @@ export async function deleteAdminListingHandler(req: Request, res: Response): Pr
     sendSuccess(res, data);
   } catch (error) {
     handleAdminError(res, error, 'Internal server error while deleting a listing from admin management');
+  }
+}
+
+export async function updateAdminListingStatusHandler(
+  req: Request,
+  res: Response
+): Promise<void> {
+  const listingId = typeof req.params.listingId === 'string' ? req.params.listingId.trim() : '';
+  const action = req.body?.action;
+
+  if (!listingId) {
+    sendError(res, 'listingId is required', 422);
+    return;
+  }
+
+  if (action !== 'pause' && action !== 'resume') {
+    sendError(res, 'action must be either pause or resume', 422);
+    return;
+  }
+
+  try {
+    const data = await updateAdminListingStatus(listingId, action);
+    sendSuccess(res, data);
+  } catch (error) {
+    handleAdminError(res, error, 'Internal server error while updating listing status');
+  }
+}
+
+export async function updateAdminReportStatusHandler(
+  req: Request,
+  res: Response
+): Promise<void> {
+  const reportId = typeof req.params.reportId === 'string' ? req.params.reportId.trim() : '';
+  const action = req.body?.action;
+
+  if (!reportId) {
+    sendError(res, 'reportId is required', 422);
+    return;
+  }
+
+  if (action !== 'review' && action !== 'resolve' && action !== 'dismiss') {
+    sendError(res, 'action must be one of: review, resolve, dismiss', 422);
+    return;
+  }
+
+  try {
+    const data = await updateAdminReportStatus({
+      reportId,
+      action,
+    });
+    sendSuccess(res, data);
+  } catch (error) {
+    handleAdminError(res, error, 'Internal server error while updating report status');
   }
 }
 

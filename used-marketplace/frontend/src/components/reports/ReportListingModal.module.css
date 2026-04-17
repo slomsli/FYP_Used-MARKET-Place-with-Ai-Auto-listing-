@@ -1,0 +1,207 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(10, 15, 30, 0.66);
+  backdrop-filter: blur(10px);
+}
+
+.dialog {
+  width: min(560px, 100%);
+  border-radius: 30px;
+  background:
+    radial-gradient(circle at top right, rgba(20, 31, 124, 0.08), transparent 30%),
+    #ffffff;
+  border: 1px solid rgba(20, 34, 125, 0.08);
+  box-shadow: 0 32px 70px rgba(10, 15, 30, 0.24);
+  overflow: hidden;
+}
+
+.header {
+  padding: 1.4rem 1.5rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.eyebrow {
+  color: #1a7267;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin-top: 0.45rem;
+  color: #122049;
+  font-size: 1.7rem;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.subtitle {
+  margin-top: 0.65rem;
+  color: #667289;
+  line-height: 1.6;
+}
+
+.closeButton {
+  width: 2.4rem;
+  height: 2.4rem;
+  border: none;
+  border-radius: 999px;
+  background: #eef2fb;
+  color: #4b5875;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.body {
+  padding: 0 1.5rem 1.35rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.listingCard {
+  padding: 1rem 1.05rem;
+  border-radius: 22px;
+  background: #f5f7fe;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.listingLabel {
+  color: #7b89a4;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.listingTitle {
+  color: #15224a;
+  font-size: 1.02rem;
+  font-weight: 800;
+}
+
+.field {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.label {
+  color: #36405c;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.select,
+.textarea {
+  width: 100%;
+  border: 1px solid rgba(18, 32, 73, 0.12);
+  border-radius: 18px;
+  background: rgba(236, 238, 246, 0.52);
+  color: #111827;
+  font: inherit;
+  outline: none;
+}
+
+.select {
+  padding: 0.95rem 1rem;
+}
+
+.textarea {
+  min-height: 120px;
+  padding: 0.95rem 1rem;
+  resize: vertical;
+  line-height: 1.6;
+}
+
+.select:focus,
+.textarea:focus {
+  border-color: rgba(21, 34, 74, 0.24);
+  box-shadow: 0 0 0 3px rgba(21, 34, 74, 0.06);
+}
+
+.hint {
+  color: #6b7c98;
+  font-size: 0.87rem;
+  line-height: 1.6;
+}
+
+.error {
+  padding: 0.85rem 0.95rem;
+  border-radius: 16px;
+  background: rgba(188, 27, 27, 0.08);
+  color: #b61d1d;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.footer {
+  padding: 1rem 1.5rem 1.45rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  border-top: 1px solid rgba(20, 34, 125, 0.08);
+  background: rgba(248, 250, 255, 0.78);
+}
+
+.secondaryButton,
+.primaryButton {
+  border: none;
+  border-radius: 16px;
+  padding: 0.95rem 1.15rem;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.secondaryButton {
+  background: #eff2fb;
+  color: #42516d;
+}
+
+.primaryButton {
+  background: linear-gradient(135deg, #141f7c, #2f3fa8);
+  color: #ffffff;
+  box-shadow: 0 20px 34px rgba(20, 31, 124, 0.22);
+}
+
+.secondaryButton:disabled,
+.primaryButton:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+@media (max-width: 640px) {
+  .overlay {
+    padding: 1rem;
+    align-items: flex-end;
+  }
+
+  .dialog {
+    border-radius: 26px;
+  }
+
+  .header,
+  .body,
+  .footer {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .footer {
+    flex-direction: column-reverse;
+  }
+}

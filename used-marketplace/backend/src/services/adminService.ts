@@ -1,6 +1,13 @@
 import { supabaseAdmin } from '../config/supabase';
 import { ensureProfileForUserId } from './auth/profileSync';
 import {
+  REPORT_REASON_LABELS,
+  REPORT_STATUS_LABELS,
+  type AdminReportStatusFilter as SharedAdminReportStatusFilter,
+  type ReportReason,
+  type ReportStatus,
+} from '../types/report';
+import {
   MODERATION_LISTING_BRAND,
   buildModerationListingTargetKey,
   buildModerationListingTitle,
@@ -23,6 +30,7 @@ type AdminListingStatusFilter =
   | 'rejected'
   | 'archived'
   | 'reported';
+type AdminReportStatusFilter = SharedAdminReportStatusFilter;
 
 type Relation<T> = T | T[] | null;
 
@@ -74,6 +82,17 @@ interface RawAdminListing {
   states: Relation<{ id: number; name: string }>;
   areas: Relation<{ id: number; name: string }>;
   categories: Relation<{ id: number; name: string }>;
+}
+
+interface RawAdminReport {
+  id: string;
+  listing_id: string;
+  reporter_id: string;
+  reason: ReportReason;
+  details: string | null;
+  status: ReportStatus;
+  created_at: string;
+  updated_at: string;
 }
 
 interface RawCategory {
@@ -166,6 +185,13 @@ export interface AdminListingsQuery {
   status?: string;
   categoryId?: number;
   stateId?: number;
+}
+
+export interface AdminReportsQuery {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: string;
 }
 
 export interface CreateAdminUserInput {
@@ -348,6 +374,82 @@ export interface AdminDeleteListingResponse {
   };
 }
 
+export interface AdminListingStatusUpdateResponse {
+  id: string;
+  title: string;
+  status: string;
+  statusLabel: string;
+  hiddenFromBrowse: boolean;
+}
+
+export interface AdminReportListItem {
+  id: string;
+  reason: ReportReason;
+  reasonLabel: string;
+  details: string | null;
+  status: ReportStatus;
+  statusLabel: string;
+  createdAt: string;
+  updatedAt: string;
+  listing: {
+    id: string;
+    title: string;
+    price: number;
+    currency: string;
+    status: string;
+    statusLabel: string;
+    coverImagePath: string | null;
+    locationLabel: string;
+  };
+  reporter: {
+    id: string;
+    fullName: string;
+    username: string;
+    avatarPath: string | null;
+    locationLabel: string;
+  };
+  seller: {
+    id: string;
+    fullName: string;
+    username: string;
+    avatarPath: string | null;
+    locationLabel: string;
+  };
+}
+
+export interface AdminReportsResponse {
+  stats: {
+    totalReports: number;
+    pendingReports: number;
+    inReviewReports: number;
+    resolvedReports: number;
+    pausedListings: number;
+  };
+  filters: {
+    search: string;
+    status: AdminReportStatusFilter;
+  };
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalItems: number;
+    totalPages: number;
+  };
+  reports: AdminReportListItem[];
+}
+
+export interface UpdateAdminReportStatusInput {
+  reportId: string;
+  action: 'review' | 'resolve' | 'dismiss';
+}
+
+export interface AdminReportStatusUpdateResponse {
+  id: string;
+  status: ReportStatus;
+  statusLabel: string;
+  updatedAt: string;
+}
+
 export interface AdminStructureCategoryNode {
   id: number;
   name: string;
@@ -523,6 +625,19 @@ function normalizeAdminListingStatusFilter(value: string | undefined): AdminList
   return 'all';
 }
 
+function normalizeAdminReportStatusFilter(value: string | undefined): AdminReportStatusFilter {
+  if (
+    value === 'pending' ||
+    value === 'reviewed' ||
+    value === 'resolved' ||
+    value === 'rejected'
+  ) {
+    return value;
+  }
+
+  return 'all';
+}
+
 function slugify(value: string): string {
   return value
     .trim()
@@ -575,6 +690,10 @@ function humanizeValue(value: string): string {
     .split('_')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
+}
+
+function humanizeAdminListingStatus(value: string): string {
+  return value === 'archived' ? 'Paused' : humanizeValue(value);
 }
 
 function deriveUserStatus(user: AuthAdminUser | undefined): AdminUserStatus {
@@ -678,7 +797,7 @@ function buildAdminListingListItem(
     price: Number(listing.price ?? 0),
     currency: listing.currency,
     status: listing.status,
-    statusLabel: humanizeValue(listing.status),
+    statusLabel: humanizeAdminListingStatus(listing.status),
     coverImagePath: listing.cover_image_path,
     createdAt: listing.created_at,
     updatedAt: listing.updated_at,
@@ -697,6 +816,55 @@ function buildAdminListingListItem(
     reportCount: counts.reportCount,
     pendingReportCount: counts.pendingReportCount,
     isFlagged: counts.pendingReportCount > 0,
+  };
+}
+
+function buildAdminReportListItem(
+  report: RawAdminReport,
+  listing: RawAdminListing,
+  reporterProfile: RawProfile,
+  sellerProfile: RawProfile
+): AdminReportListItem {
+  const listingState = unwrapRelation(listing.states);
+  const listingArea = unwrapRelation(listing.areas);
+  const reporterState = unwrapRelation(reporterProfile.states);
+  const reporterArea = unwrapRelation(reporterProfile.areas);
+  const sellerState = unwrapRelation(sellerProfile.states);
+  const sellerArea = unwrapRelation(sellerProfile.areas);
+
+  return {
+    id: report.id,
+    reason: report.reason,
+    reasonLabel: REPORT_REASON_LABELS[report.reason] ?? humanizeValue(report.reason),
+    details: report.details,
+    status: report.status,
+    statusLabel: REPORT_STATUS_LABELS[report.status] ?? humanizeValue(report.status),
+    createdAt: report.created_at,
+    updatedAt: report.updated_at,
+    listing: {
+      id: listing.id,
+      title: listing.title,
+      price: Number(listing.price ?? 0),
+      currency: listing.currency,
+      status: listing.status,
+      statusLabel: humanizeAdminListingStatus(listing.status),
+      coverImagePath: listing.cover_image_path,
+      locationLabel: buildLocationLabel(listingState?.name ?? null, listingArea?.name ?? null),
+    },
+    reporter: {
+      id: reporterProfile.id,
+      fullName: buildProfileDisplayName(reporterProfile),
+      username: reporterProfile.username,
+      avatarPath: reporterProfile.avatar_path,
+      locationLabel: buildLocationLabel(reporterState?.name ?? null, reporterArea?.name ?? null),
+    },
+    seller: {
+      id: sellerProfile.id,
+      fullName: buildProfileDisplayName(sellerProfile),
+      username: sellerProfile.username,
+      avatarPath: sellerProfile.avatar_path,
+      locationLabel: buildLocationLabel(sellerState?.name ?? null, sellerArea?.name ?? null),
+    },
   };
 }
 
@@ -1467,6 +1635,256 @@ export async function getAdminListings(query: AdminListingsQuery): Promise<Admin
   };
 }
 
+export async function getAdminReports(query: AdminReportsQuery): Promise<AdminReportsResponse> {
+  const page = normalizePage(query.page);
+  const pageSize = normalizePageSize(query.pageSize);
+  const search = (query.search ?? '').trim().toLowerCase();
+  const status = normalizeAdminReportStatusFilter(query.status);
+
+  const [
+    { data: profiles, error: profileError },
+    { data: listings, error: listingError },
+    { data: reports, error: reportError },
+  ] = await Promise.all([
+    supabaseAdmin
+      .from('profiles')
+      .select(`
+        id, username, full_name, avatar_path, role, created_at, updated_at, state_id, area_id,
+        states!profiles_state_id_fkey ( id, name ),
+        areas!profiles_area_id_fkey ( id, name )
+      `),
+    supabaseAdmin
+      .from('listings')
+      .select(`
+        id,
+        seller_id,
+        title,
+        price,
+        currency,
+        status,
+        cover_image_path,
+        created_at,
+        updated_at,
+        views_count,
+        brand,
+        states!listings_state_id_fkey ( id, name ),
+        areas!listings_area_id_fkey ( id, name ),
+        categories!listings_category_id_fkey ( id, name )
+      `)
+      .or(`brand.is.null,brand.neq.${MODERATION_LISTING_BRAND}`),
+    supabaseAdmin
+      .from('reports')
+      .select('id, listing_id, reporter_id, reason, details, status, created_at, updated_at')
+      .order('created_at', { ascending: false }),
+  ]);
+
+  if (profileError) {
+    console.error('[Admin] Failed to load profiles for report management:', profileError);
+    throw new AdminServiceError('Unable to load report profiles', 500);
+  }
+
+  if (listingError) {
+    console.error('[Admin] Failed to load listings for report management:', listingError);
+    throw new AdminServiceError('Unable to load reported listings', 500);
+  }
+
+  if (reportError) {
+    console.error('[Admin] Failed to load reports for report management:', reportError);
+    throw new AdminServiceError('Unable to load listing reports', 500);
+  }
+
+  const profileMap = new Map(
+    ((profiles ?? []) as RawProfile[]).map((profile) => [profile.id, profile])
+  );
+  const listingMap = new Map(
+    ((listings ?? []) as RawAdminListing[]).map((listing) => [listing.id, listing])
+  );
+
+  const allReports = ((reports ?? []) as RawAdminReport[])
+    .map((report) => {
+      const listing = listingMap.get(report.listing_id);
+      const reporterProfile = profileMap.get(report.reporter_id);
+      const sellerProfile = listing ? profileMap.get(listing.seller_id) : null;
+
+      if (
+        !listing ||
+        !reporterProfile ||
+        !sellerProfile ||
+        listing.brand === MODERATION_LISTING_BRAND ||
+        sellerProfile.role === 'admin'
+      ) {
+        return null;
+      }
+
+      return buildAdminReportListItem(report, listing, reporterProfile, sellerProfile);
+    })
+    .filter((report): report is AdminReportListItem => report !== null);
+
+  const filteredReports = allReports.filter((report) => {
+    const matchesSearch =
+      !search ||
+      report.reasonLabel.toLowerCase().includes(search) ||
+      report.details?.toLowerCase().includes(search) ||
+      report.id.toLowerCase().includes(search) ||
+      report.listing.title.toLowerCase().includes(search) ||
+      report.listing.id.toLowerCase().includes(search) ||
+      report.reporter.fullName.toLowerCase().includes(search) ||
+      report.reporter.username.toLowerCase().includes(search) ||
+      report.seller.fullName.toLowerCase().includes(search) ||
+      report.seller.username.toLowerCase().includes(search);
+
+    const matchesStatus = status === 'all' ? true : report.status === status;
+
+    return matchesSearch && matchesStatus;
+  });
+
+  const totalItems = filteredReports.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const startIndex = (safePage - 1) * pageSize;
+  const paginatedReports = filteredReports.slice(startIndex, startIndex + pageSize);
+  const pausedListingIds = new Set(
+    allReports
+      .filter((report) => report.listing.status === 'archived')
+      .map((report) => report.listing.id)
+  );
+
+  return {
+    stats: {
+      totalReports: allReports.length,
+      pendingReports: allReports.filter((report) => report.status === 'pending').length,
+      inReviewReports: allReports.filter((report) => report.status === 'reviewed').length,
+      resolvedReports: allReports.filter((report) => report.status === 'resolved').length,
+      pausedListings: pausedListingIds.size,
+    },
+    filters: {
+      search: query.search?.trim() ?? '',
+      status,
+    },
+    pagination: {
+      page: safePage,
+      pageSize,
+      totalItems,
+      totalPages,
+    },
+    reports: paginatedReports,
+  };
+}
+
+export async function updateAdminListingStatus(
+  listingId: string,
+  action: 'pause' | 'resume'
+): Promise<AdminListingStatusUpdateResponse> {
+  const { data: listing, error: listingError } = await supabaseAdmin
+    .from('listings')
+    .select('id, seller_id, title, status, brand, published_at')
+    .eq('id', listingId)
+    .maybeSingle();
+
+  if (listingError) {
+    console.error('[Admin] Failed to inspect listing before status update:', listingError);
+    throw new AdminServiceError('Unable to inspect the selected listing', 500);
+  }
+
+  if (!listing) {
+    throw new AdminServiceError('Listing was not found', 404);
+  }
+
+  if (listing.brand === MODERATION_LISTING_BRAND) {
+    throw new AdminServiceError('Moderation thread listings cannot be paused or resumed', 403);
+  }
+
+  const sellerProfile = await getProfileById(listing.seller_id);
+
+  if (sellerProfile.role === 'admin') {
+    throw new AdminServiceError('Admin-owned listings cannot be paused or resumed here', 403);
+  }
+
+  if (action === 'pause' && !['active', 'reserved'].includes(listing.status)) {
+    throw new AdminServiceError('Only active or reserved listings can be paused', 422);
+  }
+
+  if (action === 'resume' && listing.status !== 'archived') {
+    throw new AdminServiceError('Only paused listings can be resumed', 422);
+  }
+
+  const nextStatus = action === 'pause' ? 'archived' : 'active';
+  const timestamp = new Date().toISOString();
+  const { data: updatedListing, error: updateError } = await supabaseAdmin
+    .from('listings')
+    .update({
+      status: nextStatus,
+      updated_at: timestamp,
+      published_at: action === 'resume' ? listing.published_at ?? timestamp : listing.published_at,
+    })
+    .eq('id', listingId)
+    .select('id, title, status')
+    .single();
+
+  if (updateError || !updatedListing) {
+    console.error('[Admin] Failed to update listing status from admin management:', updateError);
+    throw new AdminServiceError('Unable to update the listing status', 500);
+  }
+
+  return {
+    id: updatedListing.id,
+    title: updatedListing.title,
+    status: updatedListing.status,
+    statusLabel: humanizeAdminListingStatus(updatedListing.status),
+    hiddenFromBrowse: updatedListing.status !== 'active',
+  };
+}
+
+export async function updateAdminReportStatus(
+  input: UpdateAdminReportStatusInput
+): Promise<AdminReportStatusUpdateResponse> {
+  const { data: report, error: reportError } = await supabaseAdmin
+    .from('reports')
+    .select('id, status')
+    .eq('id', input.reportId)
+    .maybeSingle();
+
+  if (reportError) {
+    console.error('[Admin] Failed to inspect report before status update:', reportError);
+    throw new AdminServiceError('Unable to inspect the selected report', 500);
+  }
+
+  if (!report) {
+    throw new AdminServiceError('Report was not found', 404);
+  }
+
+  const nextStatus: ReportStatus =
+    input.action === 'review'
+      ? 'reviewed'
+      : input.action === 'resolve'
+        ? 'resolved'
+        : 'rejected';
+  const timestamp = new Date().toISOString();
+  const { data: updatedReport, error: updateError } = await supabaseAdmin
+    .from('reports')
+    .update({
+      status: nextStatus,
+      updated_at: timestamp,
+    })
+    .eq('id', input.reportId)
+    .select('id, status, updated_at')
+    .single();
+
+  if (updateError || !updatedReport) {
+    console.error('[Admin] Failed to update report status:', updateError);
+    throw new AdminServiceError('Unable to update the report status', 500);
+  }
+
+  return {
+    id: updatedReport.id,
+    status: updatedReport.status as ReportStatus,
+    statusLabel:
+      REPORT_STATUS_LABELS[updatedReport.status as ReportStatus] ??
+      humanizeValue(updatedReport.status),
+    updatedAt: updatedReport.updated_at,
+  };
+}
+
 export async function deleteAdminListing(listingId: string): Promise<AdminDeleteListingResponse> {
   const { data: listing, error: listingError } = await supabaseAdmin
     .from('listings')
@@ -1762,7 +2180,7 @@ export async function getAdminUserDetails(userId: string): Promise<AdminUserDeta
       price: Number(listing.price ?? 0),
       currency: listing.currency,
       status: listing.status,
-      statusLabel: humanizeValue(listing.status),
+      statusLabel: humanizeAdminListingStatus(listing.status),
       coverImagePath: listing.cover_image_path,
       createdAt: listing.created_at,
       viewsCount: Number(listing.views_count ?? 0),

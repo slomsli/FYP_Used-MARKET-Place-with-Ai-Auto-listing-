@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ROUTES } from '@/src/config/routes';
+import ReportListingModal from '@/src/components/reports/ReportListingModal';
 import { useAuth } from '@/src/hooks/useAuth';
 import { getProfile } from '@/src/services/profileService';
 import { getPublicListings } from '@/src/services/listingService';
@@ -53,6 +54,15 @@ function HeartIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
       <path d="M12 21.35 10.55 20C5.4 15.24 2 12.11 2 8.28 2 5.27 4.27 3 7.28 3c1.7 0 3.33.79 4.42 2.03A5.97 5.97 0 0 1 16.12 3C19.13 3 21.4 5.27 21.4 8.28c0 3.83-3.4 6.96-8.55 11.72L12 21.35Z" />
+    </svg>
+  );
+}
+
+function FlagIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 4v16" />
+      <path d="M5 5h10l-1.5 3L15 11H5" />
     </svg>
   );
 }
@@ -202,6 +212,7 @@ export default function BrowsePage() {
   const [viewerRole, setViewerRole] = useState<string | null>(null);
   const [favoriteMap, setFavoriteMap] = useState<Record<string, boolean>>({});
   const [favoriteLoadingIds, setFavoriteLoadingIds] = useState<Set<string>>(new Set());
+  const [reportTarget, setReportTarget] = useState<PublicListingSummary | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
@@ -293,6 +304,27 @@ export default function BrowsePage() {
         return next;
       });
     }
+  }
+
+  function handleOpenReport(event: React.MouseEvent, listing: PublicListingSummary) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!user || !session?.access_token) {
+      const redirect =
+        typeof window === 'undefined'
+          ? ROUTES.BROWSE
+          : `${window.location.pathname}${window.location.search}`;
+      router.push(`${ROUTES.LOGIN}?redirect=${encodeURIComponent(redirect)}`);
+      return;
+    }
+
+    if (resolvedViewerRole !== 'user') {
+      setToast('Admin accounts cannot submit marketplace reports.');
+      return;
+    }
+
+    setReportTarget(listing);
   }
 
   useEffect(() => {
@@ -750,12 +782,25 @@ export default function BrowsePage() {
                           </p>
 
                           <div className={styles.cardFooter}>
-                            <span className={styles.cardCategory}>
-                              {listing.category?.name ?? 'Uncategorized'}
-                            </span>
-                            <span className={styles.cardCondition}>
-                              {listing.conditionLabel || formatConditionLabel(listing.condition)}
-                            </span>
+                            <div className={styles.cardPills}>
+                              <span className={styles.cardCategory}>
+                                {listing.category?.name ?? 'Uncategorized'}
+                              </span>
+                              <span className={styles.cardCondition}>
+                                {listing.conditionLabel || formatConditionLabel(listing.condition)}
+                              </span>
+                            </div>
+
+                            {showMemberActions && (
+                              <button
+                                type="button"
+                                className={styles.cardReport}
+                                onClick={(event) => handleOpenReport(event, listing)}
+                              >
+                                <FlagIcon />
+                                <span>Report</span>
+                              </button>
+                            )}
                           </div>
                         </div>
                       </article>
@@ -801,6 +846,18 @@ export default function BrowsePage() {
           )}
         </main>
       </div>
+
+      <ReportListingModal
+        key={reportTarget?.id ?? 'hidden'}
+        open={Boolean(reportTarget)}
+        listing={reportTarget ? { id: reportTarget.id, title: reportTarget.title } : null}
+        token={session?.access_token ?? null}
+        onClose={() => setReportTarget(null)}
+        onReported={(message) => {
+          setReportTarget(null);
+          setToast(message);
+        }}
+      />
     </div>
   );
 }

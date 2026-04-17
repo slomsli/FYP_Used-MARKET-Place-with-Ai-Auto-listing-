@@ -7,6 +7,7 @@ import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import {
   deleteAdminListing,
   getAdminListings,
+  updateAdminListingStatus,
 } from '@/src/services/adminService';
 import type {
   AdminListingListItem,
@@ -151,6 +152,7 @@ export default function AdminListingsPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [messageListingId, setMessageListingId] = useState<string | null>(null);
+  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
@@ -159,7 +161,6 @@ export default function AdminListingsPage() {
     }
 
     let cancelled = false;
-    setLoading(true);
 
     getAdminListings(token, {
       page,
@@ -191,10 +192,6 @@ export default function AdminListingsPage() {
       cancelled = true;
     };
   }, [categoryFilter, deferredSearch, page, refreshKey, stateFilter, statusFilter, token]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [categoryFilter, deferredSearch, stateFilter, statusFilter]);
 
   useEffect(() => {
     if (!notice) {
@@ -267,6 +264,34 @@ export default function AdminListingsPage() {
     setRefreshKey((value) => value + 1);
   }
 
+  async function handleToggleListingStatus(listing: AdminListingListItem) {
+    if (!token) {
+      return;
+    }
+
+    const action = listing.status === 'archived' ? 'resume' : 'pause';
+    setStatusUpdatingId(listing.id);
+    const response = await updateAdminListingStatus(token, listing.id, action);
+    setStatusUpdatingId(null);
+
+    if (!response.data) {
+      setNotice({
+        type: 'error',
+        message: response.error || 'Failed to update listing visibility',
+      });
+      return;
+    }
+
+    setNotice({
+      type: 'success',
+      message:
+        action === 'pause'
+          ? `"${listing.title}" is now paused and hidden from the public browse page.`
+          : `"${listing.title}" is live again and visible in public browse.`,
+    });
+    setRefreshKey((value) => value + 1);
+  }
+
   return (
     <div className={styles.page}>
       <section className={styles.hero}>
@@ -285,7 +310,11 @@ export default function AdminListingsPage() {
             <FilterIcon />
             <select
               value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as AdminListingStatusFilter)}
+              onChange={(event) => {
+                setLoading(true);
+                setPage(1);
+                setStatusFilter(event.target.value as AdminListingStatusFilter);
+              }}
             >
               <option value="all">All Statuses</option>
               <option value="active">Active</option>
@@ -302,7 +331,11 @@ export default function AdminListingsPage() {
             <FilterIcon />
             <select
               value={categoryFilter ? String(categoryFilter) : 'all'}
-              onChange={(event) => setCategoryFilter(event.target.value === 'all' ? null : Number(event.target.value))}
+              onChange={(event) => {
+                setLoading(true);
+                setPage(1);
+                setCategoryFilter(event.target.value === 'all' ? null : Number(event.target.value));
+              }}
             >
               <option value="all">All Categories</option>
               {(data?.lookups.categories ?? []).map((category) => (
@@ -317,7 +350,11 @@ export default function AdminListingsPage() {
             <FilterIcon />
             <select
               value={stateFilter ? String(stateFilter) : 'all'}
-              onChange={(event) => setStateFilter(event.target.value === 'all' ? null : Number(event.target.value))}
+              onChange={(event) => {
+                setLoading(true);
+                setPage(1);
+                setStateFilter(event.target.value === 'all' ? null : Number(event.target.value));
+              }}
             >
               <option value="all">All Regions</option>
               {(data?.lookups.states ?? []).map((state) => (
@@ -409,7 +446,10 @@ export default function AdminListingsPage() {
           <div className={styles.emptyState}>No listings matched the current search and filters.</div>
         ) : (
           data.listings.map((listing) => {
-            const rowBusy = deletingId === listing.id || messageListingId === listing.id;
+            const rowBusy =
+              deletingId === listing.id ||
+              messageListingId === listing.id ||
+              statusUpdatingId === listing.id;
 
             return (
               <article key={listing.id} className={styles.listingRow}>
@@ -477,6 +517,8 @@ export default function AdminListingsPage() {
                   <p className={styles.statusNote}>
                     {listing.pendingReportCount > 0
                       ? `${listing.pendingReportCount} pending report(s)`
+                      : listing.status === 'archived'
+                        ? 'Paused by admin and hidden from public browse'
                       : `Created ${formatDate(listing.createdAt)}`}
                   </p>
                 </div>
@@ -489,8 +531,27 @@ export default function AdminListingsPage() {
                     disabled={rowBusy}
                   >
                     <MessageIcon />
-                    <span>{messageListingId === listing.id ? 'Opening...' : 'Message Seller'}</span>
-                  </button>
+                      <span>{messageListingId === listing.id ? 'Opening...' : 'Message Seller'}</span>
+                    </button>
+
+                  {(listing.status === 'active' || listing.status === 'reserved' || listing.status === 'archived') && (
+                    <button
+                      type="button"
+                      className={styles.pauseButton}
+                      onClick={() => void handleToggleListingStatus(listing)}
+                      disabled={rowBusy}
+                    >
+                      <span>
+                        {statusUpdatingId === listing.id
+                          ? listing.status === 'archived'
+                            ? 'Resuming...'
+                            : 'Pausing...'
+                          : listing.status === 'archived'
+                            ? 'Resume Listing'
+                            : 'Pause Listing'}
+                      </span>
+                    </button>
+                  )}
 
                   <button
                     type="button"
@@ -519,7 +580,10 @@ export default function AdminListingsPage() {
                 type="button"
                 className={styles.paginationButton}
                 disabled={page <= 1}
-                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                onClick={() => {
+                  setLoading(true);
+                  setPage((current) => Math.max(1, current - 1));
+                }}
               >
                 Prev
               </button>
@@ -531,7 +595,10 @@ export default function AdminListingsPage() {
                   className={`${styles.paginationButton} ${
                     pageNumber === page ? styles.paginationButtonActive : ''
                   }`}
-                  onClick={() => setPage(pageNumber)}
+                  onClick={() => {
+                    setLoading(true);
+                    setPage(pageNumber);
+                  }}
                 >
                   {pageNumber}
                 </button>
@@ -541,7 +608,10 @@ export default function AdminListingsPage() {
                 type="button"
                 className={styles.paginationButton}
                 disabled={page >= (data.pagination.totalPages || 1)}
-                onClick={() => setPage((current) => Math.min(data.pagination.totalPages, current + 1))}
+                onClick={() => {
+                  setLoading(true);
+                  setPage((current) => Math.min(data.pagination.totalPages, current + 1));
+                }}
               >
                 Next
               </button>

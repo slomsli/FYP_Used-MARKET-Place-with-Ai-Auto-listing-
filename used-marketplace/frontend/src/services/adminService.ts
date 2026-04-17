@@ -1,6 +1,10 @@
 import type {
   AdminDeleteListingResponse,
+  AdminListingStatusUpdateResponse,
   AdminListingsResponse,
+  AdminReportStatusFilter,
+  AdminReportStatusUpdateResponse,
+  AdminReportsResponse,
   AdminListingStatusFilter,
   AdminOverviewResponse,
   AdminModerationThreadResponse,
@@ -38,6 +42,13 @@ export interface AdminListingsQuery {
   status?: AdminListingStatusFilter;
   categoryId?: number | null;
   stateId?: number | null;
+}
+
+export interface AdminReportsQuery {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: AdminReportStatusFilter;
 }
 
 export interface CreateAdminUserPayload {
@@ -148,6 +159,23 @@ export async function getAdminListings(
   });
 }
 
+export async function getAdminReports(
+  token: string,
+  query: AdminReportsQuery = {}
+): Promise<ServiceResponse<AdminReportsResponse>> {
+  const params = new URLSearchParams();
+
+  if (query.page) params.set('page', String(query.page));
+  if (query.pageSize) params.set('pageSize', String(query.pageSize));
+  if (query.search?.trim()) params.set('search', query.search.trim());
+  if (query.status && query.status !== 'all') params.set('status', query.status);
+
+  const suffix = params.size ? `?${params.toString()}` : '';
+  return authorizedRequest<AdminReportsResponse>(`/api/admin/reports${suffix}`, token, {
+    method: 'GET',
+  });
+}
+
 export async function createAdminUser(
   token: string,
   payload: CreateAdminUserPayload
@@ -193,6 +221,28 @@ export async function deleteAdminListing(
 ): Promise<ServiceResponse<AdminDeleteListingResponse>> {
   return authorizedRequest<AdminDeleteListingResponse>(`/api/admin/listings/${listingId}`, token, {
     method: 'DELETE',
+  });
+}
+
+export async function updateAdminListingStatus(
+  token: string,
+  listingId: string,
+  action: 'pause' | 'resume'
+): Promise<ServiceResponse<AdminListingStatusUpdateResponse>> {
+  return authorizedRequest<AdminListingStatusUpdateResponse>(`/api/admin/listings/${listingId}/status`, token, {
+    method: 'PATCH',
+    body: JSON.stringify({ action }),
+  });
+}
+
+export async function updateAdminReportStatus(
+  token: string,
+  reportId: string,
+  action: 'review' | 'resolve' | 'dismiss'
+): Promise<ServiceResponse<AdminReportStatusUpdateResponse>> {
+  return authorizedRequest<AdminReportStatusUpdateResponse>(`/api/admin/reports/${reportId}/status`, token, {
+    method: 'PATCH',
+    body: JSON.stringify({ action }),
   });
 }
 

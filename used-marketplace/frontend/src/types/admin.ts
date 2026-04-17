@@ -1,3 +1,5 @@
+import type { ListingReportReason, ListingReportStatus } from '@/src/types/report';
+
 export type AdminRole = 'user' | 'admin';
 export type AdminUserStatus = 'active' | 'pending_verification' | 'suspended';
 export type AdminListingStatusFilter =
@@ -9,6 +11,7 @@ export type AdminListingStatusFilter =
   | 'rejected'
   | 'archived'
   | 'reported';
+export type AdminReportStatusFilter = 'all' | ListingReportStatus;
 
 export interface AdminUserListItem {
   id: string;
@@ -159,6 +162,77 @@ export interface AdminDeleteListingResponse {
     images: number;
     dailyViews: number;
   };
+}
+
+export interface AdminListingStatusUpdateResponse {
+  id: string;
+  title: string;
+  status: string;
+  statusLabel: string;
+  hiddenFromBrowse: boolean;
+}
+
+export interface AdminReportListItem {
+  id: string;
+  reason: ListingReportReason;
+  reasonLabel: string;
+  details: string | null;
+  status: ListingReportStatus;
+  statusLabel: string;
+  createdAt: string;
+  updatedAt: string;
+  listing: {
+    id: string;
+    title: string;
+    price: number;
+    currency: string;
+    status: string;
+    statusLabel: string;
+    coverImagePath: string | null;
+    locationLabel: string;
+  };
+  reporter: {
+    id: string;
+    fullName: string;
+    username: string;
+    avatarPath: string | null;
+    locationLabel: string;
+  };
+  seller: {
+    id: string;
+    fullName: string;
+    username: string;
+    avatarPath: string | null;
+    locationLabel: string;
+  };
+}
+
+export interface AdminReportsResponse {
+  stats: {
+    totalReports: number;
+    pendingReports: number;
+    inReviewReports: number;
+    resolvedReports: number;
+    pausedListings: number;
+  };
+  filters: {
+    search: string;
+    status: AdminReportStatusFilter;
+  };
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalItems: number;
+    totalPages: number;
+  };
+  reports: AdminReportListItem[];
+}
+
+export interface AdminReportStatusUpdateResponse {
+  id: string;
+  status: ListingReportStatus;
+  statusLabel: string;
+  updatedAt: string;
 }
 
 export interface AdminStructureCategoryNode {

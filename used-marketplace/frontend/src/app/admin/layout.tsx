@@ -58,6 +58,16 @@ function UsersIcon() {
   );
 }
 
+function AlertIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+    </svg>
+  );
+}
+
 function ListingsIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -190,10 +200,13 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
   const displayName = profileName?.trim() || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Admin User';
   const isAdmin = (profileRole || user?.user_metadata?.role) === 'admin';
   const canSearch =
+    pathname === ROUTES.ADMIN_REPORTS ||
     pathname === ROUTES.ADMIN_USERS ||
     pathname === ROUTES.ADMIN_LISTINGS ||
     pathname === ROUTES.ADMIN_STRUCTURE;
-  const searchPlaceholder = pathname === ROUTES.ADMIN_USERS
+  const searchPlaceholder = pathname === ROUTES.ADMIN_REPORTS
+    ? 'Search reports, listings, reporters, or sellers...'
+    : pathname === ROUTES.ADMIN_USERS
     ? 'Search by name, email or ID...'
     : pathname === ROUTES.ADMIN_LISTINGS
       ? 'Search listings, sellers, category, or location...'
@@ -206,6 +219,7 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
   const navItems = useMemo(
     () => [
       { label: 'Overview', href: ROUTES.ADMIN, icon: <DashboardIcon />, active: pathname === ROUTES.ADMIN },
+      { label: 'Reports', href: ROUTES.ADMIN_REPORTS, icon: <AlertIcon />, active: pathname === ROUTES.ADMIN_REPORTS },
       { label: 'Listings', href: ROUTES.ADMIN_LISTINGS, icon: <ListingsIcon />, active: pathname === ROUTES.ADMIN_LISTINGS },
       { label: 'Users', href: ROUTES.ADMIN_USERS, icon: <UsersIcon />, active: pathname === ROUTES.ADMIN_USERS },
       { label: 'Messages', href: ROUTES.ADMIN_MESSAGES, icon: <MessageIcon />, active: pathname === ROUTES.ADMIN_MESSAGES },

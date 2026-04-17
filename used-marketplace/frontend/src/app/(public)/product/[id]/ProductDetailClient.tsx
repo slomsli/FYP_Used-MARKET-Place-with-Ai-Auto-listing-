@@ -4,6 +4,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import ReportListingModal from '@/src/components/reports/ReportListingModal';
 import { ROUTES } from '@/src/config/routes';
 import { useAuth } from '@/src/hooks/useAuth';
 import { getProfile } from '@/src/services/profileService';
@@ -178,6 +179,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
   const [offerPrice, setOfferPrice] = useState('');
   const [offerMessage, setOfferMessage] = useState('');
   const [offerSubmitting, setOfferSubmitting] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const recordedViewIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -396,13 +398,18 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
     }
   }
 
-  function handleReport(listing: PublicListingSummary) {
-    const subject = encodeURIComponent(`Report listing: ${listing.title}`);
-    const body = encodeURIComponent(
-      `Listing ID: ${listing.id}\nTitle: ${listing.title}\nReason: Please review this marketplace listing.`
-    );
+  function handleOpenReport() {
+    if (!user || !session?.access_token) {
+      router.push(`${ROUTES.LOGIN}?redirect=${encodeURIComponent(`/product/${listingId}`)}`);
+      return;
+    }
 
-    window.location.href = `mailto:support@remarket.app?subject=${subject}&body=${body}`;
+    if (resolvedViewerRole !== 'user') {
+      setToast('Admin accounts cannot submit marketplace reports.');
+      return;
+    }
+
+    setReportOpen(true);
   }
 
   if (loading) {
@@ -769,9 +776,11 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
             {storyParagraphs.map((paragraph) => (
               <p key={paragraph}>{paragraph}</p>
             ))}
-            <button type="button" className={styles.reportButton} onClick={() => handleReport(listing)}>
-              Report this listing
-            </button>
+            {showMemberActions && (
+              <button type="button" className={styles.reportButton} onClick={handleOpenReport}>
+                Report this listing
+              </button>
+            )}
           </article>
 
           <article className={styles.storyCard}>
@@ -952,6 +961,18 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
           </div>
         </div>
       )}
+
+      <ReportListingModal
+        key={reportOpen ? listing.id : 'hidden'}
+        open={reportOpen}
+        listing={{ id: listing.id, title: listing.title }}
+        token={session?.access_token ?? null}
+        onClose={() => setReportOpen(false)}
+        onReported={(message) => {
+          setReportOpen(false);
+          setToast(message);
+        }}
+      />
 
       {toast && (
         <div className={styles.toast}>
