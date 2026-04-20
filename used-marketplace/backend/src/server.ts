@@ -91,7 +91,7 @@ app.use(express.json({ limit: '20mb' }));
 app.get('/api/health', (_req, res) => {
   res.json({
     success: true,
-    message: 'Used Marketplace API is running',
+    message: 'ReMarket API is running',
     timestamp: new Date().toISOString(),
   });
 });

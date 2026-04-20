@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../config/supabase';
 import { ensureProfileForUserId } from './auth/profileSync';
+import { getPublicStorageUrl } from '../utils/storage';
 import {
   REPORT_REASON_LABELS,
   REPORT_STATUS_LABELS,
@@ -31,6 +32,14 @@ type AdminListingStatusFilter =
   | 'archived'
   | 'reported';
 type AdminReportStatusFilter = SharedAdminReportStatusFilter;
+const LISTING_IMAGE_BUCKET =
+  process.env.SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
+  process.env.NEXT_PUBLIC_SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
+  'listing-images';
+const AVATAR_BUCKET =
+  process.env.SUPABASE_AVATARS_BUCKET?.trim() ||
+  process.env.NEXT_PUBLIC_SUPABASE_AVATARS_BUCKET?.trim() ||
+  'avatars';
 
 type Relation<T> = T | T[] | null;
 
@@ -807,7 +816,7 @@ function buildAdminUserListItem(
     fullName: profile.full_name?.trim() || profile.username || 'User',
     username: profile.username,
     email: authUser?.email ?? null,
-    avatarPath: profile.avatar_path,
+    avatarPath: getPublicStorageUrl(AVATAR_BUCKET, profile.avatar_path),
     role: profile.role === 'admin' ? 'admin' : 'user',
     joinDate: profile.created_at,
     status: deriveUserStatus(authUser),
@@ -839,7 +848,7 @@ function buildAdminListingListItem(
     currency: listing.currency,
     status: listing.status,
     statusLabel: humanizeAdminListingStatus(listing.status),
-    coverImagePath: listing.cover_image_path,
+    coverImagePath: getPublicStorageUrl(LISTING_IMAGE_BUCKET, listing.cover_image_path),
     createdAt: listing.created_at,
     updatedAt: listing.updated_at,
     viewsCount: Number(listing.views_count ?? 0),
@@ -849,7 +858,7 @@ function buildAdminListingListItem(
       id: sellerProfile.id,
       fullName: buildProfileDisplayName(sellerProfile),
       username: sellerProfile.username,
-      avatarPath: sellerProfile.avatar_path,
+      avatarPath: getPublicStorageUrl(AVATAR_BUCKET, sellerProfile.avatar_path),
       locationLabel: buildLocationLabel(sellerState?.name ?? null, sellerArea?.name ?? null),
     },
     offerCount: counts.offerCount,
@@ -891,7 +900,7 @@ function buildAdminReportListItem(
       currency: listing.currency,
       status: listing.status,
       statusLabel: humanizeAdminListingStatus(listing.status),
-      coverImagePath: listing.cover_image_path,
+      coverImagePath: getPublicStorageUrl(LISTING_IMAGE_BUCKET, listing.cover_image_path),
       locationLabel: buildLocationLabel(listingState?.name ?? null, listingArea?.name ?? null),
       totalReportCount: signals.totalReportCount,
       openReportCount: signals.openReportCount,
@@ -903,14 +912,14 @@ function buildAdminReportListItem(
       id: reporterProfile.id,
       fullName: buildProfileDisplayName(reporterProfile),
       username: reporterProfile.username,
-      avatarPath: reporterProfile.avatar_path,
+      avatarPath: getPublicStorageUrl(AVATAR_BUCKET, reporterProfile.avatar_path),
       locationLabel: buildLocationLabel(reporterState?.name ?? null, reporterArea?.name ?? null),
     },
     seller: {
       id: sellerProfile.id,
       fullName: buildProfileDisplayName(sellerProfile),
       username: sellerProfile.username,
-      avatarPath: sellerProfile.avatar_path,
+      avatarPath: getPublicStorageUrl(AVATAR_BUCKET, sellerProfile.avatar_path),
       locationLabel: buildLocationLabel(sellerState?.name ?? null, sellerArea?.name ?? null),
     },
   };
@@ -2252,7 +2261,7 @@ export async function getAdminUserDetails(userId: string): Promise<AdminUserDeta
       currency: listing.currency,
       status: listing.status,
       statusLabel: humanizeAdminListingStatus(listing.status),
-      coverImagePath: listing.cover_image_path,
+      coverImagePath: getPublicStorageUrl(LISTING_IMAGE_BUCKET, listing.cover_image_path),
       createdAt: listing.created_at,
       viewsCount: Number(listing.views_count ?? 0),
       locationLabel: buildLocationLabel(listingState?.name ?? null, listingArea?.name ?? null),

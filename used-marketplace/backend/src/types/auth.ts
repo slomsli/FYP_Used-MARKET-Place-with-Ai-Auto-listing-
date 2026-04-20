@@ -15,6 +15,15 @@ export interface LoginBody {
   password: string;
 }
 
+export interface EmailBody {
+  email: string;
+}
+
+export interface EmailOtpBody {
+  email: string;
+  token: string;
+}
+
 /* ── Extended Request with authenticated user ── */
 
 export interface AuthenticatedRequest extends Request {

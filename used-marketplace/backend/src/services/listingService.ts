@@ -1,5 +1,12 @@
 import { randomUUID } from 'crypto';
 import { supabaseAdmin } from '../config/supabase';
+import {
+  getPublicStorageUrl,
+  getPublicStorageUrls,
+  normalizeStoragePathForDatabase,
+  normalizeStoragePathsForDatabase,
+  removeStorageObjects,
+} from '../utils/storage';
 
 import {
   type CreateListingBody,
@@ -150,6 +157,10 @@ const LISTING_IMAGE_BUCKET =
   process.env.SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
   process.env.NEXT_PUBLIC_SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
   'listing-images';
+const AVATAR_BUCKET =
+  process.env.SUPABASE_AVATARS_BUCKET?.trim() ||
+  process.env.NEXT_PUBLIC_SUPABASE_AVATARS_BUCKET?.trim() ||
+  'avatars';
 
 const MAX_LISTING_IMAGE_SIZE_BYTES = 8 * 1024 * 1024;
 const LISTING_IMAGE_MIME_TYPES = ['image/*'];
@@ -321,8 +332,11 @@ function buildListingSummary(
   totalOfferCountMap: Map<string, number>,
   pendingOfferCountMap: Map<string, number>
 ): ListingSummary {
-  const imagePaths = imageMap.get(listing.id) ?? [];
-  const coverImagePath = listing.cover_image_path || imagePaths[0] || null;
+  const imageStoragePaths = imageMap.get(listing.id) ?? [];
+  const coverImageStoragePath = listing.cover_image_path || imageStoragePaths[0] || null;
+  const imagePaths = getPublicStorageUrls(LISTING_IMAGE_BUCKET, imageStoragePaths);
+  const coverImagePath =
+    getPublicStorageUrl(LISTING_IMAGE_BUCKET, coverImageStoragePath) || imagePaths[0] || null;
   const soldToProfile = unwrapRelation(listing.sold_to_profile);
 
   return {
@@ -337,6 +351,8 @@ function buildListingSummary(
     statusLabel: humanizeStatus(listing.status),
     condition: listing.condition,
     conditionLabel: CONDITION_LABELS[listing.condition],
+    coverImageStoragePath,
+    imageStoragePaths,
     coverImagePath,
     imagePaths,
     createdAt: listing.created_at,
@@ -352,7 +368,7 @@ function buildListingSummary(
       ? {
           id: listing.sold_to_user_id,
           displayName: buildBuyerDisplayName(soldToProfile),
-          avatarPath: soldToProfile?.avatar_path ?? null,
+          avatarPath: getPublicStorageUrl(AVATAR_BUCKET, soldToProfile?.avatar_path ?? null),
         }
       : null,
   };
@@ -544,11 +560,41 @@ async function getListingImages(listingIds: string[]): Promise<Map<string, strin
   return imageMap;
 }
 
+async function getStoredListingImagePaths(listingId: string): Promise<string[]> {
+  const { data, error } = await supabaseAdmin
+    .from('listing_images')
+    .select('storage_path')
+    .eq('listing_id', listingId);
+
+  if (error) {
+    console.error('[Listings] Failed to load stored listing image paths:', error);
+    throw new ListingServiceError('Failed to inspect existing listing images', 500);
+  }
+
+  const { data: listingData, error: listingError } = await supabaseAdmin
+    .from('listings')
+    .select('cover_image_path')
+    .eq('id', listingId)
+    .maybeSingle();
+
+  if (listingError) {
+    console.error('[Listings] Failed to inspect current listing cover image:', listingError);
+    throw new ListingServiceError('Failed to inspect existing listing images', 500);
+  }
+
+  return normalizeStoragePathsForDatabase(LISTING_IMAGE_BUCKET, [
+    ...((data ?? []) as Array<{ storage_path: string }>).map((image) => image.storage_path),
+    listingData?.cover_image_path ?? null,
+  ]);
+}
+
 async function replaceListingImages(
   listingId: string,
-  imagePaths: string[],
-  coverImagePath: string | null
+  imageStoragePaths: string[],
+  coverImageStoragePath: string | null
 ): Promise<void> {
+  const existingImageStoragePaths = await getStoredListingImagePaths(listingId);
+
   const { error: deleteError } = await supabaseAdmin
     .from('listing_images')
     .delete()
@@ -559,24 +605,45 @@ async function replaceListingImages(
     throw new ListingServiceError('Failed to update listing images', 500);
   }
 
-  if (imagePaths.length === 0) {
+  if (imageStoragePaths.length === 0) {
+    const removedImageStoragePaths = existingImageStoragePaths.filter(
+      (path) => path !== coverImageStoragePath
+    );
+
+    try {
+      await removeStorageObjects(LISTING_IMAGE_BUCKET, removedImageStoragePaths);
+    } catch (storageError) {
+      console.error('[Listings] Failed to remove cleared listing image files:', storageError);
+    }
+
     return;
   }
 
   const { error: insertError } = await supabaseAdmin
     .from('listing_images')
     .insert(
-      imagePaths.map((path, index) => ({
+      imageStoragePaths.map((path, index) => ({
         listing_id: listingId,
         storage_path: path,
         sort_order: index + 1,
-        is_cover: path === coverImagePath,
+        is_cover: path === coverImageStoragePath,
       }))
     );
 
   if (insertError) {
     console.error('[Listings] Failed to save replacement listing images:', insertError);
     throw new ListingServiceError('Failed to update listing images', 500);
+  }
+
+  const nextImageStoragePathSet = new Set(imageStoragePaths);
+  const removedImageStoragePaths = existingImageStoragePaths.filter(
+    (path) => !nextImageStoragePathSet.has(path)
+  );
+
+  try {
+    await removeStorageObjects(LISTING_IMAGE_BUCKET, removedImageStoragePaths);
+  } catch (storageError) {
+    console.error('[Listings] Failed to remove replaced listing image files:', storageError);
   }
 }
 
@@ -700,7 +767,7 @@ async function getSellerPreviewMap(
     previewMap.set(profile.id, {
       id: profile.id,
       displayName: buildSellerDisplayName(profile),
-      avatarPath: profile.avatar_path ?? null,
+      avatarPath: getPublicStorageUrl(AVATAR_BUCKET, profile.avatar_path ?? null),
     });
   }
 
@@ -952,7 +1019,7 @@ async function getPublicSellerSummary(
     id: profile.id,
     displayName: buildSellerDisplayName(profile),
     username: profile.username,
-    avatarPath: profile.avatar_path ?? null,
+    avatarPath: getPublicStorageUrl(AVATAR_BUCKET, profile.avatar_path ?? null),
     memberSince: new Date(profile.created_at).getFullYear().toString(),
     averageRating,
     totalReviews,
@@ -1085,6 +1152,7 @@ export async function uploadListingImage(
   return {
     url: publicUrl,
     path: storagePath,
+    storagePath,
   };
 }
 
@@ -1103,10 +1171,17 @@ export async function createListing(
   const description = trimOptional(payload.description);
   const brand = trimOptional(payload.brand);
   const currency = normalizeCurrency(payload.currency);
-  const normalizedImagePaths = Array.from(
-    new Set((payload.imagePaths ?? []).map((path) => path.trim()).filter(Boolean))
-  ).slice(0, 6);
-  const coverImagePath = trimOptional(payload.coverImagePath) ?? normalizedImagePaths[0] ?? null;
+  const normalizedImageStoragePaths = normalizeStoragePathsForDatabase(LISTING_IMAGE_BUCKET, [
+    ...(payload.imageStoragePaths ?? []),
+    ...(payload.imagePaths ?? []),
+  ]).slice(0, 6);
+  const coverImageStoragePath =
+    normalizeStoragePathForDatabase(
+      LISTING_IMAGE_BUCKET,
+      payload.coverImageStoragePath ?? payload.coverImagePath
+    ) ??
+    normalizedImageStoragePaths[0] ??
+    null;
 
   if (!isDraft && (price === null || !Number.isFinite(price) || price < 0)) {
     throw new ListingServiceError('Price must be a valid non-negative number', 422);
@@ -1143,7 +1218,7 @@ export async function createListing(
       currency,
       negotiable: payload.negotiable ?? true,
       status,
-      cover_image_path: coverImagePath,
+      cover_image_path: coverImageStoragePath,
       published_at: publishedAt,
       state_id: stateId,
       area_id: areaId,
@@ -1156,15 +1231,15 @@ export async function createListing(
     throw new ListingServiceError('Failed to create listing', 500);
   }
 
-  if (normalizedImagePaths.length > 0) {
+  if (normalizedImageStoragePaths.length > 0) {
     const { error: imageError } = await supabaseAdmin
       .from('listing_images')
       .insert(
-        normalizedImagePaths.map((path, index) => ({
+        normalizedImageStoragePaths.map((path, index) => ({
           listing_id: data.id,
           storage_path: path,
           sort_order: index + 1,
-          is_cover: path === coverImagePath,
+          is_cover: path === coverImageStoragePath,
         }))
       );
 
@@ -1195,13 +1270,22 @@ export async function updateListing(
   const description = trimOptional(payload.description);
   const brand = trimOptional(payload.brand);
   const currency = normalizeCurrency(payload.currency);
-  const normalizedImagePaths = Array.from(
-    new Set((payload.imagePaths ?? []).map((path) => path.trim()).filter(Boolean))
-  ).slice(0, 6);
+  const normalizedImageStoragePaths = normalizeStoragePathsForDatabase(LISTING_IMAGE_BUCKET, [
+    ...(payload.imageStoragePaths ?? []),
+    ...(payload.imagePaths ?? []),
+  ]).slice(0, 6);
   const shouldReplaceImages =
-    payload.imagePaths !== undefined || payload.coverImagePath !== undefined;
-  const coverImagePath = shouldReplaceImages
-    ? trimOptional(payload.coverImagePath) ?? normalizedImagePaths[0] ?? null
+    payload.imageStoragePaths !== undefined ||
+    payload.coverImageStoragePath !== undefined ||
+    payload.imagePaths !== undefined ||
+    payload.coverImagePath !== undefined;
+  const coverImageStoragePath = shouldReplaceImages
+    ? normalizeStoragePathForDatabase(
+        LISTING_IMAGE_BUCKET,
+        payload.coverImageStoragePath ?? payload.coverImagePath
+      ) ??
+      normalizedImageStoragePaths[0] ??
+      null
     : existing.cover_image_path;
   const restoringSoldListing = existing.status === 'sold' && status === 'active';
 
@@ -1249,7 +1333,7 @@ export async function updateListing(
       currency,
       negotiable: payload.negotiable ?? true,
       status,
-      cover_image_path: coverImagePath,
+      cover_image_path: coverImageStoragePath,
       published_at: publishedAt,
       state_id: stateId,
       area_id: areaId,
@@ -1266,7 +1350,7 @@ export async function updateListing(
   }
 
   if (shouldReplaceImages) {
-    await replaceListingImages(listingId, normalizedImagePaths, coverImagePath);
+    await replaceListingImages(listingId, normalizedImageStoragePaths, coverImageStoragePath);
   }
 
   return getListingByIdForSeller(listingId, sellerId);
@@ -1346,7 +1430,8 @@ export async function deleteListing(
   sellerId: string,
   listingId: string
 ): Promise<DeleteListingResult> {
-  await getOwnedListingForSeller(listingId, sellerId);
+  const existingListing = await getOwnedListingForSeller(listingId, sellerId);
+  const storedImagePaths = await getStoredListingImagePaths(listingId);
 
   const [offersResult, conversationsResult, reviewsResult, reportsResult] = await Promise.all([
     supabaseAdmin
@@ -1418,6 +1503,15 @@ export async function deleteListing(
   if (deleteError) {
     console.error('[Listings] Failed to delete listing:', deleteError);
     throw new ListingServiceError('Failed to delete listing', 500);
+  }
+
+  try {
+    await removeStorageObjects(LISTING_IMAGE_BUCKET, [
+      existingListing.cover_image_path,
+      ...storedImagePaths,
+    ]);
+  } catch (storageError) {
+    console.error('[Listings] Failed to remove listing storage objects after delete:', storageError);
   }
 
   return {

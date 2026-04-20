@@ -62,6 +62,32 @@ export async function fetchConversations(token: string): Promise<{ data: Convers
   }
 }
 
+export async function fetchArchivedConversationIds(
+  token: string
+): Promise<{ data: string[] | null; error: string | null }> {
+  try {
+    const res = await fetch(`${MESSAGE_API_URL}/archives`, {
+      headers: {
+        ...getAuthHeaders(token),
+      },
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      return {
+        data: null,
+        error: errorData.error || 'Failed to fetch archived conversations',
+      };
+    }
+
+    const json = await res.json();
+    return { data: json.data as string[], error: null };
+  } catch (error) {
+    console.error('Error fetching archived conversations:', error);
+    return { data: null, error: 'Network error while fetching archived conversations' };
+  }
+}
+
 /**
  * Fetch messages for a specific conversation
  */
@@ -170,5 +196,53 @@ export async function markAsRead(token: string, conversationId: string): Promise
   } catch (error) {
     console.error('Error marking as read:', error);
     return { error: 'Network error while marking as read' };
+  }
+}
+
+export async function archiveConversation(
+  token: string,
+  conversationId: string
+): Promise<{ error: string | null }> {
+  try {
+    const res = await fetch(`${MESSAGE_API_URL}/${conversationId}/archive`, {
+      method: 'PUT',
+      headers: {
+        ...getAuthHeaders(token),
+      },
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      return { error: errorData.error || 'Failed to archive conversation' };
+    }
+
+    return { error: null };
+  } catch (error) {
+    console.error('Error archiving conversation:', error);
+    return { error: 'Network error while archiving conversation' };
+  }
+}
+
+export async function unarchiveConversation(
+  token: string,
+  conversationId: string
+): Promise<{ error: string | null }> {
+  try {
+    const res = await fetch(`${MESSAGE_API_URL}/${conversationId}/archive`, {
+      method: 'DELETE',
+      headers: {
+        ...getAuthHeaders(token),
+      },
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      return { error: errorData.error || 'Failed to restore conversation' };
+    }
+
+    return { error: null };
+  } catch (error) {
+    console.error('Error restoring conversation archive state:', error);
+    return { error: 'Network error while restoring conversation' };
   }
 }

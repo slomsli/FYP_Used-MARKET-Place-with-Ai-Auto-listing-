@@ -448,7 +448,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
   const sellerLocationLabel = getSellerLocationLabel(seller);
   const isSoldOut = listing.status === 'sold';
   const availabilityLabel = isSoldOut ? 'Sold Out' : listing.statusLabel;
-  const breadcrumb = ['Archive', listing.category?.name ?? 'Listings', listing.locationLabel];
+  const breadcrumb = ['Marketplace', listing.category?.name ?? 'Listings', listing.locationLabel];
   const detailRows = [
     { label: 'Condition', value: listing.conditionLabel },
     { label: 'Location', value: listing.locationLabel },
@@ -459,7 +459,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
   ];
   const storyParagraphs = [
     listing.description?.trim() ||
-      `${listing.title} is a live seller listing in the ReMarket archive.`,
+      `${listing.title} is a live seller listing in ReMarket.`,
     listing.brand?.trim()
       ? `The seller listed this piece under ${listing.brand.trim()} and marked it as ${listing.conditionLabel.toLowerCase()}.`
       : `The seller marked this item as ${listing.conditionLabel.toLowerCase()} and published it from ${listing.locationLabel}.`,
@@ -488,7 +488,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
         <div className={styles.brandGroup}>
           <Link href={ROUTES.BROWSE} className={styles.brand}>
             <span className={styles.brandMark}>R</span>
-            <span>ReMarket Archive</span>
+            <span>ReMarket</span>
           </Link>
 
           <nav className={styles.nav}>
@@ -512,7 +512,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
             <input
               type="search"
               className={styles.searchInput}
-              placeholder="Search the archive..."
+              placeholder="Search the marketplace..."
               value={searchText}
               onChange={(event) => setSearchText(event.target.value)}
             />
@@ -575,7 +575,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
               )}
 
               <div className={styles.mediaAnnotation}>
-                <span className={styles.mediaAnnotationLabel}>Archive Note</span>
+                <span className={styles.mediaAnnotationLabel}>Listing Note</span>
                 <p>
                   Published {formatDate(listing.publishedAt || listing.createdAt)} from {listing.locationLabel}.
                 </p>
@@ -608,7 +608,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
 
           <aside className={styles.purchaseRail}>
             <div className={styles.titleBlock}>
-              <p className={styles.collectionEyebrow}>{listing.category?.name ?? 'Archive listing'}</p>
+              <p className={styles.collectionEyebrow}>{listing.category?.name ?? 'Marketplace listing'}</p>
               <h1 className={styles.title}>{listing.title}</h1>
               <div className={styles.priceRow}>
                 <span className={styles.price}>{formatCurrency(listing.price, listing.currency)}</span>
@@ -624,7 +624,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
               {isSoldOut && (
                 <div className={styles.soldOutBanner}>
                   <strong>{availabilityLabel}</strong>
-                  <span>This listing has already been purchased and is now shown as archive-only.</span>
+                  <span>This listing has already been purchased and is now shown for reference only.</span>
                 </div>
               )}
             </div>
@@ -665,7 +665,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
               <div className={styles.sellerFoot}>
                 <p>{seller.activeListings} active listing(s) from {sellerLocationLabel}.</p>
                 <Link href={ROUTES.BROWSE} className={styles.sellerProfileLink}>
-                  View archive
+                  View marketplace
                 </Link>
               </div>
             </div>
@@ -786,7 +786,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
           </article>
 
           <article className={styles.storyCard}>
-            <p className={styles.sectionEyebrow}>Archive Notes</p>
+            <p className={styles.sectionEyebrow}>Listing Notes</p>
             <h2>Marketplace signals</h2>
             <ul className={styles.pointList}>
               {highlights.map((highlight) => (
@@ -811,7 +811,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
             <div className={styles.recommendHeader}>
               <div>
                 <p className={styles.sectionEyebrow}>Curated Recommendations</p>
-                <h2>More from the live archive</h2>
+                <h2>More from ReMarket</h2>
               </div>
               <Link href={ROUTES.BROWSE} className={styles.viewAllLink}>
                 View all items
@@ -855,7 +855,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
         <footer className={styles.footer}>
           <div className={styles.footerBrand}>
             <Link href={ROUTES.BROWSE} className={styles.footerLogo}>
-              ReMarket Archive
+              ReMarket
             </Link>
             <p>
               Real seller inventory, presented with cleaner product storytelling and backend-backed listing details.
@@ -864,7 +864,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
 
           <div className={styles.footerColumns}>
             <div>
-              <h3>Archive</h3>
+              <h3>Marketplace</h3>
               <Link href={ROUTES.BROWSE}>New arrivals</Link>
               <Link href={ROUTES.BROWSE}>Curated selections</Link>
               <Link href={ROUTES.BROWSE}>Verification flow</Link>

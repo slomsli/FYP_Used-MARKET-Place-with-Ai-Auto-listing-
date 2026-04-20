@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../config/supabase';
+import { getPublicStorageUrl } from '../utils/storage';
 
 /* ── Types ─────────────────────────────────────────────── */
 
@@ -123,6 +124,15 @@ export class OfferServiceError extends Error {
   }
 }
 
+const LISTING_IMAGE_BUCKET =
+  process.env.SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
+  process.env.NEXT_PUBLIC_SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
+  'listing-images';
+const AVATAR_BUCKET =
+  process.env.SUPABASE_AVATARS_BUCKET?.trim() ||
+  process.env.NEXT_PUBLIC_SUPABASE_AVATARS_BUCKET?.trim() ||
+  'avatars';
+
 /* ── Helpers ───────────────────────────────────────────── */
 
 function unwrapRelation<T>(relation: Relation<T>): T | null {
@@ -188,7 +198,7 @@ function mapOffer(raw: RawOffer): OfferSummary {
     listing: {
       id: listing?.id ?? raw.listing_id,
       title: listing?.title ?? 'Unknown listing',
-      coverImagePath: listing?.cover_image_path ?? null,
+      coverImagePath: getPublicStorageUrl(LISTING_IMAGE_BUCKET, listing?.cover_image_path ?? null),
       currency: listing?.currency ?? 'MYR',
       negotiable: listing?.negotiable ?? false,
       status: listing?.status ?? 'active',
@@ -197,12 +207,12 @@ function mapOffer(raw: RawOffer): OfferSummary {
     buyer: {
       id: raw.buyer_id,
       displayName: buildDisplayName(buyer),
-      avatarPath: buyer?.avatar_path ?? null,
+      avatarPath: getPublicStorageUrl(AVATAR_BUCKET, buyer?.avatar_path ?? null),
     },
     seller: {
       id: raw.seller_id,
       displayName: buildDisplayName(seller),
-      avatarPath: seller?.avatar_path ?? null,
+      avatarPath: getPublicStorageUrl(AVATAR_BUCKET, seller?.avatar_path ?? null),
     },
   };
 }

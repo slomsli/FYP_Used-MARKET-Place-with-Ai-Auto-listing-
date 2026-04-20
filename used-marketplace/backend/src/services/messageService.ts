@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../config/supabase';
+import { getPublicStorageUrl } from '../utils/storage';
 import {
   isModerationListing,
   parseModerationListingTargetKey,
@@ -76,6 +77,14 @@ interface RawConversation {
 }
 
 const MESSAGE_SELECT = 'id, conversation_id, sender_id, content:body, is_read, created_at';
+const LISTING_IMAGE_BUCKET =
+  process.env.SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
+  process.env.NEXT_PUBLIC_SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
+  'listing-images';
+const AVATAR_BUCKET =
+  process.env.SUPABASE_AVATARS_BUCKET?.trim() ||
+  process.env.NEXT_PUBLIC_SUPABASE_AVATARS_BUCKET?.trim() ||
+  'avatars';
 
 function unwrapRelation<T>(relation: T | T[] | null | undefined): T | null {
   if (Array.isArray(relation)) {
@@ -159,6 +168,19 @@ function assertModerationThreadAccess(
   }
 }
 
+async function assertConversationAccess(userId: string, conversationId: string): Promise<void> {
+  const { data: conversation, error } = await supabaseAdmin
+    .from('conversations')
+    .select('id')
+    .eq('id', conversationId)
+    .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
+    .maybeSingle();
+
+  if (error || !conversation) {
+    throw new Error('Conversation not found or access denied');
+  }
+}
+
 export async function getConversationsForUser(userId: string): Promise<ConversationDetail[]> {
   const { data: convos, error: convosError } = await supabaseAdmin
     .from('conversations')
@@ -227,7 +249,10 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
     if (listingData) {
          listingDetails = {
            title: listingData.title,
-           cover_image_path: listingData.cover_image_path,
+           cover_image_path: getPublicStorageUrl(
+             LISTING_IMAGE_BUCKET,
+             listingData.cover_image_path
+           ),
            is_moderation: isModerationListing(listingData),
          };
     }
@@ -243,7 +268,7 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
             id: otherProfile.id,
             display_name: buildDisplayName(otherProfile),
             username: otherProfile.username ?? null,
-            avatar_path: otherProfile.avatar_path ?? null,
+            avatar_path: getPublicStorageUrl(AVATAR_BUCKET, otherProfile.avatar_path ?? null),
           }
         : null,
       listing_details: listingDetails,
@@ -264,17 +289,100 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
   });
 }
 
-export async function getConversationMessages(conversationId: string, userId: string): Promise<ChatMessage[]> {
-  const { data: convo, error: verifyError } = await supabaseAdmin
+export async function getArchivedConversationIds(userId: string): Promise<string[]> {
+  const { data, error } = await supabaseAdmin
+    .from('conversation_archives')
+    .select('conversation_id')
+    .eq('user_id', userId);
+
+  if (error) {
+    throw new Error(`Failed to fetch archived conversations: ${error.message}`);
+  }
+
+  const archivedConversationIds = Array.from(
+    new Set(
+      ((data ?? []) as Array<{ conversation_id: string }>)
+        .map((item) => item.conversation_id)
+        .filter(Boolean)
+    )
+  );
+
+  if (archivedConversationIds.length === 0) {
+    return [];
+  }
+
+  const { data: accessibleConversations, error: accessError } = await supabaseAdmin
     .from('conversations')
     .select('id')
-    .eq('id', conversationId)
-    .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
-    .single();
+    .in('id', archivedConversationIds)
+    .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`);
 
-  if (verifyError || !convo) {
-    throw new Error('Conversation not found or access denied');
+  if (accessError) {
+    throw new Error(`Failed to validate archived conversations: ${accessError.message}`);
   }
+
+  const accessibleConversationIds = new Set(
+    ((accessibleConversations ?? []) as Array<{ id: string }>).map(
+      (conversation) => conversation.id
+    )
+  );
+
+  const validArchivedConversationIds = archivedConversationIds.filter((conversationId) =>
+    accessibleConversationIds.has(conversationId)
+  );
+
+  const staleConversationIds = archivedConversationIds.filter(
+    (conversationId) => !accessibleConversationIds.has(conversationId)
+  );
+
+  if (staleConversationIds.length > 0) {
+    await supabaseAdmin
+      .from('conversation_archives')
+      .delete()
+      .eq('user_id', userId)
+      .in('conversation_id', staleConversationIds);
+  }
+
+  return validArchivedConversationIds;
+}
+
+export async function archiveConversation(userId: string, conversationId: string): Promise<void> {
+  await assertConversationAccess(userId, conversationId);
+
+  const { error } = await supabaseAdmin
+    .from('conversation_archives')
+    .upsert(
+      {
+        user_id: userId,
+        conversation_id: conversationId,
+      },
+      {
+        onConflict: 'user_id,conversation_id',
+        ignoreDuplicates: true,
+      }
+    );
+
+  if (error) {
+    throw new Error(`Failed to archive conversation: ${error.message}`);
+  }
+}
+
+export async function unarchiveConversation(userId: string, conversationId: string): Promise<void> {
+  await assertConversationAccess(userId, conversationId);
+
+  const { error } = await supabaseAdmin
+    .from('conversation_archives')
+    .delete()
+    .eq('user_id', userId)
+    .eq('conversation_id', conversationId);
+
+  if (error) {
+    throw new Error(`Failed to restore conversation archive state: ${error.message}`);
+  }
+}
+
+export async function getConversationMessages(conversationId: string, userId: string): Promise<ChatMessage[]> {
+  await assertConversationAccess(userId, conversationId);
 
   const { data: messages, error } = await supabaseAdmin
     .from('messages')
@@ -465,6 +573,8 @@ export async function sendReply(
 }
 
 export async function markConversationAsRead(senderId: string, conversationId: string): Promise<boolean> {
+  await assertConversationAccess(senderId, conversationId);
+
   const { error } = await supabaseAdmin
     .from('messages')
     .update({ is_read: true })

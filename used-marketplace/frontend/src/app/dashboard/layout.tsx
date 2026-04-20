@@ -1,11 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
-import { useRequireAuth } from '@/src/hooks/useRequireAuth';
+import { usePathname } from 'next/navigation';
+import { useAuth } from '@/src/hooks/useAuth';
 import { subscribeToDashboardProfileUpdates } from '@/src/lib/profileSync';
 import DashboardNavbar from '@/src/components/layout/DashboardNavbar';
-import { ROUTES } from '@/src/config/routes';
 import {
   DashboardAccountProvider,
   type DashboardAccountStatus,
@@ -19,9 +18,9 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, token, loading } = useRequireAuth();
+  const { user, session, loading } = useAuth();
+  const token = session?.access_token;
   const pathname = usePathname();
-  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [profileName, setProfileName] = useState<string | null>(null);
   const [profileRole, setProfileRole] = useState<string | null>(null);
@@ -84,21 +83,6 @@ export default function DashboardLayout({
     []
   );
 
-  useEffect(() => {
-    if (loading || profileLoading || !user) {
-      return;
-    }
-
-    const resolvedRole =
-      profileRole || (typeof user.user_metadata?.role === 'string' ? user.user_metadata.role : null);
-
-    if (resolvedRole !== 'admin') {
-      return;
-    }
-
-    router.replace(pathname.startsWith(ROUTES.MESSAGES) ? ROUTES.ADMIN_MESSAGES : ROUTES.ADMIN);
-  }, [loading, pathname, profileLoading, profileRole, router, user]);
-
   if (loading || !user || profileLoading) {
     return (
       <div className={styles.loading}>
@@ -113,13 +97,6 @@ export default function DashboardLayout({
     user.email?.split('@')[0] ||
     'User';
   const role = profileRole || user.user_metadata?.role || 'user';
-  if (role === 'admin') {
-    return (
-      <div className={styles.loading}>
-        <Spinner size={32} className="text-navy-800" />
-      </div>
-    );
-  }
 
   const resolvedAvatarPath =
     avatarPath ??

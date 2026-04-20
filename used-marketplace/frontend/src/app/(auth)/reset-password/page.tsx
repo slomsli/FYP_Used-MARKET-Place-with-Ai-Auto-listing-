@@ -1,15 +1,26 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { Suspense, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ROUTES } from '@/src/config/routes';
-import { createClient } from '@/src/lib/supabase/client';
 import AuthInput from '@/src/components/forms/AuthInput';
 import PasswordInput from '@/src/components/forms/PasswordInput';
 import SubmitButton from '@/src/components/forms/SubmitButton';
 import FormError from '@/src/components/feedback/FormError';
+import {
+  requestPasswordReset,
+  updateRecoveredPassword,
+  verifyRecoveryCode,
+} from '@/src/services/authService';
 import styles from '../login/page.module.css';
+
+const MailIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="4" width="20" height="16" rx="2" />
+    <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+  </svg>
+);
 
 const KeyIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -25,37 +36,47 @@ const LockIcon = () => (
   </svg>
 );
 
-const MarketIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9Z" />
-    <path d="m3 9 2.45-4.9A2 2 0 0 1 7.24 3h9.52a2 2 0 0 1 1.8 1.1L21 9" />
-    <path d="M12 3v6" />
-  </svg>
-);
-
 function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const email = searchParams.get('email') || '';
+  const emailParam = searchParams.get('email') ?? '';
+  const requested = searchParams.get('requested') === '1';
+  const hasEmailParam = useMemo(() => emailParam.includes('@'), [emailParam]);
 
-  const [otp, setOtp] = useState('');
+  const [email, setEmail] = useState(hasEmailParam ? emailParam : '');
+  const [token, setToken] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  
   const [error, setError] = useState<string | undefined>();
+  const [successMessage, setSuccessMessage] = useState<string | undefined>(
+    requested && hasEmailParam
+      ? `We sent an 8-digit reset code to ${emailParam}. Enter it below with your new password.`
+      : undefined
+  );
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!otp || otp.length < 6) {
-      setError('Please enter a valid verification code.');
+
+    const normalizedEmail = email.trim();
+    const normalizedToken = token.replace(/\s+/g, '');
+
+    if (!normalizedEmail || !normalizedEmail.includes('@')) {
+      setError('Please enter a valid email address.');
       return;
     }
+
+    if (!/^\d{8}$/.test(normalizedToken)) {
+      setError('Please enter the 8-digit reset code sent to your email.');
+      return;
+    }
+
     if (password.length < 8) {
       setError('Password must be at least 8 characters.');
       return;
     }
+
     if (password !== confirmPassword) {
       setError('Passwords do not match.');
       return;
@@ -63,34 +84,50 @@ function ResetPasswordForm() {
 
     setLoading(true);
     setError(undefined);
+    setSuccessMessage(undefined);
 
-    const supabase = createClient();
-    
-    // 1. Verify the OTP code to establish a secure recovery session
-    const { error: verifyError } = await supabase.auth.verifyOtp({
-      email,
-      token: otp,
-      type: 'recovery'
-    });
+    const verifyResponse = await verifyRecoveryCode(normalizedEmail, normalizedToken);
 
-    if (verifyError) {
+    if (!verifyResponse.success) {
       setLoading(false);
-      setError('Invalid or expired verification code. Please try requesting a new one.');
+      setError(verifyResponse.error);
       return;
     }
 
-    // 2. The session is now active, so update the user's password
-    const { error: updateError } = await supabase.auth.updateUser({
-      password: password
-    });
+    const updateResponse = await updateRecoveredPassword(password);
 
     setLoading(false);
 
-    if (updateError) {
-      setError(updateError.message);
-    } else {
-      router.push(ROUTES.DASHBOARD);
+    if (!updateResponse.success) {
+      setError(updateResponse.error);
+      return;
     }
+
+    router.replace(ROUTES.DASHBOARD);
+  };
+
+  const handleResend = async () => {
+    const normalizedEmail = email.trim();
+
+    if (!normalizedEmail || !normalizedEmail.includes('@')) {
+      setError('Enter your email address first so we know where to resend the code.');
+      return;
+    }
+
+    setResending(true);
+    setError(undefined);
+    setSuccessMessage(undefined);
+
+    const response = await requestPasswordReset(normalizedEmail);
+
+    setResending(false);
+
+    if (!response.success) {
+      setError(response.error);
+      return;
+    }
+
+    setSuccessMessage(`A fresh 8-digit reset code was sent to ${normalizedEmail}.`);
   };
 
   return (
@@ -98,27 +135,49 @@ function ResetPasswordForm() {
       <div className={styles.formContainer}>
         <h2 className={styles.formTitle}>Reset Password</h2>
         <p className={styles.formSubtitle}>
-          We sent a code to <strong>{email || 'your email'}</strong>. Enter the code and your new password below.
+          Enter the 8-digit code from your email, then choose a new password.
         </p>
 
         <form onSubmit={handleSubmit}>
           <div className={styles.formFields}>
             <FormError message={error} />
-            
+            {successMessage ? (
+              <div
+                style={{
+                  color: '#059669',
+                  marginBottom: '1rem',
+                  fontSize: '0.9rem',
+                  lineHeight: 1.5,
+                }}
+              >
+                {successMessage}
+              </div>
+            ) : null}
+
             <AuthInput
-              label="6-Digit Verification Code"
+              label="Email Address"
+              icon={<MailIcon />}
+              type="email"
+              placeholder="alex@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+            />
+
+            <AuthInput
+              label="8-Digit Reset Code"
               icon={<KeyIcon />}
-              type="text"
-              placeholder="123456"
-              value={otp}
-              onChange={(e) => setOtp(e.target.value)}
+              placeholder="12345678"
+              value={token}
+              onChange={(e) => setToken(e.target.value.replace(/\D/g, '').slice(0, 8))}
               autoComplete="one-time-code"
+              inputMode="numeric"
             />
 
             <PasswordInput
               label="New Password"
               icon={<LockIcon />}
-              placeholder="••••••••"
+              placeholder="Enter a new password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="new-password"
@@ -127,7 +186,7 @@ function ResetPasswordForm() {
             <PasswordInput
               label="Confirm New Password"
               icon={<LockIcon />}
-              placeholder="••••••••"
+              placeholder="Repeat your new password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               autoComplete="new-password"
@@ -135,15 +194,31 @@ function ResetPasswordForm() {
 
             <div style={{ marginTop: '1rem' }}>
               <SubmitButton loading={loading}>
-                Reset Password & Log In
+                Save New Password
               </SubmitButton>
             </div>
           </div>
         </form>
 
+        <button
+          type="button"
+          onClick={handleResend}
+          className={styles.forgotLink}
+          disabled={resending || loading}
+          style={{
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            marginTop: '1rem',
+            cursor: resending || loading ? 'default' : 'pointer',
+            opacity: resending || loading ? 0.6 : 1,
+          }}
+        >
+          {resending ? 'Sending a new code...' : 'Resend reset code'}
+        </button>
+
         <p className={styles.switchLink} style={{ marginTop: '2rem' }}>
-          Didn't receive the code?{' '}
-          <Link href={ROUTES.FORGOT_PASSWORD}>Request a new one</Link>
+          Need to start over? <Link href={ROUTES.FORGOT_PASSWORD}>Request another reset code</Link>
         </p>
       </div>
     </div>
@@ -154,7 +229,6 @@ export default function ResetPasswordPage() {
   return (
     <div className={styles.page}>
       <div className={styles.heroPanel}>
-        {/* Logo pinned to top-left corner */}
         <div className={styles.heroBrand}>
           <img src="/assets/images/remarket_logo white for login or any page the has blue background.png" alt="ReMarket" style={{ height: '150px', width: 'auto' }} />
         </div>
@@ -163,13 +237,13 @@ export default function ResetPasswordPage() {
           <div className={styles.heroTagline}>
             <h1 className={styles.heroTitle}>Secure Your Account</h1>
             <p className={styles.heroDescription}>
-              Choose a strong password to keep your account safe.
+              Confirm the 8-digit email code and set a new password in one clean recovery flow.
             </p>
           </div>
         </div>
       </div>
 
-      <Suspense fallback={<div className={styles.formPanel}><div className={styles.formContainer}>Loading...</div></div>}>
+      <Suspense fallback={<div className={styles.formPanel}>Loading reset form...</div>}>
         <ResetPasswordForm />
       </Suspense>
     </div>

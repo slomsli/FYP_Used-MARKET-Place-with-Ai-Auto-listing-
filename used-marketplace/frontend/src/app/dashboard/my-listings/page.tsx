@@ -149,7 +149,7 @@ function buildRestorePayload(listing: ListingSummary): CreateListingPayload | nu
   }
 
   const seenPaths = new Set<string>();
-  const imagePaths = [...listing.imagePaths, listing.coverImagePath]
+  const imageStoragePaths = [...listing.imageStoragePaths, listing.coverImageStoragePath]
     .filter((path): path is string => Boolean(path))
     .filter((path) => {
       if (seenPaths.has(path)) {
@@ -172,8 +172,8 @@ function buildRestorePayload(listing: ListingSummary): CreateListingPayload | nu
     status: 'active',
     stateId: listing.location.stateId,
     areaId: listing.location.areaId,
-    imagePaths,
-    coverImagePath: listing.coverImagePath,
+    imageStoragePaths,
+    coverImageStoragePath: listing.coverImageStoragePath,
   };
 }
 

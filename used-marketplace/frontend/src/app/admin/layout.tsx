@@ -5,7 +5,7 @@ import { Suspense, useEffect, useMemo, useState, useTransition } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Spinner from '@/src/components/ui/Spinner';
 import { ROUTES } from '@/src/config/routes';
-import { useRequireAuth } from '@/src/hooks/useRequireAuth';
+import { useAuth } from '@/src/hooks/useAuth';
 import { subscribeToDashboardProfileUpdates } from '@/src/lib/profileSync';
 import { getProfile } from '@/src/services/profileService';
 import styles from './layout.module.css';
@@ -134,7 +134,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 }
 
 function AdminLayoutShell({ children }: { children: React.ReactNode }) {
-  const { user, token, loading } = useRequireAuth();
+  const { user, session, loading } = useAuth();
+  const token = session?.access_token;
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -142,7 +143,7 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
   const [profileName, setProfileName] = useState<string | null>(null);
   const [profileRole, setProfileRole] = useState<string | null>(null);
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
-  const [accessChecked, setAccessChecked] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(true);
   const searchValue = searchParams.get('q') ?? '';
 
   useEffect(() => {
@@ -158,26 +159,20 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
       }
 
       if (!response.data) {
-        setAccessChecked(true);
+        setProfileLoading(false);
         return;
       }
 
       setProfileName(response.data.fullName);
       setProfileRole(response.data.role);
       setAvatarPath(response.data.avatarPath);
-
-      if (response.data.role !== 'admin') {
-        router.replace(ROUTES.DASHBOARD);
-        return;
-      }
-
-      setAccessChecked(true);
+      setProfileLoading(false);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [router, token]);
+  }, [token]);
 
   useEffect(
     () =>
@@ -229,7 +224,7 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
     [pathname]
   );
 
-  if (loading || !user || !accessChecked || !isAdmin) {
+  if (loading || !user || profileLoading || !isAdmin) {
     return (
       <div className={styles.loadingState}>
         <Spinner size={34} className="text-navy-800" />

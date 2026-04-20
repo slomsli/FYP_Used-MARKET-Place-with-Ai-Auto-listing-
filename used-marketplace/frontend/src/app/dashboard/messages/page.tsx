@@ -68,8 +68,6 @@ const BigMessageIcon = () => (
   </svg>
 );
 
-const ARCHIVED_CONVERSATIONS_STORAGE_PREFIX = 'remarket:archived-conversations:';
-
 type FilterTab = 'all' | 'unread' | 'buying' | 'selling' | 'archived';
 
 interface DraftConversationTarget {
@@ -150,43 +148,6 @@ const formatTime = (dateString?: string) => {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
-function getArchivedConversationsStorageKey(userId: string) {
-  return `${ARCHIVED_CONVERSATIONS_STORAGE_PREFIX}${userId}`;
-}
-
-function readArchivedConversationIds(userId: string): string[] {
-  if (typeof window === 'undefined') {
-    return [];
-  }
-
-  try {
-    const rawValue = window.localStorage.getItem(getArchivedConversationsStorageKey(userId));
-    if (!rawValue) {
-      return [];
-    }
-
-    const parsed = JSON.parse(rawValue);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed.filter((value): value is string => typeof value === 'string');
-  } catch {
-    return [];
-  }
-}
-
-function writeArchivedConversationIds(userId: string, conversationIds: string[]) {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  window.localStorage.setItem(
-    getArchivedConversationsStorageKey(userId),
-    JSON.stringify(conversationIds)
-  );
-}
-
 function areMessagesEqual(current: ChatMessage[], next: ChatMessage[]) {
   if (current.length !== next.length) {
     return false;
@@ -236,6 +197,7 @@ export default function MessagesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const [loadingConversations, setLoadingConversations] = useState(true);
+  const [loadingArchives, setLoadingArchives] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [archivedConversationIds, setArchivedConversationIds] = useState<string[]>([]);
@@ -279,22 +241,63 @@ export default function MessagesPage() {
     }
   }, [requestKey]);
 
+  const removeArchivedConversationId = useCallback((conversationId: string) => {
+    setArchivedConversationIds((current) =>
+      current.filter((archivedConversationId) => archivedConversationId !== conversationId)
+    );
+  }, []);
+
+  const persistArchiveState = useCallback(
+    async (conversationId: string, archived: boolean) => {
+      if (!token) {
+        setPageError('No auth session found. Please sign in again.');
+        return;
+      }
+
+      const response = archived
+        ? await messageService.archiveConversation(token, conversationId)
+        : await messageService.unarchiveConversation(token, conversationId);
+
+      if (response.error) {
+        setPageError(response.error);
+        return;
+      }
+
+      setPageError(null);
+    },
+    [token]
+  );
+
   useEffect(() => {
-    if (!user?.id) {
+    if (!user?.id || !token) {
       setArchivedConversationIds([]);
+      setLoadingArchives(false);
       return;
     }
 
-    setArchivedConversationIds(readArchivedConversationIds(user.id));
-  }, [user?.id]);
+    let cancelled = false;
+    setLoadingArchives(true);
 
-  useEffect(() => {
-    if (!user?.id) {
-      return;
-    }
+    messageService.fetchArchivedConversationIds(token).then(({ data, error }) => {
+      if (cancelled) {
+        return;
+      }
 
-    writeArchivedConversationIds(user.id, archivedConversationIds);
-  }, [archivedConversationIds, user?.id]);
+      if (error || !data) {
+        setPageError(error || 'Failed to load archived conversations');
+        setLoadingArchives(false);
+        return;
+      }
+
+      setArchivedConversationIds(data);
+      setPageError(null);
+      setLoadingArchives(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, user?.id]);
 
   useEffect(() => {
     if (loadingConversations) {
@@ -518,9 +521,8 @@ export default function MessagesPage() {
 
       if (matchingConversation) {
         if (archivedConversationIdSet.has(matchingConversation.id)) {
-          setArchivedConversationIds((current) =>
-            current.filter((conversationId) => conversationId !== matchingConversation.id)
-          );
+          removeArchivedConversationId(matchingConversation.id);
+          void persistArchiveState(matchingConversation.id, false);
         }
         setDraftTarget(null);
         completeInboxRequest();
@@ -570,7 +572,9 @@ export default function MessagesPage() {
     archivedConversationIds,
     completeInboxRequest,
     conversations,
+    persistArchiveState,
     requestKey,
+    removeArchivedConversationId,
     requestedListingId,
     requestedListingTitle,
     requestedRecipientId,
@@ -619,18 +623,16 @@ export default function MessagesPage() {
 
     if (requestedConversation) {
       if (archivedConversationIdSet.has(requestedConversation.id)) {
-        setArchivedConversationIds((current) =>
-          current.filter((conversationId) => conversationId !== requestedConversation.id)
-        );
+        removeArchivedConversationId(requestedConversation.id);
+        void persistArchiveState(requestedConversation.id, false);
       }
       nextConversationId = requestedConversation.id;
       shouldOpenChat = true;
       completeInboxRequest();
     } else if (requestedListingConversation) {
       if (archivedConversationIdSet.has(requestedListingConversation.id)) {
-        setArchivedConversationIds((current) =>
-          current.filter((conversationId) => conversationId !== requestedListingConversation.id)
-        );
+        removeArchivedConversationId(requestedListingConversation.id);
+        void persistArchiveState(requestedListingConversation.id, false);
       }
       nextConversationId = requestedListingConversation.id;
       shouldOpenChat = true;
@@ -667,6 +669,8 @@ export default function MessagesPage() {
     archivedConversationIds,
     conversations,
     requestKey,
+    persistArchiveState,
+    removeArchivedConversationId,
     requestedConversationId,
     requestedListingId,
     requestedRecipientId,
@@ -765,6 +769,7 @@ export default function MessagesPage() {
 
         return [...current, conversationId];
       });
+      void persistArchiveState(conversationId, true);
 
       if (selectedConversation === conversationId) {
         if (isDesktopViewport() && nextConversationId) {
@@ -777,17 +782,16 @@ export default function MessagesPage() {
         }
       }
     },
-    [archivedConversationIdSet, conversations, selectedConversation]
+    [archivedConversationIdSet, conversations, persistArchiveState, selectedConversation]
   );
 
   const handleRestoreConversation = useCallback((conversationId: string) => {
-    setArchivedConversationIds((current) =>
-      current.filter((archivedConversationId) => archivedConversationId !== conversationId)
-    );
+    removeArchivedConversationId(conversationId);
+    void persistArchiveState(conversationId, false);
     setFilterTab('all');
     setSelectedConversation(conversationId);
     setMobileChatOpen(true);
-  }, []);
+  }, [persistArchiveState, removeArchivedConversationId]);
 
   const handleArchiveAction = () => {
     if (!activeConversation) {
@@ -887,7 +891,7 @@ export default function MessagesPage() {
     setMobileChatOpen(true);
   };
 
-  if (authLoading || loadingConversations) {
+  if (authLoading || loadingConversations || loadingArchives) {
     return <div style={{ padding: '3rem', textAlign: 'center' }}>Loading messages...</div>;
   }
 

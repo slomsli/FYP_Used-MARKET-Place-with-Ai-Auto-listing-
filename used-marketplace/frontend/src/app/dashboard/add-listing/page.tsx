@@ -68,6 +68,7 @@ type ListingImageItem = {
   id: string;
   preview: string;
   source: 'local' | 'remote';
+  storagePath?: string | null;
   file?: File;
 };
 
@@ -83,30 +84,57 @@ function formatCurrency(amount: number) {
 const SUSPENDED_LISTING_NOTICE =
   'Your account is suspended. You can stay signed in, but creating or editing listings is disabled until an admin reactivates your account.';
 
-function getStoredImageUrls(listing: Pick<ListingSummary, 'imagePaths' | 'coverImagePath'>) {
-  const seenUrls = new Set<string>();
-
-  return [...listing.imagePaths, listing.coverImagePath]
-    .filter((path): path is string => Boolean(path))
-    .filter((path) => {
-      if (seenUrls.has(path)) {
-        return false;
-      }
-
-      seenUrls.add(path);
-      return true;
-    })
-    .slice(0, MAX_LISTING_IMAGES);
-}
-
 function buildStoredImageItems(
-  listing: Pick<ListingSummary, 'imagePaths' | 'coverImagePath'>
+  listing: Pick<
+    ListingSummary,
+    'imagePaths' | 'coverImagePath' | 'imageStoragePaths' | 'coverImageStoragePath'
+  >
 ): ListingImageItem[] {
-  return getStoredImageUrls(listing).map((preview, index) => ({
-    id: `remote-${index}-${preview}`,
-    preview,
-    source: 'remote',
-  }));
+  const items: ListingImageItem[] = [];
+  const seenStoragePaths = new Set<string>();
+  const seenPreviews = new Set<string>();
+
+  listing.imagePaths.forEach((preview, index) => {
+    const storagePath = listing.imageStoragePaths[index] ?? null;
+
+    if (
+      !preview ||
+      (storagePath && seenStoragePaths.has(storagePath)) ||
+      seenPreviews.has(preview)
+    ) {
+      return;
+    }
+
+    if (storagePath) {
+      seenStoragePaths.add(storagePath);
+    }
+
+    seenPreviews.add(preview);
+    items.push({
+      id: `remote-${index}-${storagePath || preview}`,
+      preview,
+      source: 'remote',
+      storagePath,
+    });
+  });
+
+  if (
+    listing.coverImagePath &&
+    !seenPreviews.has(listing.coverImagePath) &&
+    !(
+      listing.coverImageStoragePath &&
+      seenStoragePaths.has(listing.coverImageStoragePath)
+    )
+  ) {
+    items.push({
+      id: `remote-cover-${listing.coverImageStoragePath || listing.coverImagePath}`,
+      preview: listing.coverImagePath,
+      source: 'remote',
+      storagePath: listing.coverImageStoragePath,
+    });
+  }
+
+  return items.slice(0, MAX_LISTING_IMAGES);
 }
 
 function revokeLocalPreview(image: ListingImageItem) {
@@ -658,16 +686,17 @@ export default function AddListingPage() {
       areaId: areaId ? Number(areaId) : null,
     };
 
-    const existingImageUrls = images
+    const existingImageStoragePaths = images
       .filter((image): image is ListingImageItem & { source: 'remote' } => image.source === 'remote')
-      .map((image) => image.preview);
+      .map((image) => image.storagePath)
+      .filter((storagePath): storagePath is string => Boolean(storagePath));
 
     const pendingUploads = images.filter(
       (image): image is ListingImageItem & { source: 'local'; file: File } =>
         image.source === 'local' && image.file instanceof File
     );
 
-    const uploadedImageUrls: string[] = [];
+    const uploadedImageStoragePaths: string[] = [];
 
     for (const image of pendingUploads) {
       let base64Data: string;
@@ -694,14 +723,16 @@ export default function AddListingPage() {
         return;
       }
 
-      uploadedImageUrls.push(uploadResponse.data.url);
+      uploadedImageStoragePaths.push(
+        uploadResponse.data.storagePath || uploadResponse.data.path
+      );
     }
 
-    const imagePaths = [...existingImageUrls, ...uploadedImageUrls];
+    const imageStoragePaths = [...existingImageStoragePaths, ...uploadedImageStoragePaths];
     const listingPayload = {
       ...payload,
-      imagePaths,
-      coverImagePath: imagePaths[0] ?? null,
+      imageStoragePaths,
+      coverImageStoragePath: imageStoragePaths[0] ?? null,
     };
 
     const response = isEditMode && listingId
@@ -807,7 +838,7 @@ export default function AddListingPage() {
           <div className={styles.section}>
             <div className={styles.sectionHeader}>
               <span className={styles.stepNumber}>01</span>
-              <h2 className={styles.sectionTitle}>Visual Archive</h2>
+              <h2 className={styles.sectionTitle}>Listing Gallery</h2>
             </div>
 
             <div

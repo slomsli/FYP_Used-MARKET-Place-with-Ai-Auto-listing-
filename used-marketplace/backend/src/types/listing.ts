@@ -41,6 +41,8 @@ export interface CreateListingBody {
   status?: CreateableListingStatus;
   stateId?: number | string | null;
   areaId?: number | string | null;
+  imageStoragePaths?: string[];
+  coverImageStoragePath?: string | null;
   imagePaths?: string[];
   coverImagePath?: string | null;
 }
@@ -54,6 +56,7 @@ export interface UploadListingImageBody {
 export interface UploadedListingImage {
   url: string;
   path: string;
+  storagePath: string;
 }
 
 export interface ListingLookupOption {
@@ -106,6 +109,8 @@ export interface ListingSummary {
   statusLabel: string;
   condition: ListingCondition;
   conditionLabel: string;
+  coverImageStoragePath: string | null;
+  imageStoragePaths: string[];
   coverImagePath: string | null;
   imagePaths: string[];
   createdAt: string;

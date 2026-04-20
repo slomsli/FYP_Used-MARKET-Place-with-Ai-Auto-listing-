@@ -19,6 +19,14 @@ CREATE TABLE public.categories (
   CONSTRAINT categories_pkey PRIMARY KEY (id),
   CONSTRAINT categories_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES public.categories(id)
 );
+CREATE TABLE public.conversation_archives (
+  user_id uuid NOT NULL,
+  conversation_id uuid NOT NULL,
+  archived_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT conversation_archives_pkey PRIMARY KEY (user_id, conversation_id),
+  CONSTRAINT conversation_archives_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
+  CONSTRAINT conversation_archives_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id)
+);
 CREATE TABLE public.conversations (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   listing_id uuid NOT NULL,

@@ -474,7 +474,7 @@ export default function BrowsePage() {
         <div className={styles.brandGroup}>
           <Link href={ROUTES.BROWSE} className={styles.brand}>
             <span className={styles.brandMark}>R</span>
-            <span>ReMarket Archive</span>
+            <span>ReMarket</span>
           </Link>
 
           <nav className={styles.nav}>
