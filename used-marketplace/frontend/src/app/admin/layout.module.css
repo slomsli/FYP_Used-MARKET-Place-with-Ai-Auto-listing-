@@ -1,0 +1,340 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap');
+
+.shell {
+  --admin-primary: #1A237E;
+  --admin-secondary: #4D8076;
+  --admin-tertiary: #5C1800;
+  --admin-neutral: #45474F;
+  --admin-bg: #F0F2F6;
+  --admin-surface: #FFFFFF;
+  --admin-font-body: 'Inter', sans-serif;
+  --admin-font-head: 'Manrope', sans-serif;
+
+  /* Dashboard aliases for shared components like the messaging inbox */
+  --dash-primary: var(--admin-primary);
+  --dash-secondary: var(--admin-secondary);
+  --dash-tertiary: var(--admin-tertiary);
+  --dash-neutral: var(--admin-neutral);
+  --dash-bg: var(--admin-bg);
+  --dash-surface: var(--admin-surface);
+  --dash-font-body: var(--admin-font-body);
+  --dash-font-head: var(--admin-font-head);
+
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  background-color: var(--admin-bg);
+  background-image: 
+    radial-gradient(circle at top left, rgba(26, 35, 126, 0.04), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(77, 128, 118, 0.04), transparent 30%);
+  color: var(--admin-neutral);
+  font-family: var(--admin-font-body);
+}
+
+.shell h1, .shell h2, .shell h3, .shell h4, .brandTitle {
+  font-family: var(--admin-font-head);
+}
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  padding: 2rem 1.5rem;
+  background: var(--admin-primary);
+  color: #FFFFFF;
+  display: flex;
+  flex-direction: column;
+  gap: 1.8rem;
+  box-shadow: 4px 0 24px rgba(26, 35, 126, 0.08);
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.brandBlock {
+  display: grid;
+  gap: 0.2rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.consoleLabel {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.6);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.brandTitle {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: #FFFFFF;
+  letter-spacing: -0.02em;
+}
+
+.profileCard {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.2rem;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.profileCard:hover {
+  background: rgba(255, 255, 255, 0.12);
+  transform: translateY(-2px);
+}
+
+.profileAvatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--admin-surface);
+  color: var(--admin-primary);
+  font-family: var(--admin-font-head);
+  font-weight: 800;
+  font-size: 1.1rem;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.profileAvatarImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profileName {
+  font-weight: 700;
+  color: #FFFFFF;
+  font-family: var(--admin-font-head);
+  font-size: 1.05rem;
+}
+
+.profileRole {
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.7);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+.nav {
+  display: grid;
+  gap: 0.35rem;
+  flex: 1;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.2rem;
+  border-radius: 12px;
+  color: rgba(255, 255, 255, 0.75);
+  text-decoration: none;
+  font-weight: 600;
+  font-family: var(--admin-font-body);
+  font-size: 0.95rem;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.navItem:hover {
+  color: #FFFFFF;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.navItemActive {
+  color: #FFFFFF;
+  background: rgba(255, 255, 255, 0.15);
+  box-shadow: inset 3px 0 0 #FFFFFF;
+}
+
+.navIcon {
+  display: inline-flex;
+  color: inherit;
+  opacity: 0.9;
+}
+
+.dashboardLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 1rem;
+  border-radius: 12px;
+  background: var(--admin-tertiary);
+  color: #FFFFFF;
+  text-decoration: none;
+  font-weight: 700;
+  font-family: var(--admin-font-head);
+  justify-content: center;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 8px 24px rgba(92, 24, 0, 0.2);
+}
+
+.dashboardLink:hover {
+  background: #731e00;
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(92, 24, 0, 0.3);
+}
+
+.main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1.2rem 2.5rem;
+  background: rgba(240, 242, 246, 0.85);
+  backdrop-filter: blur(24px);
+  border-bottom: 1px solid rgba(26, 35, 126, 0.05);
+}
+
+.searchField {
+  flex: 1;
+  max-width: 640px;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.85rem 1.2rem;
+  border-radius: 12px;
+  background: var(--admin-surface);
+  border: 1px solid rgba(26, 35, 126, 0.08);
+  box-shadow: 0 2px 8px rgba(26, 35, 126, 0.03);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.searchField:focus-within {
+  border-color: var(--admin-primary);
+  box-shadow: 0 4px 16px rgba(26, 35, 126, 0.08);
+}
+
+.searchField input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--admin-neutral);
+  font-size: 0.95rem;
+  font-family: var(--admin-font-body);
+}
+
+.searchField input::placeholder {
+  color: #8A94A6;
+}
+
+.searchIcon {
+  display: inline-flex;
+  color: #8A94A6;
+}
+
+.topbarActions {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.iconButton {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(26, 35, 126, 0.08);
+  background: var(--admin-surface);
+  color: var(--admin-neutral);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 2px 8px rgba(26, 35, 126, 0.03);
+  text-decoration: none;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.iconButton:hover {
+  color: var(--admin-primary);
+  border-color: var(--admin-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(26, 35, 126, 0.06);
+}
+
+.content {
+  padding: 2.5rem;
+  flex: 1;
+}
+
+.searchingBadge {
+  margin: 1rem 2.5rem 0;
+  align-self: flex-start;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  background: var(--admin-secondary);
+  color: #FFFFFF;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: 0 4px 12px rgba(77, 128, 118, 0.2);
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.loadingState {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  gap: 1rem;
+  background: var(--admin-bg);
+  color: var(--admin-primary);
+  font-family: 'Manrope', sans-serif;
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+@media (max-width: 1080px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+    height: auto;
+    padding: 1.5rem;
+  }
+
+  .dashboardLink {
+    margin-top: 1rem;
+  }
+}
+
+@media (max-width: 720px) {
+  .topbar,
+  .content {
+    padding: 1.5rem;
+  }
+
+  .topbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .topbarActions {
+    justify-content: flex-end;
+  }
+
+  .searchingBadge {
+    margin: 0.5rem 1.5rem 0;
+  }
+}

@@ -1,45 +1,42 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ROUTES } from '@/src/config/routes';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
+import { getPublicListingById } from '@/src/services/listingService';
 import * as messageService from '@/src/services/messageService';
-import type { ConversationDetail, ChatMessage } from '@/src/services/messageService';
+import type { ChatMessage, ConversationDetail } from '@/src/services/messageService';
 import styles from './page.module.css';
 
-/* ── SVG Icons ── */
 const SearchIcon = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
-  </svg>
-);
-
-const PlusCircleIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10" /><path d="M8 12h8" /><path d="M12 8v8" />
-  </svg>
-);
-
-const SmileIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" />
+    <circle cx="11" cy="11" r="8" />
+    <path d="m21 21-4.3-4.3" />
   </svg>
 );
 
 const SendIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+    <path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z" />
   </svg>
 );
 
-const SearchChatIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+const RefreshIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 2v6h-6" />
+    <path d="M3 12a9 9 0 0 1 15.55-6.36L21 8" />
+    <path d="M3 22v-6h6" />
+    <path d="M21 12a9 9 0 0 1-15.55 6.36L3 16" />
   </svg>
 );
 
-const MoreVertIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="5" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="12" cy="19" r="1" />
+const ExternalLinkIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M15 3h6v6" />
+    <path d="M10 14 21 3" />
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
   </svg>
 );
 
@@ -57,55 +54,82 @@ const CheckIcon = () => (
 
 const DoubleCheckIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M18 6 7 17l-5-5" /><path d="m22 10-9.5 9.5-2-2" />
-  </svg>
-);
-
-const ShieldCheckIcon = () => (
-  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M12 2l8 4v6c0 5.25-3.5 9.74-8 11-4.5-1.26-8-5.75-8-11V6l8-4zm-1 14.59l-3.3-3.3 1.41-1.41L11 13.77l4.89-4.89 1.41 1.41L11 16.59z" />
-  </svg>
-);
-
-const LinkIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-  </svg>
-);
-
-const LocationIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0Z" />
-    <circle cx="12" cy="10" r="3" />
+    <path d="M18 6 7 17l-5-5" />
+    <path d="m22 10-9.5 9.5-2-2" />
   </svg>
 );
 
 const BigMessageIcon = () => (
   <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-    <path d="M8 10h.01" /><path d="M12 10h.01" /><path d="M16 10h.01" />
+    <path d="M8 10h.01" />
+    <path d="M12 10h.01" />
+    <path d="M16 10h.01" />
   </svg>
 );
 
-/* ── Types ── */
-type FilterTab = 'all' | 'unread' | 'buying';
+const ARCHIVED_CONVERSATIONS_STORAGE_PREFIX = 'remarket:archived-conversations:';
 
-// Helper to determine role
-const getRole = (convo: ConversationDetail, userId?: string) => {
-  return convo.buyer_id === userId ? 'buying' : 'seller';
+type FilterTab = 'all' | 'unread' | 'buying' | 'selling' | 'archived';
+
+interface DraftConversationTarget {
+  listingId: string;
+  recipientId: string | null;
+  listingTitle: string;
+  otherUserName: string;
+  coverImagePath: string | null;
+  isModeration: boolean;
+}
+
+const getRole = (convo: ConversationDetail, userId?: string) =>
+  convo.buyer_id === userId ? 'buying' : 'seller';
+
+const isModerationConversation = (convo: ConversationDetail | null | undefined) =>
+  Boolean(convo?.listing_details?.is_moderation);
+
+const getRoleLabel = (convo: ConversationDetail, userId?: string) => {
+  if (isModerationConversation(convo)) {
+    return 'Moderation';
+  }
+
+  return getRole(convo, userId) === 'buying' ? 'Buying' : 'Selling';
+};
+
+const getConversationName = (convo: ConversationDetail) =>
+  convo.other_user?.display_name || convo.other_user?.username || 'Marketplace User';
+
+const conversationMatchesRequest = (
+  conversation: ConversationDetail,
+  listingId: string | null,
+  recipientId: string | null
+) => {
+  if (!listingId || conversation.listing_id !== listingId) {
+    return false;
+  }
+
+  if (!recipientId) {
+    return true;
+  }
+
+  return conversation.other_user?.id === recipientId;
 };
 
 const getInitials = (name?: string | null) => {
   if (!name) return 'U';
-  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  return name
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
 };
 
-const COLORS = ['avatarGreen', 'avatarAmber', 'avatarPurple', 'avatarNavy', 'avatarPink', 'avatarBlue'];
+const COLORS = ['avatarGreen', 'avatarAmber', 'avatarPurple', 'avatarNavy', 'avatarPink', 'avatarBlue'] as const;
+
 const getAvatarColor = (id: string) => {
   let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = id.charCodeAt(i) + ((hash << 5) - hash);
+  for (let index = 0; index < id.length; index += 1) {
+    hash = id.charCodeAt(index) + ((hash << 5) - hash);
   }
   return COLORS[Math.abs(hash) % COLORS.length];
 };
@@ -114,179 +138,752 @@ const formatTime = (dateString?: string) => {
   if (!dateString) return '';
   const date = new Date(dateString);
   const now = new Date();
+
   if (date.toDateString() === now.toDateString()) {
-    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
   }
+
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
+function getArchivedConversationsStorageKey(userId: string) {
+  return `${ARCHIVED_CONVERSATIONS_STORAGE_PREFIX}${userId}`;
+}
+
+function readArchivedConversationIds(userId: string): string[] {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(getArchivedConversationsStorageKey(userId));
+    if (!rawValue) {
+      return [];
+    }
+
+    const parsed = JSON.parse(rawValue);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter((value): value is string => typeof value === 'string');
+  } catch {
+    return [];
+  }
+}
+
+function writeArchivedConversationIds(userId: string, conversationIds: string[]) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(
+    getArchivedConversationsStorageKey(userId),
+    JSON.stringify(conversationIds)
+  );
+}
+
+function areMessagesEqual(current: ChatMessage[], next: ChatMessage[]) {
+  if (current.length !== next.length) {
+    return false;
+  }
+
+  return current.every((message, index) => {
+    const nextMessage = next[index];
+
+    return (
+      message.id === nextMessage.id &&
+      message.sender_id === nextMessage.sender_id &&
+      message.content === nextMessage.content &&
+      message.created_at === nextMessage.created_at &&
+      message.is_read === nextMessage.is_read
+    );
+  });
+}
+
+function isDesktopViewport() {
+  return typeof window !== 'undefined' && window.innerWidth > 900;
+}
+
 export default function MessagesPage() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { user, token, loading: authLoading } = useRequireAuth();
-  
+  const isAdminWorkspace = pathname.startsWith('/admin');
+  const inboxRoute = isAdminWorkspace ? ROUTES.ADMIN_MESSAGES : ROUTES.MESSAGES;
+  const browseRoute = isAdminWorkspace ? ROUTES.ADMIN : ROUTES.BROWSE;
+  const secondaryRoute = isAdminWorkspace ? ROUTES.ADMIN_USERS : ROUTES.OFFERS;
+  const secondaryLabel = isAdminWorkspace ? 'User Directory' : 'Open Offers';
+
+  const requestedConversationId = searchParams.get('conversationId');
+  const requestedListingId = searchParams.get('listingId');
+  const requestedListingTitle = searchParams.get('listingTitle')?.trim() || null;
+  const requestedRecipientId = searchParams.get('recipientId') ?? searchParams.get('sellerId');
+  const requestedRecipientName = searchParams.get('recipientName')?.trim() || null;
+  const requestedTopicType = searchParams.get('topicType')?.trim() || null;
+
   const [conversations, setConversations] = useState<ConversationDetail[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  
+  const [draftTarget, setDraftTarget] = useState<DraftConversationTarget | null>(null);
   const [filterTab, setFilterTab] = useState<FilterTab>('all');
   const [messageInput, setMessageInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
-  
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [archivedConversationIds, setArchivedConversationIds] = useState<string[]>([]);
+  const [pageError, setPageError] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const conversationRequestIdRef = useRef(0);
+  const messageRequestIdRef = useRef(0);
+  const handledRequestKeyRef = useRef<string | null>(null);
+  const archivedConversationIdSet = new Set(archivedConversationIds);
+  const requestKey =
+    requestedConversationId ||
+    requestedListingId ||
+    requestedListingTitle ||
+    requestedRecipientId ||
+    requestedRecipientName ||
+    requestedTopicType
+      ? [
+          requestedConversationId ?? '',
+          requestedListingId ?? '',
+          requestedListingTitle ?? '',
+          requestedRecipientId ?? '',
+          requestedRecipientName ?? '',
+          requestedTopicType ?? '',
+        ].join('|')
+      : null;
+
+  const completeInboxRequest = useCallback(() => {
+    if (!requestKey || handledRequestKeyRef.current === requestKey) {
+      return;
+    }
+
+    handledRequestKeyRef.current = requestKey;
+    router.replace(inboxRoute, { scroll: false });
+  }, [inboxRoute, requestKey, router]);
+
+  useEffect(() => {
+    if (!requestKey) {
+      handledRequestKeyRef.current = null;
+    }
+  }, [requestKey]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setArchivedConversationIds([]);
+      return;
+    }
+
+    setArchivedConversationIds(readArchivedConversationIds(user.id));
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      return;
+    }
+
+    writeArchivedConversationIds(user.id, archivedConversationIds);
+  }, [archivedConversationIds, user?.id]);
+
+  useEffect(() => {
+    if (loadingConversations) {
+      return;
+    }
+
+    const validConversationIds = new Set(conversations.map((conversation) => conversation.id));
+
+    setArchivedConversationIds((current) => {
+      const next = current.filter((conversationId) => validConversationIds.has(conversationId));
+      return next.length === current.length ? current : next;
+    });
+  }, [conversations, loadingConversations]);
 
   const loadConversations = useCallback(async () => {
-    if (!token) return;
+    if (!token) return null;
+
+    const requestId = conversationRequestIdRef.current + 1;
+    conversationRequestIdRef.current = requestId;
+
     const { data, error } = await messageService.fetchConversations(token);
-    if (!error && data) {
-      setConversations(data);
+
+    if (requestId !== conversationRequestIdRef.current) {
+      return null;
     }
+
+    if (error || !data) {
+      setPageError(error || 'Failed to load conversations');
+      setLoadingConversations(false);
+      return null;
+    }
+
+    setConversations(data);
+    setPageError(null);
     setLoadingConversations(false);
+    return data;
   }, [token]);
 
-  const loadMessages = useCallback(async (conversationId: string) => {
-    if (!token) return;
-    setLoadingMessages(true);
-    const { data, error } = await messageService.fetchMessages(token, conversationId);
-    if (!error && data) {
-      setMessages(data);
+  const loadMessages = useCallback(
+    async (
+      conversationId: string,
+      options: {
+        showLoader?: boolean;
+        reportErrors?: boolean;
+      } = {}
+    ) => {
+      if (!token) return null;
+
+      const { showLoader = false, reportErrors = false } = options;
+      const requestId = messageRequestIdRef.current + 1;
+      messageRequestIdRef.current = requestId;
+
+      if (showLoader) {
+        setLoadingMessages(true);
+      }
+
+      const { data, error } = await messageService.fetchMessages(token, conversationId);
+
+      if (requestId !== messageRequestIdRef.current) {
+        return null;
+      }
+
+      if (error || !data) {
+        if (reportErrors) {
+          setPageError(error || 'Failed to load messages');
+        }
+        if (showLoader) {
+          setLoadingMessages(false);
+        }
+        return null;
+      }
+
+      setPageError(null);
+      setMessages((current) => (areMessagesEqual(current, data) ? current : data));
+
+      if (showLoader) {
+        setLoadingMessages(false);
+      }
+
+      return data;
+    },
+    [token]
+  );
+
+  const markConversationRead = useCallback(
+    async (conversationId: string) => {
+      if (!token) {
+        return;
+      }
+
+      const { error } = await messageService.markAsRead(token, conversationId);
+
+      if (error) {
+        return;
+      }
+
+      setConversations((current) =>
+        current.map((conversation) => {
+          if (conversation.id !== conversationId) {
+            return conversation;
+          }
+
+          return {
+            ...conversation,
+            unread_count: 0,
+            last_message:
+              conversation.last_message && conversation.last_message.sender_id !== user?.id
+                ? {
+                    ...conversation.last_message,
+                    is_read: true,
+                  }
+                : conversation.last_message,
+          };
+        })
+      );
+
+      setMessages((current) =>
+        current.map((message) =>
+          message.sender_id === user?.id
+            ? message
+            : {
+                ...message,
+                is_read: true,
+              }
+        )
+      );
+    },
+    [token, user?.id]
+  );
+
+  const refreshCurrentView = useCallback(async () => {
+    const nextConversations = await loadConversations();
+
+    if (!selectedConversation || !token) {
+      return;
     }
-    setLoadingMessages(false);
-  }, [token]);
 
-  // Initial load
-  useEffect(() => {
-    if (!authLoading && token) {
-      loadConversations();
+    if (nextConversations && !nextConversations.some((conv) => conv.id === selectedConversation)) {
+      setSelectedConversation(null);
+      setMessages([]);
+      return;
     }
-  }, [token, authLoading, loadConversations]);
 
-  // Periodic polling for conversations
-  useEffect(() => {
-    if (!token) return;
-    const interval = setInterval(loadConversations, 10000); // 10 seconds
-    return () => clearInterval(interval);
-  }, [loadConversations, token]);
-
-  // Periodic polling for selected conversation messages
-  useEffect(() => {
-    if (!token || !selectedConversation) return;
-    
-    // Initial fetch when selection changes
-    loadMessages(selectedConversation);
-    // Mark as read immediately on load
-    messageService.markAsRead(token, selectedConversation).then(() => {
-       // local optimistic update for unread_count
-       setConversations(prev => prev.map(c => 
-         c.id === selectedConversation ? { ...c, unread_count: 0 } : c
-       ));
+    const nextMessages = await loadMessages(selectedConversation, {
+      showLoader: true,
+      reportErrors: true,
     });
 
-    const interval = setInterval(() => {
-      messageService.fetchMessages(token, selectedConversation).then(({ data, error }) => {
-        if (!error && data) {
-           // update if different length (simple check for new messages)
-           setMessages(current => {
-              if (current.length !== data.length) {
-                 messageService.markAsRead(token, selectedConversation);
-                 return data;
-              }
-              return current;
-           });
+    if (nextMessages) {
+      await markConversationRead(selectedConversation);
+    }
+  }, [loadConversations, loadMessages, markConversationRead, selectedConversation, token]);
+
+  useEffect(() => {
+    if (!token || authLoading) return;
+
+    void loadConversations();
+
+    const interval = window.setInterval(() => {
+      void loadConversations();
+    }, 10000);
+
+    return () => {
+      conversationRequestIdRef.current += 1;
+      window.clearInterval(interval);
+    };
+  }, [authLoading, loadConversations, token]);
+
+  useEffect(() => {
+    if (!selectedConversation) {
+      messageRequestIdRef.current += 1;
+      setMessages([]);
+      setLoadingMessages(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    void loadMessages(selectedConversation, {
+      showLoader: true,
+      reportErrors: true,
+    }).then((data) => {
+      if (!cancelled && data) {
+        void markConversationRead(selectedConversation);
+      }
+    });
+
+    const interval = window.setInterval(() => {
+      void loadMessages(selectedConversation).then((data) => {
+        if (!cancelled && data) {
+          void markConversationRead(selectedConversation);
         }
       });
-    }, 5000); // 5 sec poll while looking at chat
+    }, 5000);
 
-    return () => clearInterval(interval);
-  }, [selectedConversation, loadMessages, token]);
+    return () => {
+      cancelled = true;
+      messageRequestIdRef.current += 1;
+      window.clearInterval(interval);
+    };
+  }, [loadMessages, markConversationRead, selectedConversation]);
 
-  // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, selectedConversation]);
 
-  // Filter conversations
-  const filteredConversations = conversations.filter((conv) => {
-    // Search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      const matchesName = (conv.other_user?.full_name || '').toLowerCase().includes(query);
-      const matchesProduct = (conv.listing_details?.title || '').toLowerCase().includes(query);
-      const matchesMessage = (conv.last_message?.content || '').toLowerCase().includes(query);
-      if (!matchesName && !matchesProduct && !matchesMessage) return false;
+  useEffect(() => {
+    let cancelled = false;
+
+    const hasPendingRequest =
+      requestKey !== null && handledRequestKeyRef.current !== requestKey;
+
+    async function resolveDraftTarget() {
+      if (!requestedListingId || !hasPendingRequest) {
+        return;
+      }
+
+      const matchingConversation = conversations.find((conversation) =>
+        conversationMatchesRequest(conversation, requestedListingId, requestedRecipientId)
+      );
+
+      if (matchingConversation) {
+        if (archivedConversationIdSet.has(matchingConversation.id)) {
+          setArchivedConversationIds((current) =>
+            current.filter((conversationId) => conversationId !== matchingConversation.id)
+          );
+        }
+        setDraftTarget(null);
+        completeInboxRequest();
+        return;
+      }
+
+      const result = await getPublicListingById(requestedListingId);
+
+      if (cancelled) {
+        return;
+      }
+
+      if (result.data) {
+        const inferredName =
+          requestedRecipientName ||
+          (requestedRecipientId && requestedRecipientId !== result.data.seller.id
+            ? 'Buyer'
+            : result.data.seller.displayName);
+
+        setDraftTarget({
+          listingId: requestedListingId,
+          recipientId: requestedRecipientId,
+          listingTitle: result.data.listing.title,
+          otherUserName: inferredName,
+          coverImagePath: result.data.listing.coverImagePath,
+          isModeration: requestedTopicType === 'moderation',
+        });
+      } else {
+        setDraftTarget({
+          listingId: requestedListingId,
+          recipientId: requestedRecipientId,
+          listingTitle: requestedListingTitle || 'Listing',
+          otherUserName: requestedRecipientName || 'Marketplace User',
+          coverImagePath: null,
+          isModeration: requestedTopicType === 'moderation',
+        });
+      }
+      completeInboxRequest();
     }
 
-    const role = getRole(conv, user?.id);
-    // Tab filter
-    if (filterTab === 'unread') return conv.unread_count > 0;
+    void resolveDraftTarget();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    archivedConversationIds,
+    completeInboxRequest,
+    conversations,
+    requestKey,
+    requestedListingId,
+    requestedListingTitle,
+    requestedRecipientId,
+    requestedRecipientName,
+    requestedTopicType,
+  ]);
+
+  useEffect(() => {
+    const activeConversations = conversations.filter(
+      (conversation) => !archivedConversationIdSet.has(conversation.id)
+    );
+    const hasPendingRequest =
+      requestKey !== null && handledRequestKeyRef.current !== requestKey;
+
+    if (conversations.length === 0) {
+      if (!requestedListingId) {
+        setSelectedConversation(null);
+      }
+      setMessages([]);
+      return;
+    }
+
+    const requestedConversation =
+      hasPendingRequest && requestedConversationId
+        ? conversations.find((conversation) => conversation.id === requestedConversationId)
+        : null;
+    const requestedListingConversation =
+      hasPendingRequest && requestedListingId
+        ? conversations.find((conversation) =>
+            conversationMatchesRequest(
+              conversation,
+              requestedListingId,
+              requestedRecipientId
+            )
+          )
+        : null;
+    const activeStillExists = selectedConversation
+      ? conversations.find((conversation) => conversation.id === selectedConversation)
+      : null;
+    const activeConversationArchived = activeStillExists
+      ? archivedConversationIdSet.has(activeStillExists.id)
+      : false;
+
+    let nextConversationId = selectedConversation;
+    let shouldOpenChat = false;
+
+    if (requestedConversation) {
+      if (archivedConversationIdSet.has(requestedConversation.id)) {
+        setArchivedConversationIds((current) =>
+          current.filter((conversationId) => conversationId !== requestedConversation.id)
+        );
+      }
+      nextConversationId = requestedConversation.id;
+      shouldOpenChat = true;
+      completeInboxRequest();
+    } else if (requestedListingConversation) {
+      if (archivedConversationIdSet.has(requestedListingConversation.id)) {
+        setArchivedConversationIds((current) =>
+          current.filter((conversationId) => conversationId !== requestedListingConversation.id)
+        );
+      }
+      nextConversationId = requestedListingConversation.id;
+      shouldOpenChat = true;
+      completeInboxRequest();
+    } else if (hasPendingRequest && requestedListingId) {
+      nextConversationId = null;
+      shouldOpenChat = true;
+    } else if (!activeStillExists || (activeConversationArchived && filterTab !== 'archived')) {
+      nextConversationId = isDesktopViewport()
+        ? activeConversations[0]?.id ?? null
+        : null;
+    }
+
+    if (nextConversationId === selectedConversation) {
+      if (!nextConversationId && shouldOpenChat) {
+        setMobileChatOpen(true);
+      }
+      return;
+    }
+
+    setSelectedConversation(nextConversationId);
+    if (nextConversationId && shouldOpenChat) {
+      setMobileChatOpen(true);
+    }
+    if (!nextConversationId) {
+      setMessages([]);
+      if (shouldOpenChat) {
+        setMobileChatOpen(true);
+      }
+    }
+  }, [
+    filterTab,
+    completeInboxRequest,
+    archivedConversationIds,
+    conversations,
+    requestKey,
+    requestedConversationId,
+    requestedListingId,
+    requestedRecipientId,
+    selectedConversation,
+  ]);
+
+  useEffect(() => {
+    if (filterTab === 'archived') {
+      if (selectedConversation && archivedConversationIdSet.has(selectedConversation)) {
+        return;
+      }
+
+      const firstArchivedConversationId =
+        conversations.find((conversation) => archivedConversationIdSet.has(conversation.id))?.id ?? null;
+
+      setSelectedConversation(firstArchivedConversationId);
+      if (!firstArchivedConversationId) {
+        setMessages([]);
+      }
+      return;
+    }
+
+    if (selectedConversation && archivedConversationIdSet.has(selectedConversation)) {
+      setSelectedConversation(null);
+      setMessages([]);
+    }
+  }, [
+    archivedConversationIds,
+    conversations,
+    filterTab,
+    selectedConversation,
+  ]);
+
+  const filteredConversations = conversations.filter((conversation) => {
+    const isArchived = archivedConversationIdSet.has(conversation.id);
+
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      const matchesName = getConversationName(conversation).toLowerCase().includes(query);
+      const matchesProduct = (conversation.listing_details?.title || '').toLowerCase().includes(query);
+      const matchesMessage = (conversation.last_message?.content || '').toLowerCase().includes(query);
+
+      if (!matchesName && !matchesProduct && !matchesMessage) {
+        return false;
+      }
+    }
+
+    if (filterTab === 'archived') return isArchived;
+    if (isArchived) return false;
+
+    const role = getRole(conversation, user?.id);
+    if (filterTab === 'unread') return conversation.unread_count > 0;
     if (filterTab === 'buying') return role === 'buying';
+    if (filterTab === 'selling') return role === 'seller';
     return true;
   });
 
-  const activeConv = conversations.find((c) => c.id === selectedConversation);
+  const activeConversation =
+    conversations.find((conversation) => conversation.id === selectedConversation) ?? null;
+  const isActiveConversationArchived = activeConversation
+    ? archivedConversationIdSet.has(activeConversation.id)
+    : false;
+  const isActiveModerationThread =
+    isModerationConversation(activeConversation) || Boolean(draftTarget?.isModeration);
+  const activeListingId = activeConversation?.listing_id ?? draftTarget?.listingId ?? null;
+  const activeListingTitle =
+    activeConversation?.listing_details?.title ?? draftTarget?.listingTitle ?? 'Listing';
+  const activeOtherUserName =
+    activeConversation ? getConversationName(activeConversation) : draftTarget?.otherUserName ?? 'Seller';
+  const activeOtherUserAvatar = activeConversation?.other_user?.avatar_path ?? null;
+  const activeOtherUserUsername = activeConversation?.other_user?.username ?? null;
+  const activeRoleLabel = activeConversation
+    ? isModerationConversation(activeConversation)
+      ? 'User'
+      : getRole(activeConversation, user?.id) === 'buying'
+        ? 'Seller'
+        : 'Buyer'
+    : draftTarget?.isModeration
+      ? 'User'
+      : 'Seller';
+  const canOpenActiveListing = Boolean(activeListingId) && !isActiveModerationThread;
+
+  const handleArchiveConversation = useCallback(
+    (conversationId: string) => {
+      const nextConversationId =
+        conversations.find(
+          (conversation) =>
+            conversation.id !== conversationId &&
+            !archivedConversationIdSet.has(conversation.id)
+        )?.id ?? null;
+
+      setArchivedConversationIds((current) => {
+        if (current.includes(conversationId)) {
+          return current;
+        }
+
+        return [...current, conversationId];
+      });
+
+      if (selectedConversation === conversationId) {
+        if (isDesktopViewport() && nextConversationId) {
+          setSelectedConversation(nextConversationId);
+          setMobileChatOpen(true);
+        } else {
+          setSelectedConversation(null);
+          setMessages([]);
+          setMobileChatOpen(false);
+        }
+      }
+    },
+    [archivedConversationIdSet, conversations, selectedConversation]
+  );
+
+  const handleRestoreConversation = useCallback((conversationId: string) => {
+    setArchivedConversationIds((current) =>
+      current.filter((archivedConversationId) => archivedConversationId !== conversationId)
+    );
+    setFilterTab('all');
+    setSelectedConversation(conversationId);
+    setMobileChatOpen(true);
+  }, []);
+
+  const handleArchiveAction = () => {
+    if (!activeConversation) {
+      return;
+    }
+
+    if (isActiveConversationArchived) {
+      handleRestoreConversation(activeConversation.id);
+      return;
+    }
+
+    handleArchiveConversation(activeConversation.id);
+  };
 
   const handleSendMessage = async () => {
-    if (!messageInput.trim() || !selectedConversation || !token || !user) return;
+    if (!messageInput.trim() || !token || !user) return;
 
     const content = messageInput.trim();
     setIsSending(true);
     setMessageInput('');
     inputRef.current?.focus();
 
-    // Optimistic UI update
-    const tempMessage: ChatMessage = {
-      id: `temp-${Date.now()}`,
-      conversation_id: selectedConversation,
-      sender_id: user.id,
-      content,
-      is_read: false,
-      created_at: new Date().toISOString(),
-    };
-    
-    setMessages(prev => [...prev, tempMessage]);
-    
-    // Update local conversation list
-    setConversations(prev => prev.map(c => {
-      if (c.id === selectedConversation) {
-        return {
-          ...c,
-          last_message: {
-            content,
-            created_at: tempMessage.created_at,
-            sender_id: user.id,
-            is_read: false
-          }
-        }
-      }
-      return c;
-    }));
+    if (selectedConversation) {
+      const tempMessage: ChatMessage = {
+        id: `temp-${Date.now()}`,
+        conversation_id: selectedConversation,
+        sender_id: user.id,
+        content,
+        is_read: false,
+        created_at: new Date().toISOString(),
+      };
 
-    const { data, error } = await messageService.sendReply(token, selectedConversation, content);
-    
-    if (error || !data) {
-      console.error('Failed to send message:', error);
-      // Rollback on fail (optional for MVP, omit for brevity, but let's just log)
-    } else {
-      // Replace temp with real
-      setMessages(prev => prev.map(m => m.id === tempMessage.id ? data : m));
+      setMessages((current) => [...current, tempMessage]);
+      setConversations((current) =>
+        current.map((conversation) =>
+          conversation.id === selectedConversation
+            ? {
+                ...conversation,
+                last_message: {
+                  content,
+                  created_at: tempMessage.created_at,
+                  sender_id: user.id,
+                  is_read: false,
+                },
+              }
+            : conversation
+        )
+      );
+
+      const { data, error } = await messageService.sendReply(token, selectedConversation, content);
+
+      if (error || !data) {
+        console.error('Failed to send message:', error);
+      } else {
+        setMessages((current) => current.map((item) => (item.id === tempMessage.id ? data : item)));
+      }
+
+      setIsSending(false);
+      return;
     }
-    
+
+    if (!draftTarget) {
+      setIsSending(false);
+      return;
+    }
+
+    const { data, error } = await messageService.sendMessage(
+      token,
+      draftTarget.listingId,
+      content,
+      draftTarget.recipientId ?? undefined
+    );
+
+    if (error || !data) {
+      console.error('Failed to start conversation:', error);
+      setIsSending(false);
+      return;
+    }
+
+    setMessages([data]);
+    setSelectedConversation(data.conversation_id);
+    setDraftTarget(null);
+    setMobileChatOpen(true);
+    await loadConversations();
     setIsSending(false);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      void handleSendMessage();
     }
   };
 
-  const handleConversationSelect = (id: string) => {
-    setSelectedConversation(id);
+  const handleConversationSelect = (conversationId: string) => {
+    setSelectedConversation(conversationId);
     setMobileChatOpen(true);
   };
 
@@ -297,12 +894,22 @@ export default function MessagesPage() {
   return (
     <div className={styles.messagesPage}>
       <div className={styles.messagesContainer}>
-        {/* ── Left: Conversation List ── */}
         <div className={styles.conversationPanel}>
           <div className={styles.conversationHeader}>
-            <h1 className={styles.conversationTitle}>Messages</h1>
+            <div className={styles.headerRow}>
+              <h1 className={styles.conversationTitle}>Messages</h1>
+              <button
+                type="button"
+                className={styles.refreshButton}
+                onClick={() => void refreshCurrentView()}
+              >
+                <RefreshIcon />
+                Refresh
+              </button>
+            </div>
+
             <div className={styles.filterTabs}>
-              {(['all', 'unread', 'buying'] as FilterTab[]).map((tab) => (
+              {(['all', 'unread', 'buying', 'selling', 'archived'] as FilterTab[]).map((tab) => (
                 <button
                   key={tab}
                   className={`${styles.filterTab} ${filterTab === tab ? styles.filterTabActive : ''}`}
@@ -316,63 +923,115 @@ export default function MessagesPage() {
             </div>
           </div>
 
-          {/* Search */}
           <div className={styles.conversationSearch}>
             <div className={styles.searchWrapper}>
-              <span className={styles.searchIcon}><SearchIcon /></span>
+              <span className={styles.searchIcon}>
+                <SearchIcon />
+              </span>
               <input
                 type="text"
                 placeholder="Search conversations..."
                 className={styles.searchInput}
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(event) => setSearchQuery(event.target.value)}
                 id="search-conversations"
               />
+              {searchQuery && (
+                <button
+                  type="button"
+                  className={styles.clearSearchButton}
+                  onClick={() => setSearchQuery('')}
+                >
+                  Clear
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Conversation List */}
+          {pageError && <div className={styles.pageError}>{pageError}</div>}
+
           <div className={styles.conversationList}>
             {filteredConversations.length === 0 ? (
               <div className={styles.emptyConversations}>
-                <div className={styles.emptyConversationsIcon}>💬</div>
-                <div className={styles.emptyConversationsTitle}>No conversations found</div>
+                <div className={styles.emptyConversationsIcon}>Chat</div>
+                <div className={styles.emptyConversationsTitle}>
+                  {filterTab === 'archived' ? 'No archived conversations' : 'No conversations found'}
+                </div>
                 <div className={styles.emptyConversationsDesc}>
-                  {searchQuery ? 'Try a different search term.' : 'Start browsing to connect with sellers.'}
+                  {searchQuery
+                    ? 'Try a different search term.'
+                    : filterTab === 'archived'
+                      ? 'Archived chats stay here until you restore them.'
+                      : isAdminWorkspace
+                        ? 'Use moderation threads to coordinate with marketplace members.'
+                        : 'Start browsing to connect with other users.'}
                 </div>
               </div>
             ) : (
-              filteredConversations.map((conv) => {
-                const isUnread = conv.unread_count > 0;
-                const name = conv.other_user?.full_name || 'Marketplace User';
-                const avatarColor = getAvatarColor(conv.other_user?.id || conv.id);
+              filteredConversations.map((conversation) => {
+                const isUnread = conversation.unread_count > 0;
+                const name = getConversationName(conversation);
+                const avatarColor = getAvatarColor(conversation.other_user?.id || conversation.id);
                 const initials = getInitials(name);
+                const roleLabel = getRoleLabel(conversation, user?.id);
 
                 return (
                   <div
-                    key={conv.id}
-                    className={`${styles.conversationItem} ${selectedConversation === conv.id ? styles.conversationItemActive : ''}`}
-                    onClick={() => handleConversationSelect(conv.id)}
+                    key={conversation.id}
+                    className={`${styles.conversationItem} ${
+                      selectedConversation === conversation.id ? styles.conversationItemActive : ''
+                    }`}
+                    onClick={() => handleConversationSelect(conversation.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        handleConversationSelect(conversation.id);
+                      }
+                    }}
                     role="button"
                     tabIndex={0}
-                    id={`conversation-${conv.id}`}
+                    id={`conversation-${conversation.id}`}
                   >
                     <div className={`${styles.conversationAvatar} ${styles[avatarColor]}`}>
-                      {initials}
+                      {conversation.other_user?.avatar_path ? (
+                        <img
+                          src={conversation.other_user.avatar_path}
+                          alt={name}
+                          className={styles.avatarImage}
+                        />
+                      ) : (
+                        initials
+                      )}
                     </div>
+
                     <div className={styles.conversationContent}>
                       <div className={styles.conversationTop}>
                         <span className={styles.conversationName}>{name}</span>
                         <span className={styles.conversationTime}>
-                          {formatTime(conv.last_message?.created_at || conv.created_at)}
+                          {formatTime(conversation.last_message?.created_at || conversation.created_at)}
                         </span>
                       </div>
-                      <div className={styles.conversationProduct}>{conv.listing_details?.title || 'Unknown Product'}</div>
+
+                      <div className={styles.conversationMetaRow}>
+                        <span className={styles.rolePill}>{roleLabel}</span>
+                        {conversation.other_user?.username && (
+                          <span className={styles.usernameLabel}>@{conversation.other_user.username}</span>
+                        )}
+                      </div>
+
+                      <div className={styles.conversationProduct}>
+                        {conversation.listing_details?.title || 'Listing unavailable'}
+                      </div>
                       <div className={styles.conversationPreview}>
-                        {conv.last_message ? conv.last_message.content : 'Started a conversation'}
+                        {conversation.last_message ? conversation.last_message.content : 'No messages yet'}
                       </div>
                     </div>
-                    {isUnread && <span className={styles.unreadDot} />}
+
+                    {isUnread && (
+                      <span className={styles.unreadBadge}>
+                        {conversation.unread_count > 9 ? '9+' : conversation.unread_count}
+                      </span>
+                    )}
                   </div>
                 );
               })
@@ -380,10 +1039,8 @@ export default function MessagesPage() {
           </div>
         </div>
 
-        {/* ── Right: Chat Area ── */}
-        {activeConv ? (
+        {activeConversation || draftTarget ? (
           <div className={`${styles.chatPanel} ${mobileChatOpen ? styles.chatPanelActive : ''}`}>
-            {/* Chat Header */}
             <div className={styles.chatHeader}>
               <div className={styles.chatHeaderLeft}>
                 <button
@@ -395,78 +1052,145 @@ export default function MessagesPage() {
                 >
                   <ArrowLeftIcon />
                 </button>
-                <div className={`${styles.chatHeaderAvatar} ${styles[getAvatarColor(activeConv.other_user?.id || activeConv.id)]}`}>
-                  {getInitials(activeConv.other_user?.full_name)}
+
+                <div
+                  className={`${styles.chatHeaderAvatar} ${styles[getAvatarColor(activeConversation?.other_user?.id || activeListingId || 'draft-conversation')]}`}
+                >
+                  {activeOtherUserAvatar ? (
+                    <img
+                      src={activeOtherUserAvatar}
+                      alt={activeOtherUserName}
+                      className={styles.avatarImage}
+                    />
+                  ) : (
+                    getInitials(activeOtherUserName)
+                  )}
                 </div>
+
                 <div className={styles.chatHeaderInfo}>
-                  <span className={styles.chatHeaderName}>{activeConv.other_user?.full_name || 'Marketplace User'}</span>
+                  <span className={styles.chatHeaderName}>{activeOtherUserName}</span>
+                  <span className={styles.chatHeaderSubline}>
+                    {activeOtherUserUsername ? `@${activeOtherUserUsername} | ` : ''}
+                    {draftTarget
+                      ? 'New conversation'
+                      : isActiveModerationThread
+                        ? 'Account moderation thread'
+                      : isActiveConversationArchived
+                        ? 'Archived conversation'
+                        : `${activeRoleLabel} for this listing`}
+                  </span>
                 </div>
+
                 <div className={styles.chatHeaderProduct}>
                   <div className={styles.productThumbnail}>
-                    {activeConv.listing_details?.cover_image_path ? (
-                       <img src={activeConv.listing_details.cover_image_path} alt="Product" />
+                    {activeConversation?.listing_details?.cover_image_path || draftTarget?.coverImagePath ? (
+                      <img
+                        src={activeConversation?.listing_details?.cover_image_path || draftTarget?.coverImagePath || ''}
+                        alt={activeListingTitle}
+                      />
                     ) : (
                       <span className={styles.productThumbnailFallback}>
-                        {(activeConv.listing_details?.title || 'P').charAt(0)}
+                        {activeListingTitle.charAt(0)}
                       </span>
                     )}
                   </div>
                   <div className={styles.productInfo}>
-                    <span className={styles.productDiscussLabel}>Discussing</span>
-                    <span className={styles.productDiscussName}>{activeConv.listing_details?.title || 'Unknown Product'}</span>
+                    <span className={styles.productDiscussLabel}>
+                      {isActiveModerationThread ? 'Topic' : 'Discussing'}
+                    </span>
+                    <span className={styles.productDiscussName}>{activeListingTitle}</span>
                   </div>
                 </div>
               </div>
+
               <div className={styles.chatHeaderActions}>
-                <button className={styles.chatHeaderBtn} type="button" aria-label="Search in chat" id="search-chat-btn">
-                  <SearchChatIcon />
-                </button>
-                <button className={styles.chatHeaderBtn} type="button" aria-label="More options" id="more-options-btn">
-                  <MoreVertIcon />
+                {canOpenActiveListing && (
+                  <Link
+                    href={`/product/${activeListingId}`}
+                    className={`${styles.chatHeaderActionLink} ${styles.chatHeaderActionPrimary}`}
+                  >
+                    <ExternalLinkIcon />
+                    View Listing
+                  </Link>
+                )}
+                {activeConversation && (
+                  <button
+                    className={`${styles.chatHeaderActionLink} ${styles.chatHeaderActionArchive}`}
+                    type="button"
+                    onClick={handleArchiveAction}
+                  >
+                    {isActiveConversationArchived ? 'Restore Chat' : 'Archive Chat'}
+                  </button>
+                )}
+                <button
+                  className={styles.chatHeaderActionLink}
+                  type="button"
+                  onClick={() => void refreshCurrentView()}
+                >
+                  <RefreshIcon />
+                  Refresh
                 </button>
               </div>
             </div>
 
-            {/* Chat Messages */}
             <div className={styles.chatMessages}>
-              {loadingMessages && messages.length === 0 ? (
-                 <div style={{ textAlign: 'center', padding: '2rem', color: '#9ca3af' }}>Loading messages...</div>
+              {draftTarget && messages.length === 0 ? (
+                <div className={styles.composerCard}>
+                  <h2 className={styles.composerTitle}>Start the conversation</h2>
+                  <p className={styles.composerText}>
+                    {draftTarget.isModeration
+                      ? `Send the first moderation message to ${draftTarget.otherUserName} about this account review.`
+                      : `Send the first message to ${draftTarget.otherUserName} about ${draftTarget.listingTitle}.`}
+                  </p>
+                </div>
+              ) : loadingMessages && messages.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#9ca3af' }}>
+                  Loading messages...
+                </div>
               ) : (
-                messages.map((msg) => {
-                  const isMe = msg.sender_id === user?.id;
-                  
-                  // For the date divider, a robust implementation would group messages by date. 
-                  // Keeping simple here.
-                  
+                messages.map((message) => {
+                  const isMe = message.sender_id === user?.id;
+
                   return (
                     <div
-                      key={msg.id}
+                      key={message.id}
                       className={`${styles.messageGroup} ${
                         isMe ? styles.messageGroupSent : styles.messageGroupReceived
                       }`}
                     >
                       {!isMe && (
-                        <div className={`${styles.messageAvatar} ${styles[getAvatarColor(activeConv.other_user?.id || activeConv.id)]}`}>
-                          {getInitials(activeConv.other_user?.full_name).charAt(0)}
+                        <div
+                          className={`${styles.messageAvatar} ${styles[getAvatarColor(activeConversation?.other_user?.id || activeListingId || message.id)]}`}
+                        >
+                          {activeOtherUserAvatar ? (
+                            <img
+                              src={activeOtherUserAvatar}
+                              alt={activeOtherUserName}
+                              className={styles.avatarImage}
+                            />
+                          ) : (
+                            getInitials(activeOtherUserName).charAt(0)
+                          )}
                         </div>
                       )}
+
                       <div className={styles.messageContent}>
                         <div
                           className={`${styles.messageBubble} ${
                             isMe ? styles.messageBubbleSent : styles.messageBubbleReceived
                           }`}
                         >
-                          {msg.content}
+                          {message.content}
                         </div>
                         <div
                           className={`${styles.messageTime} ${
                             isMe ? styles.messageTimeSent : styles.messageTimeReceived
                           }`}
                         >
-                          {formatTime(msg.created_at)}
+                          {formatTime(message.created_at)}
                           {isMe && (
                             <span className={styles.readReceipt}>
-                              {msg.is_read ? <DoubleCheckIcon /> : <CheckIcon />}
+                              {message.is_read ? <DoubleCheckIcon /> : <CheckIcon />}
                             </span>
                           )}
                         </div>
@@ -478,29 +1202,28 @@ export default function MessagesPage() {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Chat Input */}
             <div className={styles.chatInputArea}>
               <div className={styles.chatInputRow}>
-                <button className={styles.chatAttachBtn} type="button" aria-label="Attach file" id="attach-file-btn">
-                  <PlusCircleIcon />
-                </button>
                 <input
                   ref={inputRef}
                   type="text"
-                  placeholder="Write a message..."
+                  placeholder={
+                    draftTarget
+                      ? `Message ${draftTarget.otherUserName}...`
+                      : 'Write a message...'
+                  }
                   className={styles.chatInput}
                   value={messageInput}
-                  onChange={(e) => setMessageInput(e.target.value)}
+                  onChange={(event) => setMessageInput(event.target.value)}
                   onKeyDown={handleKeyDown}
                   id="message-input"
                   disabled={isSending}
                 />
-                <button className={styles.chatEmojiBtn} type="button" aria-label="Add emoji" id="emoji-btn">
-                  <SmileIcon />
-                </button>
                 <button
-                  className={`${styles.chatSendBtn} ${!messageInput.trim() || isSending ? styles.chatSendBtnDisabled : ''}`}
-                  onClick={handleSendMessage}
+                  className={`${styles.chatSendBtn} ${
+                    !messageInput.trim() || isSending ? styles.chatSendBtnDisabled : ''
+                  }`}
+                  onClick={() => void handleSendMessage()}
                   disabled={!messageInput.trim() || isSending}
                   type="button"
                   aria-label="Send message"
@@ -509,18 +1232,21 @@ export default function MessagesPage() {
                   <SendIcon />
                 </button>
               </div>
+
               <div className={styles.chatActionsBar}>
                 <div className={styles.chatActionsLeft}>
-                  <button className={styles.chatActionBtn} type="button" id="request-safe-pay-btn">
-                    <LinkIcon />
-                    Request Safe-Pay Link
-                  </button>
-                  <button className={styles.chatActionBtn} type="button" id="share-location-btn">
-                    <LocationIcon />
-                    Share Location
-                  </button>
-                </div>
-                <span className={styles.chatActionHint}>Press Enter to send</span>
+                  {canOpenActiveListing && (
+                    <Link href={`/product/${activeListingId}`} className={styles.chatActionBtn}>
+                      <ExternalLinkIcon />
+                      View Listing
+                    </Link>
+                  )}
+                    <Link href={secondaryRoute} className={styles.chatActionBtn}>
+                      <ExternalLinkIcon />
+                      {secondaryLabel}
+                    </Link>
+                  </div>
+                  <span className={styles.chatActionHint}>Press Enter to send</span>
               </div>
             </div>
           </div>
@@ -531,7 +1257,17 @@ export default function MessagesPage() {
             </div>
             <div className={styles.emptyChatTitle}>Select a conversation</div>
             <div className={styles.emptyChatDesc}>
-              Choose a conversation from the sidebar to start messaging, or browse listings to connect with sellers.
+              {isAdminWorkspace
+                ? 'Choose a moderation conversation from the sidebar to continue helping marketplace members.'
+                : 'Choose a conversation from the sidebar to start messaging, or browse listings to connect with sellers.'}
+            </div>
+            <div className={styles.emptyChatActions}>
+              <Link href={browseRoute} className={styles.emptyChatAction}>
+                {isAdminWorkspace ? 'Open Overview' : 'Browse Listings'}
+              </Link>
+              <Link href={secondaryRoute} className={styles.emptyChatActionSecondary}>
+                {isAdminWorkspace ? 'Review Users' : 'View Offers'}
+              </Link>
             </div>
           </div>
         )}

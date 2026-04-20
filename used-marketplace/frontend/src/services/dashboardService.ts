@@ -9,7 +9,17 @@ export interface DashboardSummary {
   insights: {
     selectedMonth: string;
     selectedMonthLabel: string;
+    selectedListingId: string | null;
+    selectedListingLabel: string;
     availableMonths: Array<{ value: string; label: string }>;
+    availableListings: Array<{
+      id: string;
+      title: string;
+      status: string;
+      imagePath: string | null;
+      views: number;
+      offers: number;
+    }>;
     weeklyData: Array<{
       week: string;
       shortLabel: string;
@@ -49,6 +59,7 @@ const DASHBOARD_TIME_ZONE = 'Asia/Kuala_Lumpur';
 
 type WeeklyBucket = DashboardSummary['insights']['weeklyData'][number];
 type MonthOption = DashboardSummary['insights']['availableMonths'][number];
+type InsightListing = DashboardSummary['insights']['availableListings'][number];
 type HighlightedOffer = NonNullable<DashboardSummary['highlightedOffer']>;
 type RecommendedItem = NonNullable<DashboardSummary['recommended']>;
 type RecentActivityItem = DashboardSummary['recentActivity'][number];
@@ -58,12 +69,20 @@ interface DashboardSummaryPayload {
   insights?: {
     selectedMonth?: string;
     selectedMonthLabel?: string;
+    selectedListingId?: string | null;
+    selectedListingLabel?: string;
     availableMonths?: Array<Partial<MonthOption>>;
+    availableListings?: Array<Partial<InsightListing>>;
     weeklyData?: Array<Partial<WeeklyBucket>>;
   };
   highlightedOffer?: Partial<HighlightedOffer> | null;
   recommended?: Partial<RecommendedItem> | null;
   recentActivity?: Array<Partial<RecentActivityItem>>;
+}
+
+interface DashboardSummaryOptions {
+  month?: string;
+  listingId?: string;
 }
 
 interface DashboardApiResponse {
@@ -216,10 +235,43 @@ function normalizeAvailableMonths(
   return normalized;
 }
 
+function normalizeAvailableListings(
+  rawListings: Array<Partial<InsightListing>> | undefined
+): InsightListing[] {
+  if (!Array.isArray(rawListings)) {
+    return [];
+  }
+
+  return rawListings
+    .map((listing) => {
+      if (typeof listing.id !== 'string' || !listing.id.trim()) {
+        return null;
+      }
+
+      return {
+        id: listing.id,
+        title:
+          typeof listing.title === 'string' && listing.title.trim()
+            ? listing.title
+            : 'Listing',
+        status:
+          typeof listing.status === 'string' && listing.status.trim()
+            ? listing.status
+            : 'unknown',
+        imagePath:
+          typeof listing.imagePath === 'string' ? listing.imagePath : null,
+        views: toFiniteNumber(listing.views),
+        offers: toFiniteNumber(listing.offers),
+      };
+    })
+    .filter((listing): listing is InsightListing => listing !== null);
+}
+
 function normalizeDashboardSummary(
   data: DashboardSummaryPayload,
-  requestedMonth?: string
+  requestedOptions: DashboardSummaryOptions = {}
 ): DashboardSummary {
+  const { month: requestedMonth, listingId: requestedListingId } = requestedOptions;
   const selectedMonth =
     data.insights?.selectedMonth && parseMonthValue(data.insights.selectedMonth)
       ? data.insights.selectedMonth
@@ -229,6 +281,23 @@ function normalizeDashboardSummary(
 
   const weeklyData = normalizeWeeklyData(data.insights?.weeklyData);
   const availableMonths = normalizeAvailableMonths(data.insights?.availableMonths, selectedMonth);
+  const availableListings = normalizeAvailableListings(data.insights?.availableListings);
+  const rawSelectedListingId =
+    typeof data.insights?.selectedListingId === 'string'
+      ? data.insights.selectedListingId
+      : null;
+  const selectedListingId =
+    rawSelectedListingId &&
+    availableListings.some((listing) => listing.id === rawSelectedListingId)
+      ? rawSelectedListingId
+      : availableListings.some((listing) => listing.id === requestedListingId)
+        ? requestedListingId!
+        : null;
+  const selectedListingLabel =
+    typeof data.insights?.selectedListingLabel === 'string' &&
+    data.insights.selectedListingLabel.trim()
+      ? data.insights.selectedListingLabel
+      : availableListings.find((listing) => listing.id === selectedListingId)?.title || 'All Listings';
 
   return {
     stats: {
@@ -244,7 +313,10 @@ function normalizeDashboardSummary(
         data.insights.selectedMonthLabel.trim()
           ? data.insights.selectedMonthLabel
           : formatMonthLabel(selectedMonth),
+      selectedListingId,
+      selectedListingLabel,
       availableMonths,
+      availableListings,
       weeklyData,
     },
     highlightedOffer: data.highlightedOffer
@@ -305,10 +377,20 @@ function normalizeDashboardSummary(
 
 export async function getDashboardSummary(
   token: string,
-  month?: string
+  options: DashboardSummaryOptions = {}
 ): Promise<{ data: DashboardSummary | null, error: string | null }> {
   try {
-    const query = month ? `?month=${encodeURIComponent(month)}` : '';
+    const queryParams = new URLSearchParams();
+
+    if (options.month) {
+      queryParams.set('month', options.month);
+    }
+
+    if (options.listingId) {
+      queryParams.set('listingId', options.listingId);
+    }
+
+    const query = queryParams.size > 0 ? `?${queryParams.toString()}` : '';
     const response = await fetch(`${API_BASE}/api/dashboard/summary${query}`, {
       method: 'GET',
       headers: {
@@ -321,7 +403,7 @@ export async function getDashboardSummary(
 
     if (response.ok && result.success && result.data) {
       return {
-        data: normalizeDashboardSummary(result.data, month),
+        data: normalizeDashboardSummary(result.data, options),
         error: null,
       };
     }

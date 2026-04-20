@@ -467,6 +467,19 @@
   letter-spacing: -0.05em;
 }
 
+.soldOutPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.46rem 0.72rem;
+  border-radius: 999px;
+  background: rgba(127, 29, 29, 0.1);
+  color: #991b1b;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .negotiablePill {
   display: inline-flex;
   align-items: center;
@@ -485,6 +498,29 @@
   margin: 0.8rem 0 0;
   color: #63708a;
   line-height: 1.65;
+}
+
+.soldOutBanner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 1rem;
+  padding: 0.95rem 1rem;
+  border-radius: 1rem;
+  background: rgba(254, 242, 242, 0.92);
+  border: 1px solid rgba(248, 113, 113, 0.28);
+  color: #7f1d1d;
+}
+
+.soldOutBanner strong {
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.soldOutBanner span {
+  line-height: 1.6;
 }
 
 .detailCard {
@@ -889,6 +925,209 @@
   background: rgba(18, 32, 73, 0.92);
   color: #ffffff;
   box-shadow: 0 18px 30px rgba(17, 24, 39, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.toastLink {
+  color: #a5c4ff;
+  font-weight: 700;
+  font-size: 0.88rem;
+  text-decoration: none;
+}
+
+.toastLink:hover {
+  color: #ffffff;
+  text-decoration: underline;
+}
+
+.statusNotice {
+  padding: 1.1rem;
+  border-radius: 1rem;
+  background: rgba(245, 233, 210, 0.7);
+  color: #7c5a22;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.statusNotice strong {
+  font-weight: 800;
+}
+
+/* ── Offer Modal ── */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 15, 30, 0.65);
+  backdrop-filter: blur(8px);
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modalContent {
+  position: relative;
+  width: min(480px, 92vw);
+  padding: 2rem 2rem 1.8rem;
+  border-radius: 1.6rem;
+  background: #ffffff;
+  box-shadow: 0 30px 60px rgba(10, 15, 30, 0.22);
+  animation: slideUp 0.25s ease-out;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.modalClose {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border: none;
+  border-radius: 999px;
+  background: rgba(236, 238, 246, 0.8);
+  color: #5a6380;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.modalClose:hover {
+  background: rgba(220, 222, 232, 1);
+}
+
+.modalTitle {
+  margin: 0;
+  color: #122049;
+  font-size: 1.55rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.modalSubtitle {
+  margin: 0.5rem 0 1.5rem;
+  color: #667289;
+  font-size: 0.93rem;
+  line-height: 1.6;
+}
+
+.modalField {
+  margin-bottom: 1.2rem;
+}
+
+.modalLabel {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #36405c;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.modalInputRow {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border: 1px solid rgba(18, 32, 73, 0.12);
+  border-radius: 1rem;
+  overflow: hidden;
+  background: rgba(236, 238, 246, 0.5);
+}
+
+.modalCurrency {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.9rem 0.9rem;
+  background: rgba(226, 228, 240, 0.7);
+  color: #4a5373;
+  font-weight: 700;
+  font-size: 0.92rem;
+  border-right: 1px solid rgba(18, 32, 73, 0.08);
+}
+
+.modalInput {
+  flex: 1;
+  padding: 0.9rem 1rem;
+  border: none;
+  background: transparent;
+  color: #111827;
+  font: inherit;
+  font-size: 1.05rem;
+  font-weight: 600;
+  outline: none;
+}
+
+.modalInput:disabled {
+  color: #6b7280;
+  cursor: not-allowed;
+}
+
+.modalHint {
+  margin: 0.4rem 0 0;
+  color: #6b7c98;
+  font-size: 0.82rem;
+}
+
+.modalTextarea {
+  width: 100%;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(18, 32, 73, 0.12);
+  border-radius: 1rem;
+  background: rgba(236, 238, 246, 0.5);
+  color: #111827;
+  font: inherit;
+  font-size: 0.95rem;
+  resize: vertical;
+  min-height: 76px;
+  outline: none;
+}
+
+.modalTextarea:focus {
+  border-color: rgba(21, 34, 74, 0.28);
+  box-shadow: 0 0 0 3px rgba(21, 34, 74, 0.06);
+}
+
+.modalSubmit {
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 1.05rem 1.1rem;
+  border: none;
+  border-radius: 1.15rem;
+  background: linear-gradient(135deg, #15224a, #203d79);
+  color: #ffffff;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 20px 32px rgba(21, 34, 74, 0.22);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.modalSubmit:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 24px 40px rgba(21, 34, 74, 0.28);
+}
+
+.modalSubmit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .toneSeafoam {

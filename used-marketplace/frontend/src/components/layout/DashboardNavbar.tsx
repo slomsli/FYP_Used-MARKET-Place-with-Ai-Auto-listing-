@@ -1,11 +1,14 @@
 'use client';
 
 import Link from 'next/link';
+import { FormEvent, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { ROUTES } from '@/src/config/routes';
 import styles from './DashboardNavbar.module.css';
 
 interface DashboardNavbarProps {
   userName?: string;
+  avatarUrl?: string | null;
 }
 
 /* ── Inline SVG Icons ── */
@@ -29,17 +32,19 @@ const MailIcon = () => (
   </svg>
 );
 
-const UserAvatarIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="8" r="5" />
-    <path d="M20 21a8 8 0 1 0-16 0" />
-  </svg>
-);
-
-export default function DashboardNavbar({ userName }: DashboardNavbarProps) {
+export default function DashboardNavbar({ userName, avatarUrl }: DashboardNavbarProps) {
+  const router = useRouter();
+  const [searchQuery, setSearchQuery] = useState('');
   const initials = userName
     ? userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     : 'U';
+
+  function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const nextQuery = searchQuery.trim();
+    router.push(nextQuery ? `${ROUTES.BROWSE}?q=${encodeURIComponent(nextQuery)}` : ROUTES.BROWSE);
+  }
 
   return (
     <nav className={styles.navbar}>
@@ -58,25 +63,31 @@ export default function DashboardNavbar({ userName }: DashboardNavbarProps) {
 
       {/* Right: Search + Icons */}
       <div className={styles.right}>
-        <div className={styles.searchWrapper}>
+        <form className={styles.searchWrapper} onSubmit={handleSearchSubmit}>
           <span className={styles.searchIcon}><SearchIcon /></span>
           <input
             type="text"
             placeholder="Search marketplace..."
             className={styles.searchInput}
             id="dashboard-search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
           />
-        </div>
+        </form>
 
         <div className={styles.iconGroup}>
-          <button className={styles.iconBtn} aria-label="Notifications" id="notifications-btn">
+          <Link href={ROUTES.OFFERS} className={styles.iconBtn} aria-label="Notifications" id="notifications-btn">
             <BellIcon />
-          </button>
-          <button className={styles.iconBtn} aria-label="Messages" id="messages-btn">
+          </Link>
+          <Link href={ROUTES.MESSAGES} className={styles.iconBtn} aria-label="Messages" id="messages-btn">
             <MailIcon />
-          </button>
+          </Link>
           <Link href={ROUTES.PROFILE} className={styles.avatarBtn} id="user-avatar-btn">
-            <span className={styles.avatar}>{initials}</span>
+            {avatarUrl ? (
+              <img src={avatarUrl} alt={userName || 'User'} className={styles.avatarImg} />
+            ) : (
+              <span className={styles.avatar}>{initials}</span>
+            )}
           </Link>
         </div>
       </div>

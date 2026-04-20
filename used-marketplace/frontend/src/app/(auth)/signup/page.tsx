@@ -195,9 +195,9 @@ export default function SignupPage() {
       </div>
 
       <div className={styles.footer}>
-        <Link href="#" className={styles.footerLink}>Privacy Policy</Link>
-        <Link href="#" className={styles.footerLink}>Terms of Service</Link>
-        <Link href="#" className={styles.footerLink}>Support</Link>
+        <Link href={ROUTES.PRIVACY_POLICY} className={styles.footerLink}>Privacy Policy</Link>
+        <Link href={ROUTES.TERMS_OF_SERVICE} className={styles.footerLink}>Terms of Service</Link>
+        <Link href={ROUTES.SUPPORT} className={styles.footerLink}>Support</Link>
       </div>
     </div>
   );

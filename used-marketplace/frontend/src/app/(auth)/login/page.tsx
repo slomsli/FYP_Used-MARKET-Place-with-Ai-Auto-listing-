@@ -74,7 +74,13 @@ export default function LoginPage() {
       setErrors({ general: mapAuthError(result.error || '') });
       return;
     }
-    router.push(ROUTES.DASHBOARD);
+
+    if (typeof window !== 'undefined') {
+      window.location.assign(ROUTES.DASHBOARD);
+      return;
+    }
+
+    router.replace(ROUTES.DASHBOARD);
   };
 
   return (
@@ -126,7 +132,7 @@ export default function LoginPage() {
               {errors.general === 'Please verify your email address before signing in' && (
                 <div style={{ marginTop: '-0.75rem', marginBottom: '1rem', textAlign: 'center', fontSize: '0.875rem' }}>
                   <Link href={`${ROUTES.VERIFY_EMAIL}?email=${encodeURIComponent(formData.email.trim())}`} style={{ color: '#2563EB', fontWeight: 500, textDecoration: 'underline' }}>
-                    Haven't verified your account yet? Click here.
+                    Haven&apos;t verified your account yet? Click here.
                   </Link>
                 </div>
               )}
@@ -185,9 +191,9 @@ export default function LoginPage() {
           </p>
 
           <div className={styles.footer}>
-            <Link href="#" className={styles.footerLink}>Help Center</Link>
-            <Link href="#" className={styles.footerLink}>Privacy Policy</Link>
-            <Link href="#" className={styles.footerLink}>Terms of Service</Link>
+            <Link href={ROUTES.SUPPORT} className={styles.footerLink}>Help Center</Link>
+            <Link href={ROUTES.PRIVACY_POLICY} className={styles.footerLink}>Privacy Policy</Link>
+            <Link href={ROUTES.TERMS_OF_SERVICE} className={styles.footerLink}>Terms of Service</Link>
           </div>
         </div>
       </div>

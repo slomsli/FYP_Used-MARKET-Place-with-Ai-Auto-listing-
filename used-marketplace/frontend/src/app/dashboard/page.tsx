@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
-import { createClient } from '@/src/lib/supabase/client';
+import { subscribeToDashboardProfileUpdates } from '@/src/lib/profileSync';
+import { getProfile } from '@/src/services/profileService';
 import {
   getDashboardSummary,
   type DashboardSummary,
@@ -12,6 +13,7 @@ import { ROUTES } from '@/src/config/routes';
 import styles from './page.module.css';
 
 const DASHBOARD_TIME_ZONE = 'Asia/Kuala_Lumpur';
+const ALL_LISTINGS_VALUE = 'all-listings';
 
 const ListIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -91,10 +93,34 @@ function getFallbackLabel(value: string | null | undefined) {
   return value?.trim().charAt(0).toUpperCase() || 'R';
 }
 
+function formatListingStatus(status: string) {
+  if (status === 'sold') return 'Sold';
+  if (status === 'draft') return 'Draft';
+  if (status === 'reserved') return 'Reserved';
+  return 'Active';
+}
+
+function getListingStatusTone(status: string) {
+  if (status === 'sold') return 'sold';
+  if (status === 'draft') return 'draft';
+  if (status === 'reserved') return 'reserved';
+  return 'active';
+}
+
+function getListingStatusRank(status: string) {
+  if (status === 'active') return 0;
+  if (status === 'reserved') return 1;
+  if (status === 'sold') return 2;
+  if (status === 'draft') return 3;
+  return 4;
+}
+
 export default function DashboardPage() {
-  const { user, loading: authLoading } = useRequireAuth();
+  const { user, token, loading: authLoading } = useRequireAuth();
   const [chartMode, setChartMode] = useState<'views' | 'offers'>('views');
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthValue);
+  const [selectedListingId, setSelectedListingId] = useState(ALL_LISTINGS_VALUE);
+  const [profileName, setProfileName] = useState<string | null>(null);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -110,12 +136,7 @@ export default function DashboardPage() {
       setLoading(true);
 
       try {
-        const supabase = createClient();
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        if (!session?.access_token) {
+        if (!token) {
           if (!cancelled) {
             setErrorMsg('No auth session');
             setLoading(false);
@@ -123,13 +144,20 @@ export default function DashboardPage() {
           return;
         }
 
-        const response = await getDashboardSummary(session.access_token, selectedMonth);
+        const response = await getDashboardSummary(token, {
+          month: selectedMonth,
+          listingId:
+            selectedListingId === ALL_LISTINGS_VALUE ? undefined : selectedListingId,
+        });
         if (cancelled) {
           return;
         }
 
         if (response.data) {
           setSummary(response.data);
+          setSelectedListingId(
+            response.data.insights.selectedListingId ?? ALL_LISTINGS_VALUE
+          );
           setErrorMsg(null);
         } else {
           setErrorMsg(response.error || 'Failed to fetch data');
@@ -150,7 +178,35 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedMonth, user]);
+  }, [selectedListingId, selectedMonth, token, user]);
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    let cancelled = false;
+
+    getProfile(token).then((response) => {
+      if (!cancelled && response.data) {
+        setProfileName(response.data.fullName);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  useEffect(
+    () =>
+      subscribeToDashboardProfileUpdates(({ fullName }) => {
+        if (fullName !== undefined) {
+          setProfileName(fullName);
+        }
+      }),
+    []
+  );
 
   if (authLoading || !user || (loading && !summary)) {
     return (
@@ -176,13 +232,26 @@ export default function DashboardPage() {
   }
 
   const displayName =
-    user.user_metadata?.full_name || user.email?.split('@')[0] || 'User';
+    profileName?.trim() || user.user_metadata?.full_name || user.email?.split('@')[0] || 'User';
+  const availableListings = [...summary.insights.availableListings].sort((left, right) => {
+    const statusDiff = getListingStatusRank(left.status) - getListingStatusRank(right.status);
+    if (statusDiff !== 0) {
+      return statusDiff;
+    }
+
+    return left.title.localeCompare(right.title);
+  });
+  const selectedInsightListing =
+    availableListings.find((listing) => listing.id === summary.insights.selectedListingId) ?? null;
   const weeklyData = summary.insights.weeklyData;
   const chartValues = weeklyData.map((bucket) =>
     chartMode === 'views' ? bucket.views : bucket.offers
   );
   const maxVal = Math.max(...chartValues, 1);
   const isRefreshing = loading && Boolean(summary);
+  const chartContextLabel = summary.insights.selectedListingId
+    ? summary.insights.selectedListingLabel
+    : 'All Listings';
 
   return (
     <div className={styles.dashboard}>
@@ -334,6 +403,119 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          <div className={styles.chartSelectionHeader}>
+            <span className={styles.chartSelectionLabel}>Product</span>
+            <span className={styles.chartSelectionText}>
+              {summary.insights.selectedListingId
+                ? `Showing data for ${chartContextLabel}`
+                : 'Showing data for all of your listings'}
+            </span>
+          </div>
+
+          {availableListings.length > 0 ? (
+            <div className={styles.insightListingPanel}>
+              <label className={styles.productSelectWrap}>
+                <span className={styles.monthSelectLabel}>Choose Product</span>
+                <select
+                  className={styles.productSelect}
+                  value={selectedListingId}
+                  onChange={(event) => setSelectedListingId(event.target.value)}
+                  disabled={isRefreshing}
+                >
+                  <option value={ALL_LISTINGS_VALUE}>All Inventory</option>
+                  {availableListings.map((listing) => (
+                    <option key={listing.id} value={listing.id}>
+                      {`${formatListingStatus(listing.status)} | ${listing.title}`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {selectedInsightListing ? (
+                <div
+                  className={`${styles.selectedInsightCard} ${
+                    getListingStatusTone(selectedInsightListing.status) === 'sold'
+                      ? styles.selectedInsightCardSold
+                      : ''
+                  }`}
+                >
+                  <div className={styles.selectedInsightThumb}>
+                    {canRenderImage(selectedInsightListing.imagePath) ? (
+                      <img
+                        src={selectedInsightListing.imagePath || ''}
+                        alt={selectedInsightListing.title}
+                      />
+                    ) : (
+                      <span className={styles.productFallback}>
+                        {getFallbackLabel(selectedInsightListing.title)}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className={styles.selectedInsightBody}>
+                    <div className={styles.selectedInsightTop}>
+                      <h3 className={styles.selectedInsightTitle}>
+                        {selectedInsightListing.title}
+                      </h3>
+                      <span
+                        className={`${styles.selectedInsightBadge} ${
+                          styles[`selectedInsightBadge${formatListingStatus(selectedInsightListing.status)}`]
+                        }`}
+                      >
+                        {formatListingStatus(selectedInsightListing.status)}
+                      </span>
+                    </div>
+
+                    <div className={styles.selectedInsightMeta}>
+                      {selectedInsightListing.views.toLocaleString()} views |{' '}
+                      {selectedInsightListing.offers.toLocaleString()} offers
+                    </div>
+
+                    <p className={styles.selectedInsightNote}>
+                      {selectedInsightListing.status === 'sold'
+                        ? 'This item is sold. The chart keeps its historical views and offers for reference.'
+                        : selectedInsightListing.status === 'draft'
+                          ? 'This draft listing can still show early activity before it goes live.'
+                          : 'Track how this product is performing week by week.'}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className={styles.selectedInsightCard}>
+                  <div
+                    className={`${styles.selectedInsightThumb} ${styles.insightListingThumbNeutral}`}
+                  >
+                    All
+                  </div>
+
+                  <div className={styles.selectedInsightBody}>
+                    <div className={styles.selectedInsightTop}>
+                      <h3 className={styles.selectedInsightTitle}>All Inventory</h3>
+                      <span
+                        className={`${styles.selectedInsightBadge} ${styles.selectedInsightBadgeActive}`}
+                      >
+                        Portfolio
+                      </span>
+                    </div>
+
+                    <div className={styles.selectedInsightMeta}>
+                      {availableListings.length} tracked product
+                      {availableListings.length === 1 ? '' : 's'}
+                    </div>
+
+                    <p className={styles.selectedInsightNote}>
+                      Combined views and offers across active, sold, and draft listings.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className={styles.chartSelectionEmpty}>
+              Add a listing to unlock per-product insight tracking.
+            </div>
+          )}
+
           <div className={styles.chart}>
             <div className={styles.chartYAxis}>
               <span>{maxVal.toLocaleString()}</span>
@@ -349,10 +531,12 @@ export default function DashboardPage() {
                 return (
                   <div key={bucket.week} className={styles.chartBarGroup}>
                     <div className={styles.chartBarWrapper}>
-                      <button
-                        type="button"
-                        className={styles.chartBarButton}
+                      <div
+                        className={styles.chartBarSurface}
                         title={`${bucket.rangeLabel}: ${value} ${metricLabel}`}
+                        tabIndex={0}
+                        role="img"
+                        aria-label={`${bucket.rangeLabel}: ${value} ${metricLabel}`}
                       >
                         <span className={styles.chartTooltip}>
                           <strong>{bucket.rangeLabel}</strong>
@@ -364,7 +548,7 @@ export default function DashboardPage() {
                           className={styles.chartBar}
                           style={{ height: `${barHeight}%` }}
                         />
-                      </button>
+                      </div>
                     </div>
                     <span className={styles.chartBarLabel}>{bucket.shortLabel}</span>
                   </div>
@@ -387,9 +571,9 @@ export default function DashboardPage() {
             <p className={styles.conciergeDesc}>
               As a premium member, you have access to our direct concierge line for luxury authentications and shipment logistics.
             </p>
-            <button className={styles.conciergeBtn} type="button">
+            <Link href={ROUTES.SUPPORT} className={styles.conciergeBtn}>
               Contact Support
-            </button>
+            </Link>
           </div>
 
           <div className={styles.recommendedCard}>
@@ -466,9 +650,13 @@ export default function DashboardPage() {
                   <div className={styles.activityPriceLabel}>{item.priceLabel}</div>
                   <div className={styles.activityPrice}>{item.price}</div>
                 </div>
-                <button className={styles.activityMore} aria-label="More actions" type="button">
+                <Link
+                  href={`${ROUTES.ADD_LISTING}?listingId=${item.id}`}
+                  className={styles.activityMore}
+                  aria-label={`Manage ${item.name}`}
+                >
                   <MoreIcon />
-                </button>
+                </Link>
               </div>
             ))
           )}

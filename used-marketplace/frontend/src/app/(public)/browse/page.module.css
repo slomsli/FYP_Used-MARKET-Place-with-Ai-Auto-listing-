@@ -588,6 +588,46 @@
   box-shadow: 0 14px 22px rgba(17, 24, 39, 0.08);
 }
 
+.cardHeart {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #738099;
+  cursor: pointer;
+  box-shadow: 0 14px 22px rgba(17, 24, 39, 0.08);
+  transition: all 0.2s;
+}
+
+.cardHeart:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 1);
+  color: #ff4757;
+}
+
+.cardHeartActive {
+  background: rgba(235, 68, 90, 0.9);
+  color: #ffffff;
+}
+
+.cardHeartActive:hover:not(:disabled) {
+  background: rgba(235, 68, 90, 1);
+  color: #ffffff;
+}
+
+.cardHeart:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .mediaImage {
   position: relative;
   z-index: 1;
@@ -704,6 +744,13 @@
   gap: 0.75rem;
 }
 
+.cardPills {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
 .cardCategory,
 .cardCondition {
   display: inline-flex;
@@ -720,8 +767,27 @@
 }
 
 .cardCondition {
-  background: rgba(17, 106, 93, 0.08);
+  background: rgba(17, 106, 93, 0.12);
   color: #116a5d;
+}
+
+.cardReport {
+  border: none;
+  background: transparent;
+  color: #b55445;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.cardReport:hover {
+  color: #8e3e32;
 }
 
 .footerControls {

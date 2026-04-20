@@ -1,0 +1,139 @@
+.page {
+  min-height: 100vh;
+  padding: 2rem 1.25rem 3rem;
+  background:
+    radial-gradient(circle at top left, rgba(20, 31, 124, 0.08), transparent 28%),
+    linear-gradient(180deg, #f7f9ff 0%, #ffffff 100%);
+}
+
+.shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: grid;
+  gap: 1.5rem;
+}
+
+.hero {
+  display: grid;
+  gap: 1rem;
+  padding: 2rem;
+  border-radius: 32px;
+  background: linear-gradient(145deg, #0f1d36, #1b2a4a);
+  color: #ffffff;
+  box-shadow: 0 28px 60px rgba(15, 29, 54, 0.18);
+}
+
+.eyebrow {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.title {
+  font-size: clamp(2.3rem, 5vw, 3.6rem);
+  line-height: 0.98;
+  letter-spacing: -0.04em;
+}
+
+.subtitle {
+  max-width: 760px;
+  color: rgba(255, 255, 255, 0.78);
+  line-height: 1.75;
+}
+
+.ctaRow {
+  display: flex;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.primaryButton,
+.secondaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.95rem 1.2rem;
+  border-radius: 18px;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.primaryButton {
+  background: #ffffff;
+  color: #11195d;
+}
+
+.secondaryButton {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.sectionGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.section,
+.legalSection {
+  padding: 1.35rem;
+  border-radius: 28px;
+  background: #ffffff;
+  border: 1px solid rgba(24, 31, 92, 0.08);
+  box-shadow: 0 24px 56px rgba(30, 35, 84, 0.08);
+}
+
+.section h2,
+.legalSection h2 {
+  color: #172033;
+  font-size: 1.25rem;
+}
+
+.section p,
+.legalSection p {
+  margin-top: 0.85rem;
+  color: #65748f;
+  line-height: 1.8;
+}
+
+.stack {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.stack p,
+.callout p {
+  margin: 0;
+  padding: 0.95rem 1rem;
+  border-radius: 18px;
+  background: #f5f7fe;
+}
+
+.callout {
+  padding: 1.25rem;
+  border-radius: 28px;
+  background: linear-gradient(160deg, rgba(170, 240, 228, 0.84), rgba(230, 255, 251, 0.96));
+  border: 1px solid rgba(20, 111, 96, 0.08);
+}
+
+.callout h2 {
+  color: #123f39;
+}
+
+.legalSection + .legalSection {
+  margin-top: 1rem;
+}
+
+@media (max-width: 800px) {
+  .sectionGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero {
+    padding: 1.5rem;
+  }
+}

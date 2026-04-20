@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { supabaseAdmin } from '../config/supabase';
+
 import {
   type CreateListingBody,
   type CreateableListingStatus,
@@ -63,9 +64,11 @@ interface RawListing {
   updated_at: string;
   published_at: string | null;
   views_count: unknown;
+  sold_to_user_id: string | null;
   categories: Relation<RawCategory>;
   states: Relation<RawState>;
   areas: Relation<RawArea>;
+  sold_to_profile: Relation<RawProfile>;
 }
 
 interface RawProfile {
@@ -151,7 +154,7 @@ const LISTING_IMAGE_BUCKET =
 const MAX_LISTING_IMAGE_SIZE_BYTES = 8 * 1024 * 1024;
 const LISTING_IMAGE_MIME_TYPES = ['image/*'];
 const PUBLIC_BROWSE_LISTING_STATUS = 'active';
-const PUBLIC_DETAIL_VISIBLE_STATUSES = ['active', 'reserved'] as const;
+const PUBLIC_DETAIL_VISIBLE_STATUSES = ['active', 'reserved', 'sold'] as const;
 
 let listingImageBucketPromise: Promise<void> | null = null;
 
@@ -320,6 +323,7 @@ function buildListingSummary(
 ): ListingSummary {
   const imagePaths = imageMap.get(listing.id) ?? [];
   const coverImagePath = listing.cover_image_path || imagePaths[0] || null;
+  const soldToProfile = unwrapRelation(listing.sold_to_profile);
 
   return {
     id: listing.id,
@@ -344,6 +348,13 @@ function buildListingSummary(
     pendingOffersCount: pendingOfferCountMap.get(listing.id) ?? 0,
     category: buildCategorySummary(listing.categories),
     location: buildLocationSummary(listing.states, listing.areas),
+    soldTo: listing.sold_to_user_id
+      ? {
+          id: listing.sold_to_user_id,
+          displayName: buildBuyerDisplayName(soldToProfile),
+          avatarPath: soldToProfile?.avatar_path ?? null,
+        }
+      : null,
   };
 }
 
@@ -371,6 +382,14 @@ function buildSellerDisplayName(profile: Pick<RawProfile, 'full_name' | 'usernam
   }
 
   return 'Seller';
+}
+
+function buildBuyerDisplayName(profile: Pick<RawProfile, 'full_name' | 'username'> | null): string {
+  if (!profile) {
+    return 'Buyer';
+  }
+
+  return buildSellerDisplayName(profile);
 }
 
 function buildPublicListingSummary(
@@ -579,6 +598,7 @@ async function getListingByIdForSeller(listingId: string, sellerId: string): Pro
       updated_at,
       published_at,
       views_count,
+      sold_to_user_id,
       categories!listings_category_id_fkey (
         id,
         name,
@@ -594,6 +614,12 @@ async function getListingByIdForSeller(listingId: string, sellerId: string): Pro
         name,
         slug,
         state_id
+      ),
+      sold_to_profile:profiles!listings_sold_to_user_id_fkey (
+        id,
+        username,
+        full_name,
+        avatar_path
       )
     `)
     .eq('id', listingId)
@@ -838,11 +864,7 @@ async function getPublicSellerSummary(
 
   if (profileResult.error) {
     console.error('[Listings] Failed to fetch seller profile:', profileResult.error);
-    throw new ListingServiceError('Unable to load seller profile', 500);
-  }
-
-  if (!profileResult.data) {
-    throw new ListingServiceError('Seller not found', 404);
+    throw new ListingServiceError('Unable to load seller details', 500);
   }
 
   if (reviewsResult.error) {
@@ -865,21 +887,22 @@ async function getPublicSellerSummary(
     throw new ListingServiceError('Unable to load seller location', 500);
   }
 
-  const profile = profileResult.data as RawProfile;
-  const ratings = reviewsResult.data ?? [];
+  const ratings = (reviewsResult.data ?? []) as RawRating[];
   const totalReviews = ratings.length;
   const averageRating =
     totalReviews > 0
       ? Number(
-          (
-            ratings.reduce((sum, row) => sum + toNumber((row as RawRating).rating), 0) /
-            totalReviews
-          ).toFixed(2)
-        )
+        (
+          ratings.reduce((sum: number, row: RawRating) => sum + toNumber(row.rating), 0) /
+          totalReviews
+        ).toFixed(2)
+      )
       : null;
 
   let totalSales = 0;
   let activeListings = 0;
+  const profile = profileResult.data as RawProfile | null;
+
   for (const listing of (listingsResult.data ?? []) as RawSellerStatsListing[]) {
     if (listing.status === 'sold') {
       totalSales += 1;
@@ -891,9 +914,39 @@ async function getPublicSellerSummary(
   }
 
   const sellerState =
-    (sellerStatesResult.data ?? []).find((state) => state.id === profile.state_id) ?? null;
+    profile
+      ? ((sellerStatesResult.data ?? []) as RawState[]).find(
+          (state: RawState) => state.id === profile.state_id
+        ) ?? null
+      : null;
   const sellerArea =
-    (sellerAreasResult.data ?? []).find((area) => area.id === profile.area_id) ?? null;
+    profile
+      ? ((sellerAreasResult.data ?? []) as RawArea[]).find(
+          (area: RawArea) => area.id === profile.area_id
+        ) ?? null
+      : null;
+
+  if (!profile) {
+    const shortSellerId = sellerId.replace(/-/g, '').slice(0, 6) || 'member';
+
+    return {
+      id: sellerId,
+      displayName: 'Seller',
+      username: `seller_${shortSellerId}`.slice(0, 20),
+      avatarPath: null,
+      memberSince: new Date().getFullYear().toString(),
+      averageRating,
+      totalReviews,
+      totalSales,
+      activeListings,
+      location: {
+        stateId: null,
+        stateName: null,
+        areaId: null,
+        areaName: null,
+      },
+    };
+  }
 
   return {
     id: profile.id,
@@ -931,10 +984,10 @@ export async function getListingMetadata(stateId?: number): Promise<ListingMetad
     stateId === undefined
       ? Promise.resolve({ data: [], error: null })
       : supabaseAdmin
-          .from('areas')
-          .select('id, name, slug, state_id')
-          .eq('state_id', stateId)
-          .order('name', { ascending: true }),
+        .from('areas')
+        .select('id, name, slug, state_id')
+        .eq('state_id', stateId)
+        .order('name', { ascending: true }),
   ]);
 
   if (categoriesResult.error) {
@@ -1039,11 +1092,13 @@ export async function createListing(
   sellerId: string,
   payload: CreateListingBody
 ): Promise<ListingSummary> {
-  const categoryId = toInteger(payload.categoryId);
-  const price = toNumber(payload.price, Number.NaN);
+  const status = payload.status ?? 'draft';
+  const isDraft = status === 'draft';
+  
+  const categoryId = isDraft && !payload.categoryId ? null : toInteger(payload.categoryId!);
+  const price = isDraft && payload.price === undefined ? null : toNumber(payload.price, Number.NaN);
   const stateId = payload.stateId == null ? null : toInteger(payload.stateId);
   const areaId = payload.areaId == null ? null : toInteger(payload.areaId);
-  const status = payload.status ?? 'draft';
   const title = payload.title.trim();
   const description = trimOptional(payload.description);
   const brand = trimOptional(payload.brand);
@@ -1053,7 +1108,7 @@ export async function createListing(
   ).slice(0, 6);
   const coverImagePath = trimOptional(payload.coverImagePath) ?? normalizedImagePaths[0] ?? null;
 
-  if (!Number.isFinite(price) || price < 0) {
+  if (!isDraft && (price === null || !Number.isFinite(price) || price < 0)) {
     throw new ListingServiceError('Price must be a valid non-negative number', 422);
   }
 
@@ -1061,7 +1116,9 @@ export async function createListing(
     throw new ListingServiceError('stateId is required when areaId is provided', 422);
   }
 
-  await ensureCategoryExists(categoryId);
+  if (categoryId !== null) {
+    await ensureCategoryExists(categoryId);
+  }
 
   if (stateId !== null) {
     await ensureStateExists(stateId);
@@ -1081,7 +1138,7 @@ export async function createListing(
       title,
       description,
       brand,
-      condition: payload.condition,
+      condition: isDraft ? (payload.condition || null) : payload.condition,
       price,
       currency,
       negotiable: payload.negotiable ?? true,
@@ -1126,11 +1183,14 @@ export async function updateListing(
 ): Promise<ListingSummary> {
   const existing = await getOwnedListingForSeller(listingId, sellerId);
 
-  const categoryId = toInteger(payload.categoryId);
-  const price = toNumber(payload.price, Number.NaN);
+  const status = payload.status ?? (existing.status === 'draft' ? 'draft' : 'active');
+  const isDraft = status === 'draft';
+  
+  const categoryId = isDraft && !payload.categoryId ? null : toInteger(payload.categoryId!);
+  const price = isDraft && payload.price === undefined ? null : toNumber(payload.price, Number.NaN);
   const stateId = payload.stateId == null ? null : toInteger(payload.stateId);
   const areaId = payload.areaId == null ? null : toInteger(payload.areaId);
-  const status = payload.status ?? (existing.status === 'draft' ? 'draft' : 'active');
+  
   const title = payload.title.trim();
   const description = trimOptional(payload.description);
   const brand = trimOptional(payload.brand);
@@ -1152,7 +1212,7 @@ export async function updateListing(
     );
   }
 
-  if (!Number.isFinite(price) || price < 0) {
+  if (!isDraft && (price === null || !Number.isFinite(price) || price < 0)) {
     throw new ListingServiceError('Price must be a valid non-negative number', 422);
   }
 
@@ -1160,7 +1220,9 @@ export async function updateListing(
     throw new ListingServiceError('stateId is required when areaId is provided', 422);
   }
 
-  await ensureCategoryExists(categoryId);
+  if (categoryId !== null) {
+    await ensureCategoryExists(categoryId);
+  }
 
   if (stateId !== null) {
     await ensureStateExists(stateId);
@@ -1182,7 +1244,7 @@ export async function updateListing(
       title,
       description,
       brand,
-      condition: payload.condition,
+      condition: isDraft ? (payload.condition || null) : payload.condition,
       price,
       currency,
       negotiable: payload.negotiable ?? true,
@@ -1388,6 +1450,7 @@ export async function getMyListings(
       updated_at,
       published_at,
       views_count,
+      sold_to_user_id,
       categories!listings_category_id_fkey (
         id,
         name,
@@ -1403,6 +1466,12 @@ export async function getMyListings(
         name,
         slug,
         state_id
+      ),
+      sold_to_profile:profiles!listings_sold_to_user_id_fkey (
+        id,
+        username,
+        full_name,
+        avatar_path
       )
     `)
     .eq('seller_id', sellerId);
@@ -1510,10 +1579,10 @@ export async function getMyListings(
     totalReviews === 0
       ? null
       : Number(
-          (
-            ratings.reduce((sum, row) => sum + toNumber(row.rating), 0) / totalReviews
-          ).toFixed(2)
-        );
+        (
+          ratings.reduce((sum, row) => sum + toNumber(row.rating), 0) / totalReviews
+        ).toFixed(2)
+      );
 
   return {
     filters,

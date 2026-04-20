@@ -34,8 +34,8 @@ export interface CreateListingBody {
   categoryId: number | string;
   description?: string;
   brand?: string;
-  condition: ListingCondition;
-  price: number | string;
+  condition: ListingCondition | string | null;
+  price: number | string | null;
   currency?: string;
   negotiable?: boolean;
   status?: CreateableListingStatus;
@@ -88,6 +88,12 @@ export interface ListingLocationSummary {
   areaName: string | null;
 }
 
+export interface ListingBuyerSummary {
+  id: string;
+  displayName: string;
+  avatarPath: string | null;
+}
+
 export interface ListingSummary {
   id: string;
   title: string;
@@ -111,6 +117,7 @@ export interface ListingSummary {
   pendingOffersCount: number;
   category: ListingCategorySummary | null;
   location: ListingLocationSummary;
+  soldTo: ListingBuyerSummary | null;
 }
 
 export interface MyListingsResponse {

@@ -5,7 +5,14 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ROUTES } from '@/src/config/routes';
+import ReportListingModal from '@/src/components/reports/ReportListingModal';
+import { useAuth } from '@/src/hooks/useAuth';
+import { getProfile } from '@/src/services/profileService';
 import { getPublicListings } from '@/src/services/listingService';
+import {
+  toggleFavorite,
+  checkFavoriteStatus,
+} from '@/src/services/favoriteService';
 import type {
   ListingCondition,
   PublicListingSortOption,
@@ -47,6 +54,15 @@ function HeartIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
       <path d="M12 21.35 10.55 20C5.4 15.24 2 12.11 2 8.28 2 5.27 4.27 3 7.28 3c1.7 0 3.33.79 4.42 2.03A5.97 5.97 0 0 1 16.12 3C19.13 3 21.4 5.27 21.4 8.28c0 3.83-3.4 6.96-8.55 11.72L12 21.35Z" />
+    </svg>
+  );
+}
+
+function FlagIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 4v16" />
+      <path d="M5 5h10l-1.5 3L15 11H5" />
     </svg>
   );
 }
@@ -178,6 +194,7 @@ function getInitialBrowseQuery() {
 
 export default function BrowsePage() {
   const router = useRouter();
+  const { user, session } = useAuth();
 
   const [searchText, setSearchText] = useState(getInitialBrowseQuery);
   const [query, setQuery] = useState(getInitialBrowseQuery);
@@ -192,6 +209,123 @@ export default function BrowsePage() {
   const [response, setResponse] = useState<PublicListingsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewerRole, setViewerRole] = useState<string | null>(null);
+  const [favoriteMap, setFavoriteMap] = useState<Record<string, boolean>>({});
+  const [favoriteLoadingIds, setFavoriteLoadingIds] = useState<Set<string>>(new Set());
+  const [reportTarget, setReportTarget] = useState<PublicListingSummary | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user || !session?.access_token) {
+      setViewerRole(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    getProfile(session.access_token).then((response) => {
+      if (cancelled) {
+        return;
+      }
+
+      setViewerRole(
+        response.data?.role ||
+          (typeof user.user_metadata?.role === 'string' ? user.user_metadata.role : null)
+      );
+    }).catch(() => {
+      if (!cancelled) {
+        setViewerRole(typeof user.user_metadata?.role === 'string' ? user.user_metadata.role : null);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.access_token, user]);
+
+  const resolvedViewerRole =
+    viewerRole || (typeof user?.user_metadata?.role === 'string' ? user.user_metadata.role : null);
+  const isAdminViewer = resolvedViewerRole === 'admin';
+  const showMemberActions = !user || resolvedViewerRole === 'user';
+  const accountHubRoute = isAdminViewer ? ROUTES.ADMIN : ROUTES.DASHBOARD;
+  const inboxRoute = isAdminViewer ? ROUTES.ADMIN_MESSAGES : ROUTES.MESSAGES;
+
+  // Check favorite status when listings load and user is authenticated
+  useEffect(() => {
+    if (!user || !session?.access_token || !response?.listings?.length || resolvedViewerRole !== 'user') return;
+    let cancelled = false;
+
+    const listingIds = response.listings.map((item) => item.id);
+    checkFavoriteStatus(session.access_token, listingIds).then((result) => {
+      if (!cancelled && result.data) {
+        setFavoriteMap((prev) => ({ ...prev, ...result.data }));
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [resolvedViewerRole, session, user, response]);
+
+  // Toast auto-dismiss
+  useEffect(() => {
+    if (!toast) return;
+    const timeout = window.setTimeout(() => setToast(null), 2200);
+    return () => window.clearTimeout(timeout);
+  }, [toast]);
+
+  async function handleFavoriteToggle(e: React.MouseEvent, listingId: string) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!user || !session?.access_token) {
+      router.push(`${ROUTES.LOGIN}?redirect=${encodeURIComponent(ROUTES.BROWSE)}`);
+      return;
+    }
+
+    if (resolvedViewerRole !== 'user') {
+      setToast('Admin accounts cannot save marketplace favorites.');
+      return;
+    }
+
+    if (favoriteLoadingIds.has(listingId)) return;
+    setFavoriteLoadingIds((s) => new Set(s).add(listingId));
+
+    try {
+      const result = await toggleFavorite(session.access_token, listingId);
+      if (result.data) {
+        setFavoriteMap((prev) => ({ ...prev, [listingId]: result.data!.favorited }));
+        setToast(result.data.favorited ? 'Added to favorites' : 'Removed from favorites');
+      }
+    } catch {
+      setToast('Failed to update favorite');
+    } finally {
+      setFavoriteLoadingIds((s) => {
+        const next = new Set(s);
+        next.delete(listingId);
+        return next;
+      });
+    }
+  }
+
+  function handleOpenReport(event: React.MouseEvent, listing: PublicListingSummary) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!user || !session?.access_token) {
+      const redirect =
+        typeof window === 'undefined'
+          ? ROUTES.BROWSE
+          : `${window.location.pathname}${window.location.search}`;
+      router.push(`${ROUTES.LOGIN}?redirect=${encodeURIComponent(redirect)}`);
+      return;
+    }
+
+    if (resolvedViewerRole !== 'user') {
+      setToast('Admin accounts cannot submit marketplace reports.');
+      return;
+    }
+
+    setReportTarget(listing);
+  }
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -344,14 +478,14 @@ export default function BrowsePage() {
           </Link>
 
           <nav className={styles.nav}>
-            <Link href={ROUTES.DASHBOARD} className={styles.navLink}>
-              Dashboard
+            <Link href={accountHubRoute} className={styles.navLink}>
+              {isAdminViewer ? 'Admin Console' : 'Dashboard'}
             </Link>
             <Link href={ROUTES.BROWSE} className={`${styles.navLink} ${styles.navLinkActive}`}>
               Browse
             </Link>
-            <Link href={ROUTES.ADD_LISTING} className={styles.navLink}>
-              Sell
+            <Link href={isAdminViewer ? ROUTES.ADMIN_USERS : ROUTES.ADD_LISTING} className={styles.navLink}>
+              {isAdminViewer ? 'Users' : 'Sell'}
             </Link>
           </nav>
         </div>
@@ -370,18 +504,20 @@ export default function BrowsePage() {
             />
           </label>
 
-          <Link href={ROUTES.DASHBOARD} className={styles.iconButton} aria-label="Dashboard alerts">
+          <Link href={accountHubRoute} className={styles.iconButton} aria-label="Dashboard alerts">
             <BellIcon />
           </Link>
-          <Link href={ROUTES.MESSAGES} className={styles.iconButton} aria-label="Messages">
+          <Link href={inboxRoute} className={styles.iconButton} aria-label="Messages">
             <MailIcon />
           </Link>
-          <Link href={ROUTES.FAVORITES} className={styles.iconButton} aria-label="Favorites">
-            <HeartIcon />
-          </Link>
+          {showMemberActions && (
+            <Link href={ROUTES.FAVORITES} className={styles.iconButton} aria-label="Favorites">
+              <HeartIcon />
+            </Link>
+          )}
 
-          <Link href={ROUTES.DASHBOARD} className={styles.avatarButton}>
-            Hub
+          <Link href={accountHubRoute} className={styles.avatarButton}>
+            {isAdminViewer ? 'Admin' : 'Hub'}
           </Link>
         </div>
       </header>
@@ -598,6 +734,17 @@ export default function BrowsePage() {
                           <span className={styles.cardBadge}>
                             {listing.negotiable ? 'Negotiable' : 'Fixed Price'}
                           </span>
+                          {showMemberActions && (
+                            <button
+                              type="button"
+                              className={`${styles.cardHeart} ${favoriteMap[listing.id] ? styles.cardHeartActive : ''}`}
+                              onClick={(e) => handleFavoriteToggle(e, listing.id)}
+                              disabled={favoriteLoadingIds.has(listing.id)}
+                              aria-label={favoriteMap[listing.id] ? 'Remove from favorites' : 'Add to favorites'}
+                            >
+                              <HeartIcon />
+                            </button>
+                          )}
                           <div className={styles.mediaGlow} />
                           {imageUrl ? (
                             <img
@@ -635,12 +782,25 @@ export default function BrowsePage() {
                           </p>
 
                           <div className={styles.cardFooter}>
-                            <span className={styles.cardCategory}>
-                              {listing.category?.name ?? 'Uncategorized'}
-                            </span>
-                            <span className={styles.cardCondition}>
-                              {listing.conditionLabel || formatConditionLabel(listing.condition)}
-                            </span>
+                            <div className={styles.cardPills}>
+                              <span className={styles.cardCategory}>
+                                {listing.category?.name ?? 'Uncategorized'}
+                              </span>
+                              <span className={styles.cardCondition}>
+                                {listing.conditionLabel || formatConditionLabel(listing.condition)}
+                              </span>
+                            </div>
+
+                            {showMemberActions && (
+                              <button
+                                type="button"
+                                className={styles.cardReport}
+                                onClick={(event) => handleOpenReport(event, listing)}
+                              >
+                                <FlagIcon />
+                                <span>Report</span>
+                              </button>
+                            )}
                           </div>
                         </div>
                       </article>
@@ -686,6 +846,18 @@ export default function BrowsePage() {
           )}
         </main>
       </div>
+
+      <ReportListingModal
+        key={reportTarget?.id ?? 'hidden'}
+        open={Boolean(reportTarget)}
+        listing={reportTarget ? { id: reportTarget.id, title: reportTarget.title } : null}
+        token={session?.access_token ?? null}
+        onClose={() => setReportTarget(null)}
+        onReported={(message) => {
+          setReportTarget(null);
+          setToast(message);
+        }}
+      />
     </div>
   );
 }

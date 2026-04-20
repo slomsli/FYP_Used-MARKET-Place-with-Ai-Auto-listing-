@@ -1,0 +1,551 @@
+/* ══════════════════════════════════════════
+   Offers Page Styles
+   ══════════════════════════════════════════ */
+
+.container {
+  max-width: 1040px;
+  animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+.noticeSuccess,
+.noticeError {
+  margin-bottom: 1.25rem;
+  padding: 0.95rem 1rem;
+  border-radius: 1rem;
+  font-weight: 700;
+}
+
+.noticeSuccess {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--dash-secondary);
+}
+
+.noticeError {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--dash-tertiary);
+}
+
+.title {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #121826;
+  letter-spacing: -0.04em;
+  margin: 0;
+  line-height: 1.1;
+}
+
+.subtitle {
+  font-size: 0.95rem;
+  color: #64748b;
+  margin-top: 0.5rem;
+  margin-bottom: 0;
+}
+
+.tabsRow {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.35rem;
+  background: #f1f5f9;
+  border-radius: 1.25rem;
+}
+
+.tab {
+  padding: 0.6rem 1.4rem;
+  border-radius: 1rem;
+  background: transparent;
+  border: none;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tabActive {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+}
+
+.tab:hover:not(.tabActive) {
+  color: #334155;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* ── Content Area ────────────────────────────────────────── */
+
+.emptyState {
+  padding: 4rem 2rem;
+  text-align: center;
+  background: #ffffff;
+  border: 1px dashed #cbd5e1;
+  border-radius: 1.5rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.emptyState h3 {
+  font-size: 1.25rem;
+  color: #1e293b;
+  margin-bottom: 0.5rem;
+}
+
+.emptyState p {
+  color: #64748b;
+}
+
+.offersList {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.offerCard {
+  display: flex;
+  gap: 1.5rem;
+  background: #ffffff;
+  padding: 1.5rem;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(0,0,0,0.04);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.02);
+  transition: transform 0.2s, box-shadow 0.2s;
+  flex-wrap: wrap;
+}
+
+.offerCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.05);
+}
+
+.listingImageWrap {
+  width: 140px;
+  height: 140px;
+  border-radius: 1rem;
+  overflow: hidden;
+  background: #f8fafc;
+  flex-shrink: 0;
+}
+
+.listingImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.listingFallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  color: #cbd5e1;
+  font-weight: 700;
+}
+
+.offerDetails {
+  flex: 1;
+  min-width: 260px;
+  display: flex;
+  flex-direction: column;
+}
+
+.offerHeaderRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.listingTitle {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 0.25rem;
+  text-decoration: none;
+}
+
+.listingTitle:hover {
+  text-decoration: underline;
+}
+
+.statusBadge {
+  display: inline-flex;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.statusPending { background: #fef3c7; color: #d97706; }
+.statusAccepted { background: #dcfce7; color: #15803d; }
+.statusRejected { background: #fee2e2; color: var(--dash-tertiary); }
+.statusCancelled { background: #f1f5f9; color: #64748b; }
+
+.metaInfo {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.offerSummary {
+  margin-bottom: 1rem;
+  padding: 0.95rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(0,0,0,0.04);
+}
+
+.offerSummaryAction {
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+
+.offerSummaryWaiting {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.offerSummaryNeutral {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+.offerSummaryText {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.offerSummaryAction .offerSummaryText {
+  color: #9a3412;
+}
+
+.offerSummaryWaiting .offerSummaryText {
+  color: #1d4ed8;
+}
+
+.offerSummarySubtext {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #64748b;
+}
+
+.participantName {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.avatar {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.avatarFallback {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.priceBlock {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  background: #f8fafc;
+  padding: 0.8rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(0,0,0,0.04);
+  margin-bottom: 1rem;
+}
+
+.priceItem {
+  display: flex;
+  flex-direction: column;
+}
+
+.priceLabel {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  margin-bottom: 0.15rem;
+}
+
+.priceValue {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.priceValueHighlight {
+  color: #3b82f6;
+}
+
+.messageBlock {
+  background: #ffffff;
+  border-left: 3px solid #e2e8f0;
+  padding: 0.5rem 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.messageLabel {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  margin-bottom: 0.25rem;
+  display: block;
+}
+
+.messageText {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #334155;
+  font-style: italic;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: auto;
+}
+
+.btn {
+  padding: 0.7rem 1.2rem;
+  border-radius: 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  text-decoration: none;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btnPrimary {
+  background: #0f172a;
+  color: #ffffff;
+}
+
+.btnPrimary:hover:not(:disabled) {
+  background: #1e293b;
+  transform: translateY(-1px);
+}
+
+.btnSecondary {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.btnSecondary:hover:not(:disabled) {
+  background: #e2e8f0;
+}
+
+.btnDanger {
+  background: #fee2e2;
+  color: var(--dash-tertiary);
+}
+
+.btnDanger:hover:not(:disabled) {
+  background: #fecaca;
+}
+
+.btnAccept {
+  background: var(--dash-secondary);
+  color: #ffffff;
+}
+
+.btnAccept:hover:not(:disabled) {
+  background: var(--dash-secondary);
+}
+
+.kindPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  background: #e0e7ff;
+  color: #4338ca;
+  border-radius: 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  margin-left: 0.75rem;
+}
+
+/* ── Counter Offer Modal ────────────────────────────────────────── */
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(6px);
+}
+
+.modalContent {
+  width: 100%;
+  max-width: 480px;
+  background: #ffffff;
+  border-radius: 1.5rem;
+  padding: 2rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  position: relative;
+}
+
+.modalClose {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
+  background: #f1f5f9;
+  border: none;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #64748b;
+  transition: background 0.2s;
+}
+
+.modalClose:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.modalTitle {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 0.5rem;
+}
+
+.modalSubtitle {
+  color: #64748b;
+  font-size: 0.95rem;
+  margin: 0 0 1.5rem;
+}
+
+.formGroup {
+  margin-bottom: 1.25rem;
+}
+
+.formLabel {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #334155;
+  margin-bottom: 0.5rem;
+}
+
+.inputWrap {
+  display: flex;
+  align-items: center;
+  border: 1px solid rgba(0,0,0,0.04);
+  border-radius: 0.75rem;
+  overflow: hidden;
+  background: #f8fafc;
+}
+
+.inputPrefix {
+  padding: 0.75rem 1rem;
+  background: #e2e8f0;
+  color: #475569;
+  font-weight: 700;
+  border-right: 1px solid #cbd5e1;
+}
+
+.inputField {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: none;
+  background: transparent;
+  font-size: 1rem;
+  
+  font-weight: 600;
+  color: #0f172a;
+  outline: none;
+}
+
+.textareaField {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(0,0,0,0.04);
+  border-radius: 0.75rem;
+  background: #f8fafc;
+  font-size: 0.95rem;
+  
+  color: #0f172a;
+  resize: vertical;
+  min-height: 80px;
+  outline: none;
+}
+
+.textareaField:focus,
+.inputField:focus {
+  background: #ffffff;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+@media (max-width: 640px) {
+  .offerCard {
+    flex-direction: column;
+  }
+  
+  .listingImageWrap {
+    width: 100%;
+    height: 200px;
+  }
+}

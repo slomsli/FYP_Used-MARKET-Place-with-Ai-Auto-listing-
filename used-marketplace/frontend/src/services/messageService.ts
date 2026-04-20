@@ -1,6 +1,7 @@
 const getAuthHeaders = (token: string) => ({ Authorization: `Bearer ${token}` });
 
-const MESSAGE_API_URL = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/messages`;
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const MESSAGE_API_URL = `${API_BASE}/api/messages`;
 
 export interface ChatMessage {
   id: string;
@@ -19,11 +20,14 @@ export interface ConversationDetail {
   created_at: string;
   other_user: {
     id: string;
-    full_name: string;
+    display_name: string;
+    username: string | null;
+    avatar_path: string | null;
   } | null;
   listing_details: {
     title: string;
     cover_image_path: string | null;
+    is_moderation: boolean;
   } | null;
   last_message: {
     content: string;
@@ -85,7 +89,12 @@ export async function fetchMessages(token: string, conversationId: string): Prom
 /**
  * Send a new message or start a conversation
  */
-export async function sendMessage(token: string, listingId: string, content: string): Promise<{ data: ChatMessage | null; error: string | null }> {
+export async function sendMessage(
+  token: string,
+  listingId: string,
+  content: string,
+  recipientId?: string
+): Promise<{ data: ChatMessage | null; error: string | null }> {
   try {
     const res = await fetch(MESSAGE_API_URL, {
       method: 'POST',
@@ -93,7 +102,11 @@ export async function sendMessage(token: string, listingId: string, content: str
         ...getAuthHeaders(token),
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ listing_id: listingId, content }),
+      body: JSON.stringify({
+        listing_id: listingId,
+        content,
+        recipient_id: recipientId,
+      }),
     });
 
     if (!res.ok) {

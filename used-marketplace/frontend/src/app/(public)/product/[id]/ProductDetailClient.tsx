@@ -4,12 +4,18 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import ReportListingModal from '@/src/components/reports/ReportListingModal';
 import { ROUTES } from '@/src/config/routes';
 import { useAuth } from '@/src/hooks/useAuth';
+import { getProfile } from '@/src/services/profileService';
 import {
   getPublicListingById,
   recordPublicListingView,
 } from '@/src/services/listingService';
+import {
+  toggleFavorite,
+  checkFavoriteStatus,
+} from '@/src/services/favoriteService';
 import type { PublicListingDetailResponse, PublicListingSummary } from '@/src/types/listing';
 import styles from './page.module.css';
 
@@ -156,35 +162,24 @@ function getSellerLocationLabel(response: PublicListingDetailResponse['seller'])
   return 'Malaysia';
 }
 
-function getLocalSavedListings() {
-  if (typeof window === 'undefined') {
-    return [];
-  }
-
-  try {
-    const value = window.localStorage.getItem('remarket-saved-listings');
-    if (!value) {
-      return [];
-    }
-
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : [];
-  } catch {
-    return [];
-  }
-}
-
 export default function ProductDetailClient({ listingId }: ProductDetailClientProps) {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, session } = useAuth();
 
   const [response, setResponse] = useState<PublicListingDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [searchText, setSearchText] = useState('');
-  const [savedVersion, setSavedVersion] = useState(0);
+  const [viewerRole, setViewerRole] = useState<string | null>(null);
+  const [isFavorited, setIsFavorited] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [showOfferModal, setShowOfferModal] = useState<'purchase' | 'offer' | null>(null);
+  const [offerPrice, setOfferPrice] = useState('');
+  const [offerMessage, setOfferMessage] = useState('');
+  const [offerSubmitting, setOfferSubmitting] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const recordedViewIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -256,6 +251,58 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
   }, [listingId, response]);
 
   useEffect(() => {
+    if (!user || !session?.access_token) {
+      setViewerRole(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    getProfile(session.access_token).then((profileResponse) => {
+      if (cancelled) {
+        return;
+      }
+
+      setViewerRole(
+        profileResponse.data?.role ||
+          (typeof user.user_metadata?.role === 'string' ? user.user_metadata.role : null)
+      );
+    }).catch(() => {
+      if (!cancelled) {
+        setViewerRole(typeof user.user_metadata?.role === 'string' ? user.user_metadata.role : null);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.access_token, user]);
+
+  const resolvedViewerRole =
+    viewerRole || (typeof user?.user_metadata?.role === 'string' ? user.user_metadata.role : null);
+  const isAdminViewer = resolvedViewerRole === 'admin';
+  const memberAccessResolved = !user || resolvedViewerRole !== null;
+  const showMemberActions = !user || resolvedViewerRole === 'user';
+  const accountHubRoute = isAdminViewer ? ROUTES.ADMIN : ROUTES.DASHBOARD;
+  const inboxRoute = isAdminViewer ? ROUTES.ADMIN_MESSAGES : ROUTES.MESSAGES;
+
+  // Check favorite status when user is authenticated
+  useEffect(() => {
+    if (!user || !session?.access_token || !response || resolvedViewerRole !== 'user') return;
+    let cancelled = false;
+
+    async function checkStatus() {
+      const result = await checkFavoriteStatus(session!.access_token, [listingId]);
+      if (!cancelled && result.data) {
+        setIsFavorited(result.data[listingId] ?? false);
+      }
+    }
+
+    checkStatus();
+    return () => { cancelled = true; };
+  }, [listingId, resolvedViewerRole, response, session, user]);
+
+  useEffect(() => {
     if (!toast) {
       return;
     }
@@ -281,28 +328,88 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
     router.push(target);
   }
 
-  function handleSaveToggle() {
-    const current = new Set(getLocalSavedListings());
-
-    if (current.has(listingId)) {
-      current.delete(listingId);
-      setToast('Removed from saved listings on this device.');
-    } else {
-      current.add(listingId);
-      setToast('Saved for later on this device.');
+  async function handleFavoriteToggle() {
+    if (!user || !session?.access_token) {
+      router.push(`${ROUTES.LOGIN}?redirect=${encodeURIComponent(`/product/${listingId}`)}`);
+      return;
     }
 
-    window.localStorage.setItem('remarket-saved-listings', JSON.stringify(Array.from(current)));
-    setSavedVersion((currentVersion) => currentVersion + 1);
+    if (resolvedViewerRole !== 'user') {
+      setToast('Admin accounts cannot save marketplace favorites.');
+      return;
+    }
+
+    if (favoriteLoading) return;
+    setFavoriteLoading(true);
+
+    try {
+      const result = await toggleFavorite(session.access_token, listingId);
+      if (result.data) {
+        setIsFavorited(result.data.favorited);
+        setToast(result.data.favorited ? 'Added to favorites' : 'Removed from favorites');
+      } else {
+        setToast(result.error || 'Failed to update favorite');
+      }
+    } catch {
+      setToast('Failed to update favorite');
+    } finally {
+      setFavoriteLoading(false);
+    }
   }
 
-  function handleReport(listing: PublicListingSummary) {
-    const subject = encodeURIComponent(`Report listing: ${listing.title}`);
-    const body = encodeURIComponent(
-      `Listing ID: ${listing.id}\nTitle: ${listing.title}\nReason: Please review this marketplace listing.`
-    );
+  async function handleOfferSubmit() {
+    if (!user || !session?.access_token || !response) return;
+    if (offerSubmitting) return;
 
-    window.location.href = `mailto:support@remarket.app?subject=${subject}&body=${body}`;
+    if (resolvedViewerRole !== 'user') {
+      setToast('Admin accounts cannot place offers or purchase requests.');
+      return;
+    }
+
+    const { createOffer } = await import('@/src/services/offerService');
+    setOfferSubmitting(true);
+
+    const price = showOfferModal === 'purchase'
+      ? response.listing.price
+      : parseFloat(offerPrice);
+
+    if (isNaN(price) || price < 0) {
+      setToast('Please enter a valid price');
+      setOfferSubmitting(false);
+      return;
+    }
+
+    const result = await createOffer(session.access_token, {
+      listingId,
+      offerPrice: price,
+      message: offerMessage.trim() || undefined,
+      offerKind: showOfferModal === 'purchase' ? 'purchase_request' : 'offer',
+    });
+
+    setOfferSubmitting(false);
+
+    if (result.data) {
+      setShowOfferModal(null);
+      setOfferPrice('');
+      setOfferMessage('');
+      setToast('Offer sent successfully!');
+    } else {
+      setToast(result.error || 'Failed to send offer');
+    }
+  }
+
+  function handleOpenReport() {
+    if (!user || !session?.access_token) {
+      router.push(`${ROUTES.LOGIN}?redirect=${encodeURIComponent(`/product/${listingId}`)}`);
+      return;
+    }
+
+    if (resolvedViewerRole !== 'user') {
+      setToast('Admin accounts cannot submit marketplace reports.');
+      return;
+    }
+
+    setReportOpen(true);
   }
 
   if (loading) {
@@ -335,12 +442,12 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
   }
 
   const { listing, seller, related } = response;
-  void savedVersion;
-  const saved = getLocalSavedListings().includes(listingId);
   const gallery = buildGallery(listing);
   const activeImage = gallery[activeIndex] ?? null;
   const toneClass = styles[getToneClass(listing)];
   const sellerLocationLabel = getSellerLocationLabel(seller);
+  const isSoldOut = listing.status === 'sold';
+  const availabilityLabel = isSoldOut ? 'Sold Out' : listing.statusLabel;
   const breadcrumb = ['Archive', listing.category?.name ?? 'Listings', listing.locationLabel];
   const detailRows = [
     { label: 'Condition', value: listing.conditionLabel },
@@ -356,9 +463,13 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
     listing.brand?.trim()
       ? `The seller listed this piece under ${listing.brand.trim()} and marked it as ${listing.conditionLabel.toLowerCase()}.`
       : `The seller marked this item as ${listing.conditionLabel.toLowerCase()} and published it from ${listing.locationLabel}.`,
-    listing.negotiable
-      ? 'The asking price is currently negotiable, so buyers can reach out or submit an offer from the marketplace flow.'
-      : 'The listing is currently set to a fixed asking price, but buyers can still contact the seller through the marketplace flow.',
+    isAdminViewer
+      ? 'Administrators can review this listing and seller history here, but offers, favorites, and direct marketplace actions stay disabled in admin mode.'
+      : isSoldOut
+        ? 'This listing is now sold out. Buyers can still review the listing history here, but new offers and messages are closed.'
+        : listing.negotiable
+          ? 'The asking price is currently negotiable, so buyers can reach out or submit an offer from the marketplace flow.'
+          : 'The listing is currently set to a fixed asking price, but buyers can still contact the seller through the marketplace flow.',
   ];
   const highlights = [
     `${listing.favoritesCount} saves and ${listing.totalOffersCount} recorded offer${listing.totalOffersCount === 1 ? '' : 's'}.`,
@@ -368,7 +479,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
   const included = [
     `Listing currency: ${listing.currency}`,
     `Seller region: ${sellerLocationLabel}`,
-    `Status: ${listing.statusLabel}`,
+    `Status: ${availabilityLabel}`,
   ];
 
   return (
@@ -381,14 +492,14 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
           </Link>
 
           <nav className={styles.nav}>
-            <Link href={ROUTES.DASHBOARD} className={styles.navLink}>
-              Dashboard
+            <Link href={accountHubRoute} className={styles.navLink}>
+              {isAdminViewer ? 'Admin Console' : 'Dashboard'}
             </Link>
             <Link href={ROUTES.BROWSE} className={`${styles.navLink} ${styles.navLinkActive}`}>
               Browse
             </Link>
-            <Link href={ROUTES.ADD_LISTING} className={styles.navLink}>
-              Sell
+            <Link href={isAdminViewer ? ROUTES.ADMIN_USERS : ROUTES.ADD_LISTING} className={styles.navLink}>
+              {isAdminViewer ? 'Users' : 'Sell'}
             </Link>
           </nav>
         </div>
@@ -407,14 +518,16 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
             />
           </form>
 
-          <Link href={ROUTES.DASHBOARD} className={styles.iconButton} aria-label="Dashboard alerts">
+          <Link href={accountHubRoute} className={styles.iconButton} aria-label="Dashboard alerts">
             <BellIcon />
           </Link>
-          <Link href={ROUTES.FAVORITES} className={styles.iconButton} aria-label="Saved listings">
-            <HeartIcon />
-          </Link>
-          <Link href={ROUTES.DASHBOARD} className={styles.avatarButton}>
-            Hub
+          {showMemberActions && (
+            <Link href={ROUTES.FAVORITES} className={styles.iconButton} aria-label="Saved listings">
+              <HeartIcon />
+            </Link>
+          )}
+          <Link href={accountHubRoute} className={styles.avatarButton}>
+            {isAdminViewer ? 'Admin' : 'Hub'}
           </Link>
         </div>
       </header>
@@ -433,19 +546,22 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
         <section className={styles.heroSection}>
           <div className={styles.mediaColumn}>
             <div className={`${styles.heroMedia} ${toneClass}`}>
-              <div className={styles.heroMediaTop}>
-                <div className={styles.heroBadges}>
-                  <span className={styles.badgeSoft}>{listing.statusLabel}</span>
+                <div className={styles.heroMediaTop}>
+                  <div className={styles.heroBadges}>
+                  <span className={styles.badgeSoft}>{availabilityLabel}</span>
                   <span className={styles.badgeMint}>{listing.conditionLabel}</span>
                 </div>
-                <button
-                  type="button"
-                  className={`${styles.saveButton} ${saved ? styles.saveButtonActive : ''}`}
-                  aria-label={saved ? 'Remove saved listing' : 'Save listing'}
-                  onClick={handleSaveToggle}
-                >
-                  <HeartIcon />
-                </button>
+                {showMemberActions && (
+                  <button
+                    type="button"
+                    className={`${styles.saveButton} ${isFavorited ? styles.saveButtonActive : ''}`}
+                    aria-label={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
+                    onClick={handleFavoriteToggle}
+                    disabled={favoriteLoading}
+                  >
+                    <HeartIcon />
+                  </button>
+                )}
               </div>
 
               <div className={styles.heroGlow} />
@@ -496,6 +612,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
               <h1 className={styles.title}>{listing.title}</h1>
               <div className={styles.priceRow}>
                 <span className={styles.price}>{formatCurrency(listing.price, listing.currency)}</span>
+                {isSoldOut && <span className={styles.soldOutPill}>{availabilityLabel}</span>}
                 <span className={styles.negotiablePill}>
                   <TagIcon />
                   {listing.negotiable ? 'Negotiable' : 'Fixed price'}
@@ -504,6 +621,12 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
               <p className={styles.titleNote}>
                 Sold by {seller.displayName} in {listing.locationLabel}.
               </p>
+              {isSoldOut && (
+                <div className={styles.soldOutBanner}>
+                  <strong>{availabilityLabel}</strong>
+                  <span>This listing has already been purchased and is now shown as archive-only.</span>
+                </div>
+              )}
             </div>
 
             <div className={styles.detailCard}>
@@ -548,43 +671,87 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
             </div>
 
             <div className={styles.actionStack}>
-              <button
-                type="button"
-                className={styles.primaryAction}
-                onClick={() =>
-                  handleProtectedNavigation(
-                    `${ROUTES.OFFERS}?listingId=${listing.id}&intent=buy`
-                  )
-                }
-              >
-                Purchase Now
-              </button>
-              <div className={styles.secondaryActions}>
-                <button
-                  type="button"
-                  className={styles.secondaryAction}
-                  onClick={() =>
-                    handleProtectedNavigation(
-                      `${ROUTES.MESSAGES}?listingId=${listing.id}&sellerId=${seller.id}`
-                    )
-                  }
-                >
-                  <MailIcon />
-                  Message
-                </button>
-                <button
-                  type="button"
-                  className={styles.secondaryAction}
-                  onClick={() =>
-                    handleProtectedNavigation(
-                      `${ROUTES.OFFERS}?listingId=${listing.id}&intent=offer`
-                    )
-                  }
-                >
-                  <TagIcon />
-                  Make Offer
-                </button>
-              </div>
+              {listing.status === 'active' ? (
+                !memberAccessResolved ? (
+                  <div className={styles.statusNotice}>
+                    Checking account permissions for marketplace actions...
+                  </div>
+                ) : isAdminViewer ? (
+                  <div className={styles.statusNotice}>
+                    <strong>Admin view only.</strong> You can inspect listings and seller history here,
+                    but favorites, offers, and purchase requests are disabled for administrator
+                    accounts. Seller outreach stays inside the admin console listing-management flow.
+                  </div>
+                ) : (
+                <>
+                  <button
+                    type="button"
+                    className={styles.primaryAction}
+                    onClick={() => {
+                      if (!user) {
+                        router.push(`${ROUTES.LOGIN}?redirect=${encodeURIComponent(`/product/${listingId}`)}`);
+                        return;
+                      }
+                      setOfferPrice(String(listing.price));
+                      setOfferMessage('');
+                      setShowOfferModal('purchase');
+                    }}
+                  >
+                    Request to Buy
+                  </button>
+                  <div className={styles.secondaryActions}>
+                    <button
+                      type="button"
+                      className={styles.secondaryAction}
+                      onClick={() =>
+                        handleProtectedNavigation(
+                          `${inboxRoute}?${new URLSearchParams({
+                            listingId: listing.id,
+                            recipientId: seller.id,
+                            recipientName: seller.displayName,
+                          }).toString()}`
+                        )
+                      }
+                    >
+                      <MailIcon />
+                      Message Seller
+                    </button>
+                    {listing.negotiable && (
+                      <button
+                        type="button"
+                        className={styles.secondaryAction}
+                        onClick={() => {
+                          if (!user) {
+                            router.push(`${ROUTES.LOGIN}?redirect=${encodeURIComponent(`/product/${listingId}`)}`);
+                            return;
+                          }
+                          setOfferPrice('');
+                          setOfferMessage('');
+                          setShowOfferModal('offer');
+                        }}
+                      >
+                        <TagIcon />
+                        Make Offer
+                      </button>
+                    )}
+                  </div>
+                </>
+                )
+              ) : (
+                <div className={styles.statusNotice}>
+                  {isSoldOut ? (
+                    <>
+                      This listing is <strong>{availabilityLabel}</strong>. You can still view the full details,
+                      but it is no longer accepting offers or new messages.
+                    </>
+                  ) : (
+                    <>
+                      This listing is currently <strong>{availabilityLabel}</strong> and is not accepting new
+                      offers.
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className={styles.assuranceCard}>
@@ -611,9 +778,11 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
             {storyParagraphs.map((paragraph) => (
               <p key={paragraph}>{paragraph}</p>
             ))}
-            <button type="button" className={styles.reportButton} onClick={() => handleReport(listing)}>
-              Report this listing
-            </button>
+            {showMemberActions && (
+              <button type="button" className={styles.reportButton} onClick={handleOpenReport}>
+                Report this listing
+              </button>
+            )}
           </article>
 
           <article className={styles.storyCard}>
@@ -702,21 +871,121 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
             </div>
             <div>
               <h3>Support</h3>
-              <Link href={ROUTES.MESSAGES}>Messages</Link>
-              <Link href={ROUTES.OFFERS}>Offers</Link>
-              <Link href={ROUTES.SETTINGS}>Contact</Link>
+              <Link href={inboxRoute}>{isAdminViewer ? 'Admin inbox' : 'Messages'}</Link>
+              <Link href={isAdminViewer ? ROUTES.ADMIN_USERS : ROUTES.OFFERS}>
+                {isAdminViewer ? 'User review' : 'Offers'}
+              </Link>
+              <Link href={isAdminViewer ? ROUTES.ADMIN_STRUCTURE : ROUTES.SETTINGS}>
+                {isAdminViewer ? 'Structure' : 'Contact'}
+              </Link>
             </div>
             <div>
-              <h3>Account</h3>
-              <Link href={ROUTES.FAVORITES}>Saved items</Link>
-              <Link href={ROUTES.MY_LISTINGS}>My listings</Link>
-              <Link href={ROUTES.PROFILE}>Profile</Link>
+              <h3>{isAdminViewer ? 'Admin' : 'Account'}</h3>
+              <Link href={isAdminViewer ? ROUTES.ADMIN : ROUTES.FAVORITES}>
+                {isAdminViewer ? 'Overview' : 'Saved items'}
+              </Link>
+              <Link href={isAdminViewer ? ROUTES.ADMIN_USERS : ROUTES.MY_LISTINGS}>
+                {isAdminViewer ? 'Users' : 'My listings'}
+              </Link>
+              <Link href={isAdminViewer ? ROUTES.ADMIN_STRUCTURE : ROUTES.PROFILE}>
+                {isAdminViewer ? 'Structure' : 'Profile'}
+              </Link>
             </div>
           </div>
         </footer>
       </main>
 
-      {toast && <div className={styles.toast}>{toast}</div>}
+      {/* ── Offer Modal ── */}
+      {showOfferModal && response && (
+        <div className={styles.modalOverlay} onClick={() => setShowOfferModal(null)}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <button type="button" className={styles.modalClose} onClick={() => setShowOfferModal(null)}>
+              ✕
+            </button>
+            <h2 className={styles.modalTitle}>
+              {showOfferModal === 'purchase' ? 'Request to Buy' : 'Make an Offer'}
+            </h2>
+            <p className={styles.modalSubtitle}>
+              {showOfferModal === 'purchase'
+                ? `You are requesting to buy "${response.listing.title}" at the asking price.`
+                : `Submit a custom offer for "${response.listing.title}".`}
+            </p>
+
+            <div className={styles.modalField}>
+              <label className={styles.modalLabel}>
+                {showOfferModal === 'purchase' ? 'Price' : 'Your Offer Price'}
+              </label>
+              <div className={styles.modalInputRow}>
+                <span className={styles.modalCurrency}>{response.listing.currency}</span>
+                <input
+                  type="number"
+                  className={styles.modalInput}
+                  value={showOfferModal === 'purchase' ? String(response.listing.price) : offerPrice}
+                  onChange={(e) => setOfferPrice(e.target.value)}
+                  disabled={showOfferModal === 'purchase'}
+                  placeholder="0.00"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+              {showOfferModal === 'offer' && (
+                <p className={styles.modalHint}>
+                  Asking price: {formatCurrency(response.listing.price, response.listing.currency)}
+                </p>
+              )}
+            </div>
+
+            <div className={styles.modalField}>
+              <label className={styles.modalLabel}>Message (optional)</label>
+              <textarea
+                className={styles.modalTextarea}
+                value={offerMessage}
+                onChange={(e) => setOfferMessage(e.target.value)}
+                placeholder={showOfferModal === 'purchase'
+                  ? 'Hi, I want to buy this item.'
+                  : 'Add a note for the seller...'}
+                rows={3}
+              />
+            </div>
+
+            <button
+              type="button"
+              className={styles.modalSubmit}
+              onClick={handleOfferSubmit}
+              disabled={offerSubmitting}
+            >
+              {offerSubmitting
+                ? 'Sending...'
+                : showOfferModal === 'purchase'
+                  ? 'Send Purchase Request'
+                  : 'Send Offer'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <ReportListingModal
+        key={reportOpen ? listing.id : 'hidden'}
+        open={reportOpen}
+        listing={{ id: listing.id, title: listing.title }}
+        token={session?.access_token ?? null}
+        onClose={() => setReportOpen(false)}
+        onReported={(message) => {
+          setReportOpen(false);
+          setToast(message);
+        }}
+      />
+
+      {toast && (
+        <div className={styles.toast}>
+          {toast}
+          {toast === 'Offer sent successfully!' && (
+            <Link href={ROUTES.OFFERS} className={styles.toastLink}>
+              View My Offers
+            </Link>
+          )}
+        </div>
+      )}
     </div>
   );
 }

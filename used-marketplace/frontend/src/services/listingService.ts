@@ -15,6 +15,7 @@ import type {
   PublicListingsResponse,
   PublicListingSortOption,
   UploadedListingImage,
+  GeneratedListingData,
 } from '@/src/types/listing';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
@@ -540,5 +541,15 @@ export async function recordPublicListingView(
 ): Promise<ServiceResponse<ListingViewResult>> {
   return publicRequest<ListingViewResult>(`/api/listings/${listingId}/views`, {
     method: 'POST',
+  });
+}
+
+export async function generateListingMetadataFromImages(
+  token: string,
+  images: { base64Data: string; contentType: string }[]
+): Promise<ServiceResponse<GeneratedListingData>> {
+  return authorizedRequest<GeneratedListingData>('/api/dashboard/listings/generate', token, {
+    method: 'POST',
+    body: JSON.stringify({ images }),
   });
 }

@@ -45,7 +45,7 @@ export async function sendMessage(req: AuthenticatedRequest, res: Response): Pro
     return;
   }
 
-  const { listing_id, content } = req.body;
+  const { listing_id, content, recipient_id } = req.body;
 
   if (!listing_id || !content) {
     sendError(res, 'Missing listing_id or content', 400);
@@ -53,12 +53,37 @@ export async function sendMessage(req: AuthenticatedRequest, res: Response): Pro
   }
 
   try {
-    const message = await messageService.sendMessage(req.user.id, { listing_id, content });
+    const message = await messageService.sendMessage(req.user, {
+      listing_id,
+      content,
+      recipient_id,
+    });
     sendSuccess(res, message, 201);
   } catch (error) {
     console.error('Error sending message:', error);
-    if (error instanceof Error && error.message.includes('not initiate a conversation')) {
+    if (error instanceof Error && error.message === 'Listing not found') {
+      sendError(res, error.message, 404);
+      return;
+    }
+    if (
+      error instanceof Error &&
+      (
+        error.message.includes('recipient_id is required') ||
+        error.message.includes('You cannot start a conversation with yourself')
+      )
+    ) {
       sendError(res, error.message, 400);
+      return;
+    }
+    if (
+      error instanceof Error &&
+      (
+        error.message.includes('suspended') ||
+        error.message.includes('disabled for this role') ||
+        error.message.includes('moderation thread')
+      )
+    ) {
+      sendError(res, error.message, 403);
       return;
     }
     sendError(res, 'Internal server error while sending message', 500);
@@ -80,13 +105,24 @@ export async function sendReply(req: AuthenticatedRequest, res: Response): Promi
   }
 
   try {
-    const message = await messageService.sendReply(req.user.id, conversationId, content);
+    const message = await messageService.sendReply(req.user, conversationId, content);
     sendSuccess(res, message, 201);
   } catch (error) {
     console.error('Error sending reply:', error);
     if (error instanceof Error && error.message.includes('Conversation not found or access denied')) {
         sendError(res, error.message, 403);
         return;
+    }
+    if (
+      error instanceof Error &&
+      (
+        error.message.includes('suspended') ||
+        error.message.includes('disabled for this role') ||
+        error.message.includes('moderation thread')
+      )
+    ) {
+      sendError(res, error.message, 403);
+      return;
     }
     sendError(res, 'Internal server error while sending reply', 500);
   }
