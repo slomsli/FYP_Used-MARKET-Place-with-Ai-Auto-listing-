@@ -11,6 +11,7 @@ import {
   uploadSellerListingImage,
   updateSellerListing,
 } from '../controllers/listingController';
+import { generateListingFromImageHandler } from '../controllers/aiController';
 import {
   getFavorites,
   toggleFavoriteHandler,
@@ -103,6 +104,9 @@ router.post('/offers/:offerId/counter', counterOfferHandler);
 // ── Listings ───────────────────────────────────────────
 // GET /api/dashboard/listings/metadata
 router.get('/listings/metadata', getListingFormMetadata);
+
+// POST /api/dashboard/listings/generate
+router.post('/listings/generate', generateListingFromImageHandler);
 
 // GET /api/dashboard/listings
 router.get('/listings', getSellerListings);

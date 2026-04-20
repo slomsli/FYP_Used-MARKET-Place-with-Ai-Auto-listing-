@@ -49,11 +49,11 @@ export interface ListingMetadata {
 
 export interface CreateListingPayload {
   title: string;
-  categoryId: number;
+  categoryId: number | null;
   description?: string;
   brand?: string;
-  condition: ListingCondition;
-  price: number;
+  condition: ListingCondition | null;
+  price: number | null;
   currency?: string;
   negotiable?: boolean;
   status?: CreateableListingStatus;
@@ -228,4 +228,21 @@ export interface PublicListingDetailResponse {
 export interface ListingViewResult {
   id: string;
   viewsCount: number;
+}
+
+export interface GenerateListingImageInput {
+  base64Data: string;
+  contentType: string;
+}
+
+export interface GeneratedListingData {
+  title: string;
+  brand: string | null;
+  suggestedCategoryName: string;
+  matchedCategoryId: number | null;
+  condition: 'new' | 'like_new' | 'good' | 'fair' | 'poor';
+  description: string;
+  color: string | null;
+  model: string | null;
+  material: string | null;
 }

@@ -19,6 +19,7 @@ import {
   getListingMetadata,
   uploadListingImage,
   updateListing,
+  generateListingMetadataFromImages,
 } from '@/src/services/listingService';
 import type {
   CreateableListingStatus,
@@ -157,6 +158,7 @@ export default function AddListingPage() {
   const [metadataRetryKey, setMetadataRetryKey] = useState(0);
   const [existingListing, setExistingListing] = useState<ListingSummary | null>(null);
   const [listingLoading, setListingLoading] = useState(false);
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
 
   const [title, setTitle] = useState('');
   const [categoryId, setCategoryId] = useState('');
@@ -344,10 +346,10 @@ export default function AddListingPage() {
         setMetadata((currentMetadata) =>
           currentMetadata
             ? {
-                ...currentMetadata,
-                ...metadataResponse,
-                areas: metadataResponse.areas,
-              }
+              ...currentMetadata,
+              ...metadataResponse,
+              areas: metadataResponse.areas,
+            }
             : metadataResponse
         );
         setAreaId((currentAreaId) =>
@@ -506,7 +508,75 @@ export default function AddListingPage() {
 
   const displayedAreas = stateId ? areas : [];
 
-  const disabled = metadataLoading || listingLoading || submittingStatus !== null || isSuspended;
+  const disabled = metadataLoading || listingLoading || submittingStatus !== null || isSuspended || isGeneratingAI;
+
+  const handleGenerateAI = useCallback(async () => {
+    if (!token) {
+      showToast('Authentication required to use AI.');
+      return;
+    }
+    const imagesToUse = images.length > 0 ? images : [];
+    if (imagesToUse.length === 0) {
+      showToast('Please upload at least one image to use AI generation.');
+      return;
+    }
+
+    setIsGeneratingAI(true);
+    try {
+      const payloads = [];
+      // Use up to 3 images for context
+      for (const img of imagesToUse.slice(0, 3)) {
+        if (img.source === 'local' && img.file) {
+          const base64Data = await readFileAsBase64(img.file);
+          payloads.push({ base64Data, contentType: img.file.type });
+        } else if (img.source === 'remote' && img.preview) {
+          // fetch the remote image and convert to base64
+          const res = await fetch(img.preview);
+          const blob = await res.blob();
+          const base64Data = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => reject(new Error('Failed to read remote image'));
+            reader.readAsDataURL(blob);
+          });
+          payloads.push({ base64Data, contentType: blob.type });
+        }
+      }
+
+      const response = await generateListingMetadataFromImages(token, payloads);
+
+      if (response.error || !response.data) {
+        showToast(response.error || 'Failed to generate listing using AI.');
+        return;
+      }
+
+      const aiData = response.data;
+      setTitle(aiData.title || '');
+      setBrand(aiData.brand || '');
+      if (aiData.matchedCategoryId) {
+        setCategoryId(String(aiData.matchedCategoryId));
+      }
+      setCondition(aiData.condition || '');
+
+      let desc = aiData.description || '';
+
+      const extraAttributes = [];
+      if (aiData.color) extraAttributes.push(`Color: ${aiData.color}`);
+      if (aiData.model) extraAttributes.push(`Model: ${aiData.model}`);
+      if (aiData.material) extraAttributes.push(`Material: ${aiData.material}`);
+
+      if (extraAttributes.length > 0) {
+        desc += `\n\nSpecifications:\n- ${extraAttributes.join('\n- ')}`;
+      }
+
+      setDescription(desc);
+      showToast('Magic applied! Please review your listing details.');
+    } catch (e: any) {
+      showToast(e.message || 'An error occurred during AI generation.');
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  }, [images, token, showToast]);
 
   const openFilePicker = useCallback(() => {
     if (disabled) {
@@ -516,9 +586,13 @@ export default function AddListingPage() {
     fileInputRef.current?.click();
   }, [disabled]);
 
-  const validateForm = useCallback(() => {
+  const validateForm = useCallback((status: CreateableListingStatus) => {
     if (!title.trim()) {
       return 'Please add a title for your listing';
+    }
+
+    if (status === 'draft') {
+      return null;
     }
 
     if (!categoryId) {
@@ -550,14 +624,14 @@ export default function AddListingPage() {
       return;
     }
 
-    const validationError = validateForm();
+    const validationError = validateForm(status);
     if (validationError) {
       showToast(validationError);
       return;
     }
 
     const selectedConditionValue = condition;
-    if (!selectedConditionValue) {
+    if (status !== 'draft' && !selectedConditionValue) {
       showToast('Please choose the item condition');
       return;
     }
@@ -572,16 +646,16 @@ export default function AddListingPage() {
 
     const payload = {
       title: title.trim(),
-      categoryId: Number(categoryId),
+      categoryId: categoryId ? Number(categoryId) : null,
       description: description.trim() || undefined,
       brand: brand.trim() || undefined,
-      condition: selectedConditionValue,
-      price: Number(price),
+      condition: selectedConditionValue ? (selectedConditionValue as ListingCondition) : null,
+      price: price ? Number(price) : null,
       currency: metadata?.currencies[0] || 'MYR',
       negotiable: openToOffers,
       status,
-      stateId: Number(stateId),
-      areaId: Number(areaId),
+      stateId: stateId ? Number(stateId) : null,
+      areaId: areaId ? Number(areaId) : null,
     };
 
     const existingImageUrls = images
@@ -709,10 +783,10 @@ export default function AddListingPage() {
           className={styles.aiButton}
           id="ai-generate-btn"
           type="button"
-          onClick={() => showToast('AI autofill can be connected after the listing workflow is finished.')}
+          onClick={handleGenerateAI}
           disabled={disabled}
         >
-          <SparklesIcon /> Generate All with AI
+          <SparklesIcon /> {isGeneratingAI ? 'Generating...' : 'Generate All with AI'}
         </button>
       </section>
 

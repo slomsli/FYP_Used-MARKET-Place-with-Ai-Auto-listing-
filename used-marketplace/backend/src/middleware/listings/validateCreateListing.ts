@@ -49,17 +49,19 @@ export function validateCreateListing(req: Request, res: Response, next: NextFun
     return;
   }
 
-  if (!isPositiveIntegerLike(body.categoryId)) {
+  const isDraft = body.status === 'draft';
+
+  if (!isDraft && !isPositiveIntegerLike(body.categoryId)) {
     sendError(res, 'A valid categoryId is required', 422);
     return;
   }
 
-  if (!body.condition || !LISTING_CONDITIONS.includes(body.condition)) {
+  if (!isDraft && (!body.condition || !(LISTING_CONDITIONS as readonly string[]).includes(body.condition))) {
     sendError(res, 'Condition must be one of: new, like_new, good, fair, poor', 422);
     return;
   }
 
-  if (!isNonNegativeNumberLike(body.price)) {
+  if (!isDraft && !isNonNegativeNumberLike(body.price)) {
     sendError(res, 'Price must be a valid non-negative number', 422);
     return;
   }
@@ -105,6 +107,7 @@ export function validateCreateListing(req: Request, res: Response, next: NextFun
   }
 
   if (
+    !isDraft &&
     body.stateId !== undefined &&
     body.stateId !== null &&
     !isPositiveIntegerLike(body.stateId)
@@ -114,6 +117,7 @@ export function validateCreateListing(req: Request, res: Response, next: NextFun
   }
 
   if (
+    !isDraft &&
     body.areaId !== undefined &&
     body.areaId !== null &&
     !isPositiveIntegerLike(body.areaId)

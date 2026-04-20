@@ -10,6 +10,16 @@
   --admin-font-body: 'Inter', sans-serif;
   --admin-font-head: 'Manrope', sans-serif;
 
+  /* Dashboard aliases for shared components like the messaging inbox */
+  --dash-primary: var(--admin-primary);
+  --dash-secondary: var(--admin-secondary);
+  --dash-tertiary: var(--admin-tertiary);
+  --dash-neutral: var(--admin-neutral);
+  --dash-bg: var(--admin-bg);
+  --dash-surface: var(--admin-surface);
+  --dash-font-body: var(--admin-font-body);
+  --dash-font-head: var(--admin-font-head);
+
   min-height: 100vh;
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);

@@ -716,22 +716,24 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
                       <MailIcon />
                       Message Seller
                     </button>
-                    <button
-                      type="button"
-                      className={styles.secondaryAction}
-                      onClick={() => {
-                        if (!user) {
-                          router.push(`${ROUTES.LOGIN}?redirect=${encodeURIComponent(`/product/${listingId}`)}`);
-                          return;
-                        }
-                        setOfferPrice('');
-                        setOfferMessage('');
-                        setShowOfferModal('offer');
-                      }}
-                    >
-                      <TagIcon />
-                      Make Offer
-                    </button>
+                    {listing.negotiable && (
+                      <button
+                        type="button"
+                        className={styles.secondaryAction}
+                        onClick={() => {
+                          if (!user) {
+                            router.push(`${ROUTES.LOGIN}?redirect=${encodeURIComponent(`/product/${listingId}`)}`);
+                            return;
+                          }
+                          setOfferPrice('');
+                          setOfferMessage('');
+                          setShowOfferModal('offer');
+                        }}
+                      >
+                        <TagIcon />
+                        Make Offer
+                      </button>
+                    )}
                   </div>
                 </>
                 )

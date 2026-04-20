@@ -1092,11 +1092,13 @@ export async function createListing(
   sellerId: string,
   payload: CreateListingBody
 ): Promise<ListingSummary> {
-  const categoryId = toInteger(payload.categoryId);
-  const price = toNumber(payload.price, Number.NaN);
+  const status = payload.status ?? 'draft';
+  const isDraft = status === 'draft';
+  
+  const categoryId = isDraft && !payload.categoryId ? null : toInteger(payload.categoryId!);
+  const price = isDraft && payload.price === undefined ? null : toNumber(payload.price, Number.NaN);
   const stateId = payload.stateId == null ? null : toInteger(payload.stateId);
   const areaId = payload.areaId == null ? null : toInteger(payload.areaId);
-  const status = payload.status ?? 'draft';
   const title = payload.title.trim();
   const description = trimOptional(payload.description);
   const brand = trimOptional(payload.brand);
@@ -1106,7 +1108,7 @@ export async function createListing(
   ).slice(0, 6);
   const coverImagePath = trimOptional(payload.coverImagePath) ?? normalizedImagePaths[0] ?? null;
 
-  if (!Number.isFinite(price) || price < 0) {
+  if (!isDraft && (price === null || !Number.isFinite(price) || price < 0)) {
     throw new ListingServiceError('Price must be a valid non-negative number', 422);
   }
 
@@ -1114,7 +1116,9 @@ export async function createListing(
     throw new ListingServiceError('stateId is required when areaId is provided', 422);
   }
 
-  await ensureCategoryExists(categoryId);
+  if (categoryId !== null) {
+    await ensureCategoryExists(categoryId);
+  }
 
   if (stateId !== null) {
     await ensureStateExists(stateId);
@@ -1134,7 +1138,7 @@ export async function createListing(
       title,
       description,
       brand,
-      condition: payload.condition,
+      condition: isDraft ? (payload.condition || null) : payload.condition,
       price,
       currency,
       negotiable: payload.negotiable ?? true,
@@ -1179,11 +1183,14 @@ export async function updateListing(
 ): Promise<ListingSummary> {
   const existing = await getOwnedListingForSeller(listingId, sellerId);
 
-  const categoryId = toInteger(payload.categoryId);
-  const price = toNumber(payload.price, Number.NaN);
+  const status = payload.status ?? (existing.status === 'draft' ? 'draft' : 'active');
+  const isDraft = status === 'draft';
+  
+  const categoryId = isDraft && !payload.categoryId ? null : toInteger(payload.categoryId!);
+  const price = isDraft && payload.price === undefined ? null : toNumber(payload.price, Number.NaN);
   const stateId = payload.stateId == null ? null : toInteger(payload.stateId);
   const areaId = payload.areaId == null ? null : toInteger(payload.areaId);
-  const status = payload.status ?? (existing.status === 'draft' ? 'draft' : 'active');
+  
   const title = payload.title.trim();
   const description = trimOptional(payload.description);
   const brand = trimOptional(payload.brand);
@@ -1205,7 +1212,7 @@ export async function updateListing(
     );
   }
 
-  if (!Number.isFinite(price) || price < 0) {
+  if (!isDraft && (price === null || !Number.isFinite(price) || price < 0)) {
     throw new ListingServiceError('Price must be a valid non-negative number', 422);
   }
 
@@ -1213,7 +1220,9 @@ export async function updateListing(
     throw new ListingServiceError('stateId is required when areaId is provided', 422);
   }
 
-  await ensureCategoryExists(categoryId);
+  if (categoryId !== null) {
+    await ensureCategoryExists(categoryId);
+  }
 
   if (stateId !== null) {
     await ensureStateExists(stateId);
@@ -1235,7 +1244,7 @@ export async function updateListing(
       title,
       description,
       brand,
-      condition: payload.condition,
+      condition: isDraft ? (payload.condition || null) : payload.condition,
       price,
       currency,
       negotiable: payload.negotiable ?? true,

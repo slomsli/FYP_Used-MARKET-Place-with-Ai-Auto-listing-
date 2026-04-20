@@ -34,8 +34,8 @@ export interface CreateListingBody {
   categoryId: number | string;
   description?: string;
   brand?: string;
-  condition: ListingCondition;
-  price: number | string;
+  condition: ListingCondition | string | null;
+  price: number | string | null;
   currency?: string;
   negotiable?: boolean;
   status?: CreateableListingStatus;
