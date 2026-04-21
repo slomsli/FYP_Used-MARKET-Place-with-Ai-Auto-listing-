@@ -22,6 +22,7 @@ export const ROUTES = {
   MESSAGES: '/dashboard/messages',
   OFFERS: '/dashboard/offers',
   PROFILE: '/dashboard/profile',
+  REPORT: '/dashboard/report',
   SETTINGS: '/dashboard/settings',
   ADD_LISTING: '/dashboard/add-listing',
   BROWSE: '/browse',
