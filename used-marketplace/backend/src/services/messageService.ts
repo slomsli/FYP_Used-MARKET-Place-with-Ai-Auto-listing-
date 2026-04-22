@@ -5,6 +5,7 @@ import {
   parseModerationListingTargetKey,
 } from '../utils/moderationThread';
 import { isAccountSuspended } from '../utils/accountStatus';
+import { toListingModerationDisplayText } from '../utils/listingModeration';
 
 export interface ChatMessage {
   id: string;
@@ -76,7 +77,16 @@ interface RawConversation {
   seller_profile: RawProfile | RawProfile[] | null;
 }
 
-const MESSAGE_SELECT = 'id, conversation_id, sender_id, content:body, is_read, created_at';
+interface RawMessageRow {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  body: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+const MESSAGE_SELECT = 'id, conversation_id, sender_id, body, is_read, created_at';
 const LISTING_IMAGE_BUCKET =
   process.env.SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
   process.env.NEXT_PUBLIC_SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
@@ -106,6 +116,17 @@ function buildDisplayName(profile: RawProfile | null): string {
   }
 
   return 'Marketplace User';
+}
+
+function mapMessageRow(message: RawMessageRow): ChatMessage {
+  return {
+    id: message.id,
+    conversation_id: message.conversation_id,
+    sender_id: message.sender_id,
+    content: toListingModerationDisplayText(message.body),
+    is_read: message.is_read,
+    created_at: message.created_at,
+  };
 }
 
 async function assertMessagingAllowed(
@@ -224,7 +245,7 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
 
     const { data: latestMsgData, error: latestMsgError } = await supabaseAdmin
       .from('messages')
-      .select('content:body, created_at, sender_id, is_read')
+      .select('body, created_at, sender_id, is_read')
       .eq('conversation_id', convo.id)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -273,7 +294,7 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
         : null,
       listing_details: listingDetails,
       last_message: latestMsgData ? {
-        content: latestMsgData.content,
+        content: toListingModerationDisplayText(latestMsgData.body),
         created_at: latestMsgData.created_at,
         sender_id: latestMsgData.sender_id,
         is_read: latestMsgData.is_read
@@ -391,7 +412,7 @@ export async function getConversationMessages(conversationId: string, userId: st
     .order('created_at', { ascending: true });
 
   if (error) throw new Error(`Failed to fetch messages: ${error.message}`);
-  return messages || [];
+  return ((messages ?? []) as RawMessageRow[]).map(mapMessageRow);
 }
 
 async function touchConversation(conversationId: string): Promise<void> {
@@ -516,7 +537,7 @@ export async function sendMessage(
 
   await touchConversation(conversationId);
 
-  return message;
+  return mapMessageRow(message as RawMessageRow);
 }
 
 export async function sendReply(
@@ -569,7 +590,7 @@ export async function sendReply(
 
   await touchConversation(conversationId);
 
-  return message;
+  return mapMessageRow(message as RawMessageRow);
 }
 
 export async function markConversationAsRead(senderId: string, conversationId: string): Promise<boolean> {

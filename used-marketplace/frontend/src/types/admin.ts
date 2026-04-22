@@ -1,3 +1,4 @@
+import type { ListingCondition } from '@/src/types/listing';
 import type { ListingReportReason, ListingReportStatus } from '@/src/types/report';
 
 export type AdminRole = 'user' | 'admin';
@@ -170,6 +171,93 @@ export interface AdminListingStatusUpdateResponse {
   status: string;
   statusLabel: string;
   hiddenFromBrowse: boolean;
+}
+
+export interface AdminListingDetailResponse {
+  listing: {
+    id: string;
+    title: string;
+    description: string | null;
+    brand: string | null;
+    price: number;
+    currency: string;
+    negotiable: boolean;
+    status: string;
+    statusLabel: string;
+    condition: ListingCondition;
+    conditionLabel: string;
+    coverImagePath: string | null;
+    imagePaths: string[];
+    createdAt: string;
+    updatedAt: string;
+    publishedAt: string | null;
+    viewsCount: number;
+    location: {
+      stateId: number | null;
+      stateName: string | null;
+      areaId: number | null;
+      areaName: string | null;
+    };
+    locationLabel: string;
+    category: {
+      id: number;
+      name: string;
+      slug: string;
+    } | null;
+    soldTo: {
+      id: string;
+      displayName: string;
+      avatarPath: string | null;
+    } | null;
+    hiddenFromBrowse: boolean;
+    moderationReason: string | null;
+    moderationReasonUpdatedAt: string | null;
+    moderationEventType: 'paused' | 'rejected' | 'resubmitted' | 'approved' | 'deleted' | null;
+  };
+  seller: {
+    id: string;
+    fullName: string;
+    username: string;
+    avatarPath: string | null;
+    memberSince: string;
+    averageRating: number | null;
+    totalReviews: number;
+    totalSales: number;
+    activeListings: number;
+    location: {
+      stateId: number | null;
+      stateName: string | null;
+      areaId: number | null;
+      areaName: string | null;
+    };
+    locationLabel: string;
+  };
+  metrics: {
+    favoritesCount: number;
+    offerCount: number;
+    pendingOfferCount: number;
+    conversationCount: number;
+    reportCount: number;
+    openReportCount: number;
+    pendingReportCount: number;
+  };
+  recentReports: Array<{
+    id: string;
+    reason: ListingReportReason;
+    reasonLabel: string;
+    details: string | null;
+    status: ListingReportStatus;
+    statusLabel: string;
+    createdAt: string;
+    updatedAt: string;
+    reporter: {
+      id: string;
+      fullName: string;
+      username: string;
+      avatarPath: string | null;
+      locationLabel: string;
+    };
+  }>;
 }
 
 export interface AdminReportListItem {

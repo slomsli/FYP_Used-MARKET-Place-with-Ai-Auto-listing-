@@ -26,6 +26,7 @@ type ListingTone = 'porcelain' | 'studio' | 'midnight';
 
 const tabItems: Array<{ label: string; value: ListingFilterStatus; countKey: keyof MyListingsResponse['statusCounts'] }> = [
   { label: 'Active', value: 'active', countKey: 'active' },
+  { label: 'Paused', value: 'paused', countKey: 'paused' },
   { label: 'Sold', value: 'sold', countKey: 'sold' },
   { label: 'Drafts', value: 'draft', countKey: 'draft' },
 ];
@@ -190,7 +191,13 @@ function getLocationLabel(listing: ListingSummary) {
 }
 
 function parseStatus(value: string | null): ListingFilterStatus {
-  return value === 'draft' || value === 'sold' || value === 'active' ? value : 'active';
+  if (value === 'archived' || value === 'rejected') {
+    return 'paused';
+  }
+
+  return value === 'draft' || value === 'sold' || value === 'active' || value === 'paused'
+    ? value
+    : 'active';
 }
 
 function parseSort(value: string | null): ListingSortOption {
@@ -198,6 +205,14 @@ function parseSort(value: string | null): ListingSortOption {
 }
 
 function getAccent(listing: ListingSummary) {
+  if (listing.status === 'archived') {
+    return 'Action Needed';
+  }
+
+  if (listing.status === 'rejected') {
+    return 'In Review';
+  }
+
   if (listing.status === 'sold') {
     return listing.soldTo ? 'Completed Sale' : 'Sold';
   }
@@ -211,6 +226,22 @@ function getAccent(listing: ListingSummary) {
   }
 
   return listing.negotiable ? 'Negotiable' : 'Fixed Price';
+}
+
+function getModerationNote(listing: ListingSummary) {
+  if (listing.status === 'archived') {
+    return listing.moderationReason
+      ? `Paused reason: ${listing.moderationReason}`
+      : 'Paused by admin. Edit this listing and resubmit it from the paused workflow.';
+  }
+
+  if (listing.status === 'rejected') {
+    return listing.moderationReason
+      ? `Pending admin review. Last reason: ${listing.moderationReason}`
+      : 'Your update was sent back to admin and is waiting for review.';
+  }
+
+  return null;
 }
 
 const SUSPENDED_LISTING_NOTICE =
@@ -470,7 +501,7 @@ export default function MyListingsPage() {
   const headerSubtitle = isSuspended
     ? 'Your inventory is available in read-only mode while listing activity is suspended by an administrator.'
     : data
-      ? `You have ${data.statusCounts.all} total listings across active, sold, and draft inventory.`
+      ? `You have ${data.statusCounts.all} total listings across active, paused, sold, and draft inventory.`
       : 'Review listing performance and manage your live inventory.';
 
   if (authLoading || (loading && !data)) {
@@ -575,7 +606,11 @@ export default function MyListingsPage() {
       <section className={styles.grid} aria-label="Listing cards">
         {data && data.listings.length === 0 ? (
           <div className={styles.emptyState}>
-            <p>No listings found for this filter yet.</p>
+            <p>
+              {status === 'paused'
+                ? 'No paused or pending-review listings are waiting right now.'
+                : 'No listings found for this filter yet.'}
+            </p>
             {isSuspended ? (
               <div className={styles.emptyRestriction}>
                 {SUSPENDED_LISTING_NOTICE}
@@ -590,6 +625,7 @@ export default function MyListingsPage() {
           data?.listings.map((listing, index) => {
             const tone = getTone(index);
             const galleryImages = getGalleryImages(listing);
+            const moderationNote = getModerationNote(listing);
             const currentImageIndex = galleryImages.length > 0
               ? (carouselIndexes[listing.id] ?? 0) % galleryImages.length
               : 0;
@@ -683,6 +719,12 @@ export default function MyListingsPage() {
                     </div>
                   )}
 
+                  {moderationNote && (
+                    <div className={styles.moderationNote}>
+                      {moderationNote}
+                    </div>
+                  )}
+
                   <div className={styles.cardActions}>
                     <div className={styles.cardActionInfo}>
                       {listing.conditionLabel}
@@ -693,7 +735,7 @@ export default function MyListingsPage() {
                   </div>
 
                   <div className={styles.managementActions}>
-                    {listing.status !== 'sold' && (
+                    {listing.status !== 'sold' && listing.status !== 'rejected' && (
                       isSuspended ? (
                         <span className={`${styles.secondaryAction} ${styles.actionDisabled}`}>
                           Edit Disabled
@@ -703,9 +745,15 @@ export default function MyListingsPage() {
                           href={`${ROUTES.ADD_LISTING}?listingId=${listing.id}`}
                           className={styles.secondaryAction}
                         >
-                          Edit
+                          {listing.status === 'archived' ? 'Edit & Resubmit' : 'Edit'}
                         </Link>
                       )
+                    )}
+
+                    {listing.status === 'rejected' && (
+                      <span className={`${styles.secondaryAction} ${styles.actionDisabled}`}>
+                        Waiting for Admin
+                      </span>
                     )}
 
                     {(listing.status === 'active' || listing.status === 'reserved') && (
@@ -764,7 +812,7 @@ export default function MyListingsPage() {
             <p className={styles.insightsEyebrow}>Seller Insights</p>
             <h2 className={styles.insightsTitle}>
               {data.statusCounts.all > 0
-                ? `You currently have ${data.statusCounts.active} active listings and ${data.sellerStats.soldItems} completed sales.`
+                ? `You currently have ${data.statusCounts.active} active listings, ${data.statusCounts.paused} paused items, and ${data.sellerStats.soldItems} completed sales.`
                 : 'Your showroom is ready for its first listing.'}
             </h2>
             <p className={styles.insightsText}>

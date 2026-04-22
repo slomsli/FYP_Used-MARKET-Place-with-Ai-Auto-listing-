@@ -1,5 +1,6 @@
 export const LISTING_FILTER_STATUSES = [
   'all',
+  'paused',
   'draft',
   'active',
   'reserved',
@@ -24,6 +25,7 @@ export const PUBLIC_LISTING_SORT_OPTIONS = [
 
 export type ListingCondition = 'new' | 'like_new' | 'good' | 'fair' | 'poor';
 export type CreateableListingStatus = 'draft' | 'active';
+export type SellerListingSubmissionStatus = CreateableListingStatus | 'rejected';
 export type ListingFilterStatus = (typeof LISTING_FILTER_STATUSES)[number];
 export type ListingSortOption = (typeof LISTING_SORT_OPTIONS)[number];
 export type PublicListingSortOption = (typeof PUBLIC_LISTING_SORT_OPTIONS)[number];
@@ -56,7 +58,7 @@ export interface CreateListingPayload {
   price: number | null;
   currency?: string;
   negotiable?: boolean;
-  status?: CreateableListingStatus;
+  status?: SellerListingSubmissionStatus;
   stateId?: number | null;
   areaId?: number | null;
   imageStoragePaths?: string[];
@@ -122,6 +124,8 @@ export interface ListingSummary {
   category: ListingCategorySummary | null;
   location: ListingLocationSummary;
   soldTo: ListingBuyerSummary | null;
+  moderationReason: string | null;
+  moderationReasonUpdatedAt: string | null;
 }
 
 export interface MyListingsResponse {
@@ -131,6 +135,7 @@ export interface MyListingsResponse {
   };
   statusCounts: {
     all: number;
+    paused: number;
     draft: number;
     active: number;
     reserved: number;

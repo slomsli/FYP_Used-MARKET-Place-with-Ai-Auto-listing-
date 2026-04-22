@@ -1,5 +1,6 @@
 import type {
   AdminDeleteListingResponse,
+  AdminListingDetailResponse,
   AdminListingStatusUpdateResponse,
   AdminListingsResponse,
   AdminReportStatusFilter,
@@ -159,6 +160,15 @@ export async function getAdminListings(
   });
 }
 
+export async function getAdminListingDetails(
+  token: string,
+  listingId: string
+): Promise<ServiceResponse<AdminListingDetailResponse>> {
+  return authorizedRequest<AdminListingDetailResponse>(`/api/admin/listings/${listingId}`, token, {
+    method: 'GET',
+  });
+}
+
 export async function getAdminReports(
   token: string,
   query: AdminReportsQuery = {}
@@ -217,21 +227,24 @@ export async function ensureAdminModerationThread(
 
 export async function deleteAdminListing(
   token: string,
-  listingId: string
+  listingId: string,
+  reason: string
 ): Promise<ServiceResponse<AdminDeleteListingResponse>> {
   return authorizedRequest<AdminDeleteListingResponse>(`/api/admin/listings/${listingId}`, token, {
     method: 'DELETE',
+    body: JSON.stringify({ reason }),
   });
 }
 
 export async function updateAdminListingStatus(
   token: string,
   listingId: string,
-  action: 'pause' | 'resume'
+  action: 'pause' | 'resume' | 'approve' | 'reject',
+  reason?: string
 ): Promise<ServiceResponse<AdminListingStatusUpdateResponse>> {
   return authorizedRequest<AdminListingStatusUpdateResponse>(`/api/admin/listings/${listingId}/status`, token, {
     method: 'PATCH',
-    body: JSON.stringify({ action }),
+    body: JSON.stringify({ action, reason }),
   });
 }
 

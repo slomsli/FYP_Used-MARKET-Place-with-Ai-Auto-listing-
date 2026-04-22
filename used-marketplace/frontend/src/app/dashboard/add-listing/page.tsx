@@ -22,11 +22,11 @@ import {
   generateListingMetadataFromImages,
 } from '@/src/services/listingService';
 import type {
-  CreateableListingStatus,
   ListingAreaOption,
   ListingCondition,
   ListingMetadata,
   ListingSummary,
+  SellerListingSubmissionStatus,
 } from '@/src/types/listing';
 import styles from './page.module.css';
 
@@ -203,7 +203,7 @@ export default function AddListingPage() {
     message: '',
     visible: false,
   });
-  const [submittingStatus, setSubmittingStatus] = useState<CreateableListingStatus | null>(null);
+  const [submittingStatus, setSubmittingStatus] = useState<SellerListingSubmissionStatus | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -535,8 +535,17 @@ export default function AddListingPage() {
   }, [price]);
 
   const displayedAreas = stateId ? areas : [];
+  const isPausedListing = existingListing?.status === 'archived';
+  const isPendingReviewListing = existingListing?.status === 'rejected';
+  const listingModerationReason = existingListing?.moderationReason?.trim() || null;
 
-  const disabled = metadataLoading || listingLoading || submittingStatus !== null || isSuspended || isGeneratingAI;
+  const disabled =
+    metadataLoading ||
+    listingLoading ||
+    submittingStatus !== null ||
+    isSuspended ||
+    isGeneratingAI ||
+    isPendingReviewListing;
 
   const handleGenerateAI = useCallback(async () => {
     if (!token) {
@@ -614,7 +623,7 @@ export default function AddListingPage() {
     fileInputRef.current?.click();
   }, [disabled]);
 
-  const validateForm = useCallback((status: CreateableListingStatus) => {
+  const validateForm = useCallback((status: SellerListingSubmissionStatus) => {
     if (!title.trim()) {
       return 'Please add a title for your listing';
     }
@@ -646,7 +655,7 @@ export default function AddListingPage() {
     return null;
   }, [areaId, categoryId, condition, price, stateId, title]);
 
-  const submitListing = useCallback(async (status: CreateableListingStatus) => {
+  const submitListing = useCallback(async (status: SellerListingSubmissionStatus) => {
     if (isSuspended) {
       showToast(SUSPENDED_LISTING_NOTICE);
       return;
@@ -748,7 +757,9 @@ export default function AddListingPage() {
     const savedListing = response.data;
 
     const successMessage = isEditMode
-      ? status === 'active'
+      ? status === 'rejected'
+        ? 'Listing sent back to admin for review'
+        : status === 'active'
         ? 'Listing updated successfully'
         : 'Draft updated successfully'
       : status === 'active'
@@ -805,7 +816,11 @@ export default function AddListingPage() {
             {isEditMode ? 'Edit Listing' : 'Post New Item'}
           </h1>
           <p className={styles.subtitle}>
-            {isEditMode
+            {isPausedListing
+              ? 'Update the paused listing, then send it back to admin review from this screen.'
+              : isPendingReviewListing
+                ? 'This listing is already waiting for admin review after your latest update.'
+                : isEditMode
               ? `Update this ${existingListing?.statusLabel.toLowerCase() || 'listing'} with data from your database-backed form.`
               : 'Create a real marketplace listing with categories, states, areas, and photos saved through the backend.'}
           </p>
@@ -830,6 +845,22 @@ export default function AddListingPage() {
       {isSuspended && (
         <div className={styles.alert}>
           {SUSPENDED_LISTING_NOTICE}
+        </div>
+      )}
+
+      {isPausedListing && (
+        <div className={styles.alert}>
+          {listingModerationReason
+            ? `Admin reason: ${listingModerationReason}. Update the listing here, then resubmit it for approval.`
+            : 'This listing is paused by admin. Update the listing here, then resubmit it for approval.'}
+        </div>
+      )}
+
+      {isPendingReviewListing && (
+        <div className={styles.alert}>
+          {listingModerationReason
+            ? `This listing is waiting for admin review. Last admin reason: ${listingModerationReason}. Editing is locked until the next admin decision.`
+            : 'This listing is waiting for admin review. Editing is locked until the next admin decision.'}
         </div>
       )}
 
@@ -1119,25 +1150,33 @@ export default function AddListingPage() {
             <button
               type="button"
               className={styles.publishBtn}
-              onClick={() => submitListing('active')}
+              onClick={() => submitListing(isPausedListing ? 'rejected' : 'active')}
               id="publish-btn"
               disabled={disabled}
             >
-              {submittingStatus === 'active'
-                ? isEditMode ? 'Saving...' : 'Publishing...'
-                : isEditMode ? 'Save Changes' : 'Publish to Marketplace'}
+              {submittingStatus === 'active' || submittingStatus === 'rejected'
+                ? isPausedListing
+                  ? 'Sending...'
+                  : isEditMode ? 'Saving...' : 'Publishing...'
+                : isPausedListing
+                  ? 'Resubmit to Admin'
+                  : isPendingReviewListing
+                    ? 'Waiting for Admin'
+                    : isEditMode ? 'Save Changes' : 'Publish to Marketplace'}
             </button>
-            <button
-              type="button"
-              className={styles.draftBtn}
-              onClick={() => submitListing('draft')}
-              id="save-draft-btn"
-              disabled={disabled}
-            >
-              {submittingStatus === 'draft'
-                ? 'Saving...'
-                : isEditMode ? 'Move to Draft' : 'Save Draft'}
-            </button>
+            {!isPausedListing && !isPendingReviewListing && (
+              <button
+                type="button"
+                className={styles.draftBtn}
+                onClick={() => submitListing('draft')}
+                id="save-draft-btn"
+                disabled={disabled}
+              >
+                {submittingStatus === 'draft'
+                  ? 'Saving...'
+                  : isEditMode ? 'Move to Draft' : 'Save Draft'}
+              </button>
+            )}
           </div>
         </div>
 

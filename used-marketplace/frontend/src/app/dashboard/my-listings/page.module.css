@@ -441,6 +441,16 @@
   font-weight: 700;
 }
 
+.moderationNote {
+  border-radius: 20px;
+  background: #fff7ed;
+  border: 1px solid rgba(249, 115, 22, 0.18);
+  color: #9a3412;
+  padding: 0.82rem 0.9rem;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
 .cardActions {
   display: flex;
   gap: 0.6rem;

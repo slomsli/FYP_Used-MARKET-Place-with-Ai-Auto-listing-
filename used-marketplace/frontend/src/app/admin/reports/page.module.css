@@ -279,6 +279,17 @@
   min-width: 0;
 }
 
+.listingPreviewLink {
+  display: block;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.listingPreviewLink:hover .listingTitle {
+  color: #111859;
+}
+
 .media,
 .personAvatar {
   width: 84px;
@@ -378,6 +389,16 @@
   color: var(--admin-neutral, #45474F);
   opacity: 0.8;
   line-height: 1.7;
+}
+
+.previewLinkNote {
+  display: inline-flex;
+  margin-top: 0.85rem;
+  color: var(--admin-secondary, #4D8076);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .reportTime {

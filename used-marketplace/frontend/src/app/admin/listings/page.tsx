@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ROUTES } from '@/src/config/routes';
@@ -125,6 +126,10 @@ function getStatusTone(listing: AdminListingListItem) {
     return styles.statusFlagged;
   }
 
+  if (listing.status === 'rejected') {
+    return styles.statusFlagged;
+  }
+
   if (listing.status === 'active') {
     return styles.statusActive;
   }
@@ -153,6 +158,9 @@ export default function AdminListingsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [messageListingId, setMessageListingId] = useState<string | null>(null);
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
+  const [statusUpdatingAction, setStatusUpdatingAction] = useState<
+    'pause' | 'resume' | 'approve' | 'reject' | null
+  >(null);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
@@ -207,6 +215,32 @@ export default function AdminListingsPage() {
     [data?.pagination.totalPages, page]
   );
 
+  function buildListingDetailsHref(listingId: string) {
+    const currentParams = searchParams.toString();
+    const returnTo = `${ROUTES.ADMIN_LISTINGS}${currentParams ? `?${currentParams}` : ''}`;
+
+    return `${ROUTES.ADMIN_LISTINGS}/${listingId}?source=listings&returnTo=${encodeURIComponent(returnTo)}`;
+  }
+
+  function requestReason(actionLabel: string, listingTitle: string) {
+    const value = window.prompt(`${actionLabel} reason for "${listingTitle}"`, '');
+
+    if (value === null) {
+      return null;
+    }
+
+    const trimmedValue = value.trim();
+    if (!trimmedValue) {
+      setNotice({
+        type: 'error',
+        message: `A reason is required to ${actionLabel.toLowerCase()} "${listingTitle}".`,
+      });
+      return null;
+    }
+
+    return trimmedValue;
+  }
+
   async function handleMessageSeller(listing: AdminListingListItem) {
     if (!user || !token) {
       return;
@@ -237,6 +271,11 @@ export default function AdminListingsPage() {
       return;
     }
 
+    const reason = requestReason('Delete', listing.title);
+    if (!reason) {
+      return;
+    }
+
     const confirmed = window.confirm(
       `Delete "${listing.title}" by ${listing.seller.fullName}? This will also remove its related offers, reports, and conversation history.`
     );
@@ -246,7 +285,7 @@ export default function AdminListingsPage() {
     }
 
     setDeletingId(listing.id);
-    const response = await deleteAdminListing(token, listing.id);
+    const response = await deleteAdminListing(token, listing.id, reason);
     setDeletingId(null);
 
     if (!response.data) {
@@ -264,15 +303,33 @@ export default function AdminListingsPage() {
     setRefreshKey((value) => value + 1);
   }
 
-  async function handleToggleListingStatus(listing: AdminListingListItem) {
+  async function handleListingAction(
+    listing: AdminListingListItem,
+    action: 'pause' | 'resume' | 'approve' | 'reject'
+  ) {
     if (!token) {
       return;
     }
 
-    const action = listing.status === 'archived' ? 'resume' : 'pause';
+    const reason =
+      action === 'pause' || action === 'reject'
+        ? requestReason(action === 'pause' ? 'Pause' : 'Reject', listing.title)
+        : undefined;
+
+    if ((action === 'pause' || action === 'reject') && !reason) {
+      return;
+    }
+
     setStatusUpdatingId(listing.id);
-    const response = await updateAdminListingStatus(token, listing.id, action);
+    setStatusUpdatingAction(action);
+    const response = await updateAdminListingStatus(
+      token,
+      listing.id,
+      action,
+      reason ?? undefined
+    );
     setStatusUpdatingId(null);
+    setStatusUpdatingAction(null);
 
     if (!response.data) {
       setNotice({
@@ -284,10 +341,13 @@ export default function AdminListingsPage() {
 
     setNotice({
       type: 'success',
-      message:
-        action === 'pause'
-          ? `"${listing.title}" is now paused and hidden from the public browse page.`
-          : `"${listing.title}" is live again and visible in public browse.`,
+      message: action === 'pause'
+        ? `"${listing.title}" is now paused and hidden from the public browse page.`
+        : action === 'resume'
+          ? `"${listing.title}" is live again and visible in public browse.`
+          : action === 'approve'
+            ? `"${listing.title}" was approved and is visible in public browse again.`
+            : `"${listing.title}" was rejected and moved back to the paused queue.`,
     });
     setRefreshKey((value) => value + 1);
   }
@@ -300,8 +360,8 @@ export default function AdminListingsPage() {
           <h1 className={styles.title}>Listings Management</h1>
           <p className={styles.subtitle}>
             Review live marketplace inventory, contact the seller when something needs clarification,
-            and remove listings that break platform policy. This screen stays focused on moderation,
-            so there are no approval queues or admin-created listings here.
+            pause items with a required reason, and approve or reject seller resubmissions before
+            they return to public browse.
           </p>
         </div>
 
@@ -322,8 +382,8 @@ export default function AdminListingsPage() {
               <option value="draft">Draft</option>
               <option value="reserved">Reserved</option>
               <option value="sold">Sold</option>
-              <option value="archived">Archived</option>
-              <option value="rejected">Rejected</option>
+              <option value="archived">Paused</option>
+              <option value="rejected">Pending Review</option>
             </select>
           </label>
 
@@ -450,28 +510,32 @@ export default function AdminListingsPage() {
               deletingId === listing.id ||
               messageListingId === listing.id ||
               statusUpdatingId === listing.id;
+            const listingDetailsHref = buildListingDetailsHref(listing.id);
 
             return (
               <article key={listing.id} className={styles.listingRow}>
                 <div className={styles.listingCell}>
-                  <div className={styles.media}>
-                    {listing.coverImagePath ? (
-                      <img src={listing.coverImagePath} alt={listing.title} className={styles.mediaImage} />
-                    ) : (
-                      getInitials(listing.title)
-                    )}
-                  </div>
-
-                  <div className={styles.listingCopy}>
-                    <h2 className={styles.listingTitle}>{listing.title}</h2>
-                    <p className={styles.listingMeta}>
-                      {listing.categoryName || 'Uncategorized'} • {listing.locationLabel}
-                    </p>
-                    <div className={styles.listingHighlights}>
-                      <span>{formatCurrency(listing.price, listing.currency)}</span>
-                      <span>Updated {formatDate(listing.updatedAt)}</span>
+                  <Link href={listingDetailsHref} className={styles.listingLink}>
+                    <div className={styles.media}>
+                      {listing.coverImagePath ? (
+                        <img src={listing.coverImagePath} alt={listing.title} className={styles.mediaImage} />
+                      ) : (
+                        getInitials(listing.title)
+                      )}
                     </div>
-                  </div>
+
+                    <div className={styles.listingCopy}>
+                      <h2 className={styles.listingTitle}>{listing.title}</h2>
+                      <p className={styles.listingMeta}>
+                      {listing.categoryName || 'Uncategorized'} • {listing.locationLabel}
+                      </p>
+                      <div className={styles.listingHighlights}>
+                        <span>{formatCurrency(listing.price, listing.currency)}</span>
+                        <span>Updated {formatDate(listing.updatedAt)}</span>
+                      </div>
+                      <span className={styles.detailLink}>Open full details and photos</span>
+                    </div>
+                  </Link>
                 </div>
 
                 <div className={styles.sellerCell}>
@@ -517,6 +581,8 @@ export default function AdminListingsPage() {
                   <p className={styles.statusNote}>
                     {listing.pendingReportCount > 0
                       ? `${listing.pendingReportCount} pending report(s)`
+                      : listing.status === 'rejected'
+                        ? 'Seller updated this listing and it is waiting for admin review'
                       : listing.status === 'archived'
                         ? 'Paused by admin and hidden from public browse'
                       : `Created ${formatDate(listing.createdAt)}`}
@@ -538,12 +604,15 @@ export default function AdminListingsPage() {
                     <button
                       type="button"
                       className={styles.pauseButton}
-                      onClick={() => void handleToggleListingStatus(listing)}
+                      onClick={() => void handleListingAction(
+                        listing,
+                        listing.status === 'archived' ? 'resume' : 'pause'
+                      )}
                       disabled={rowBusy}
                     >
                       <span>
                         {statusUpdatingId === listing.id
-                          ? listing.status === 'archived'
+                          ? statusUpdatingAction === 'resume'
                             ? 'Resuming...'
                             : 'Pausing...'
                           : listing.status === 'archived'
@@ -551,6 +620,36 @@ export default function AdminListingsPage() {
                             : 'Pause Listing'}
                       </span>
                     </button>
+                  )}
+
+                  {listing.status === 'rejected' && (
+                    <>
+                      <button
+                        type="button"
+                        className={styles.pauseButton}
+                        onClick={() => void handleListingAction(listing, 'approve')}
+                        disabled={rowBusy}
+                      >
+                        <span>
+                          {statusUpdatingId === listing.id && statusUpdatingAction === 'approve'
+                            ? 'Approving...'
+                            : 'Approve Listing'}
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className={styles.deleteButton}
+                        onClick={() => void handleListingAction(listing, 'reject')}
+                        disabled={rowBusy}
+                      >
+                        <span>
+                          {statusUpdatingId === listing.id && statusUpdatingAction === 'reject'
+                            ? 'Rejecting...'
+                            : 'Reject Again'}
+                        </span>
+                      </button>
+                    </>
                   )}
 
                   <button

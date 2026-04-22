@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { supabaseAdmin } from '../config/supabase';
+import { sendReply } from './messageService';
 import {
   getPublicStorageUrl,
   getPublicStorageUrls,
@@ -7,6 +8,11 @@ import {
   normalizeStoragePathsForDatabase,
   removeStorageObjects,
 } from '../utils/storage';
+import { MODERATION_LISTING_BRAND } from '../utils/moderationThread';
+import {
+  buildListingModerationMessage,
+  parseListingModerationMessage,
+} from '../utils/listingModeration';
 
 import {
   type CreateListingBody,
@@ -130,6 +136,28 @@ interface RawOwnedListing {
   cover_image_path: string | null;
 }
 
+interface RawModerationConversation {
+  id: string;
+  seller_id: string;
+  listings: Relation<{
+    brand: string | null;
+  }>;
+}
+
+interface RawModerationMessage {
+  conversation_id: string;
+  sender_id: string;
+  body: string;
+  created_at: string;
+}
+
+interface ListingModerationSnapshot {
+  reason: string | null;
+  createdAt: string | null;
+  conversationId: string | null;
+  adminUserId: string | null;
+}
+
 export class ListingServiceError extends Error {
   status: number;
 
@@ -215,6 +243,14 @@ function normalizeCurrency(currency: string | undefined): string {
 }
 
 function humanizeStatus(status: string): string {
+  if (status === 'archived') {
+    return 'Paused';
+  }
+
+  if (status === 'rejected') {
+    return 'Pending Review';
+  }
+
   return status
     .split('_')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
@@ -330,7 +366,8 @@ function buildListingSummary(
   imageMap: Map<string, string[]>,
   favoriteCountMap: Map<string, number>,
   totalOfferCountMap: Map<string, number>,
-  pendingOfferCountMap: Map<string, number>
+  pendingOfferCountMap: Map<string, number>,
+  moderationSnapshotMap: Map<string, ListingModerationSnapshot> = new Map()
 ): ListingSummary {
   const imageStoragePaths = imageMap.get(listing.id) ?? [];
   const coverImageStoragePath = listing.cover_image_path || imageStoragePaths[0] || null;
@@ -338,6 +375,7 @@ function buildListingSummary(
   const coverImagePath =
     getPublicStorageUrl(LISTING_IMAGE_BUCKET, coverImageStoragePath) || imagePaths[0] || null;
   const soldToProfile = unwrapRelation(listing.sold_to_profile);
+  const moderationSnapshot = moderationSnapshotMap.get(listing.id);
 
   return {
     id: listing.id,
@@ -371,6 +409,8 @@ function buildListingSummary(
           avatarPath: getPublicStorageUrl(AVATAR_BUCKET, soldToProfile?.avatar_path ?? null),
         }
       : null,
+    moderationReason: moderationSnapshot?.reason ?? null,
+    moderationReasonUpdatedAt: moderationSnapshot?.createdAt ?? null,
   };
 }
 
@@ -560,6 +600,83 @@ async function getListingImages(listingIds: string[]): Promise<Map<string, strin
   return imageMap;
 }
 
+async function getLatestAdminModerationSnapshots(
+  sellerId: string,
+  listingIds: string[]
+): Promise<Map<string, ListingModerationSnapshot>> {
+  const snapshotMap = new Map<string, ListingModerationSnapshot>();
+
+  if (listingIds.length === 0) {
+    return snapshotMap;
+  }
+
+  const { data: conversations, error: conversationError } = await supabaseAdmin
+    .from('conversations')
+    .select(`
+      id,
+      seller_id,
+      listings!conversations_listing_id_fkey (
+        brand
+      )
+    `)
+    .eq('buyer_id', sellerId);
+
+  if (conversationError) {
+    console.error('[Listings] Failed to inspect moderation conversations:', conversationError);
+    return snapshotMap;
+  }
+
+  const moderationConversations = ((conversations ?? []) as RawModerationConversation[]).filter(
+    (conversation) => unwrapRelation(conversation.listings)?.brand === MODERATION_LISTING_BRAND
+  );
+
+  if (moderationConversations.length === 0) {
+    return snapshotMap;
+  }
+
+  const conversationIds = moderationConversations.map((conversation) => conversation.id);
+  const adminUserIdByConversationId = new Map(
+    moderationConversations.map((conversation) => [conversation.id, conversation.seller_id])
+  );
+  const requestedListingIdSet = new Set(listingIds);
+
+  const { data: messages, error: messageError } = await supabaseAdmin
+    .from('messages')
+    .select('conversation_id, sender_id, body, created_at')
+    .in('conversation_id', conversationIds)
+    .order('created_at', { ascending: false });
+
+  if (messageError) {
+    console.error('[Listings] Failed to inspect moderation messages:', messageError);
+    return snapshotMap;
+  }
+
+  for (const message of (messages ?? []) as RawModerationMessage[]) {
+    const parsedMessage = parseListingModerationMessage(message.body);
+    const adminUserId = adminUserIdByConversationId.get(message.conversation_id);
+
+    if (
+      !parsedMessage ||
+      !requestedListingIdSet.has(parsedMessage.listingId) ||
+      !adminUserId ||
+      message.sender_id !== adminUserId ||
+      !parsedMessage.reason ||
+      snapshotMap.has(parsedMessage.listingId)
+    ) {
+      continue;
+    }
+
+    snapshotMap.set(parsedMessage.listingId, {
+      reason: parsedMessage.reason,
+      createdAt: message.created_at,
+      conversationId: message.conversation_id,
+      adminUserId,
+    });
+  }
+
+  return snapshotMap;
+}
+
 async function getStoredListingImagePaths(listingId: string): Promise<string[]> {
   const { data, error } = await supabaseAdmin
     .from('listing_images')
@@ -702,14 +819,18 @@ async function getListingByIdForSeller(listingId: string, sellerId: string): Pro
     throw new ListingServiceError('Created listing could not be found', 500);
   }
 
-  const imageMap = await getListingImages([listingId]);
+  const [imageMap, moderationSnapshots] = await Promise.all([
+    getListingImages([listingId]),
+    getLatestAdminModerationSnapshots(sellerId, [listingId]),
+  ]);
 
   return buildListingSummary(
     data as RawListing,
     imageMap,
     new Map<string, number>(),
     new Map<string, number>(),
-    new Map<string, number>()
+    new Map<string, number>(),
+    moderationSnapshots
   );
 }
 
@@ -1098,6 +1219,74 @@ export async function getListingMetadata(stateId?: number): Promise<ListingMetad
   };
 }
 
+function resolveSellerListingStatus(
+  existingStatus: string,
+  requestedStatus: CreateListingBody['status']
+): string {
+  const status = requestedStatus ?? existingStatus;
+
+  if (!['draft', 'active', 'rejected', 'archived', 'reserved', 'sold'].includes(status)) {
+    throw new ListingServiceError('Unsupported listing status change request', 422);
+  }
+
+  if (existingStatus === 'sold' && status !== 'active') {
+    throw new ListingServiceError(
+      'Sold listings can only be restored back to active inventory',
+      409
+    );
+  }
+
+  if (existingStatus === 'archived' && status === 'active') {
+    throw new ListingServiceError(
+      'Paused listings must be resubmitted for admin review before they can go live again',
+      409
+    );
+  }
+
+  if (existingStatus === 'rejected' && status === 'active') {
+    throw new ListingServiceError(
+      'Listings that are waiting for admin review cannot be published directly',
+      409
+    );
+  }
+
+  if (status === 'rejected' && !['archived', 'rejected'].includes(existingStatus)) {
+    throw new ListingServiceError(
+      'Only paused listings can be resubmitted for admin review',
+      409
+    );
+  }
+
+  return status;
+}
+
+async function notifyLatestAdminOfResubmission(
+  sellerId: string,
+  listingId: string,
+  listingTitle: string
+): Promise<void> {
+  const moderationSnapshots = await getLatestAdminModerationSnapshots(sellerId, [listingId]);
+  const moderationSnapshot = moderationSnapshots.get(listingId);
+
+  if (!moderationSnapshot?.conversationId) {
+    return;
+  }
+
+  try {
+    await sendReply(
+      { id: sellerId },
+      moderationSnapshot.conversationId,
+      buildListingModerationMessage({
+        listingId,
+        listingTitle,
+        eventType: 'resubmitted',
+      })
+    );
+  } catch (error) {
+    console.error('[Listings] Failed to notify admin about listing resubmission:', error);
+  }
+}
+
 export async function uploadListingImage(
   sellerId: string,
   payload: UploadListingImageBody
@@ -1161,6 +1350,11 @@ export async function createListing(
   payload: CreateListingBody
 ): Promise<ListingSummary> {
   const status = payload.status ?? 'draft';
+
+  if (status !== 'draft' && status !== 'active') {
+    throw new ListingServiceError('New listings can only be saved as draft or active', 422);
+  }
+
   const isDraft = status === 'draft';
   
   const categoryId = isDraft && !payload.categoryId ? null : toInteger(payload.categoryId!);
@@ -1258,7 +1452,7 @@ export async function updateListing(
 ): Promise<ListingSummary> {
   const existing = await getOwnedListingForSeller(listingId, sellerId);
 
-  const status = payload.status ?? (existing.status === 'draft' ? 'draft' : 'active');
+  const status = resolveSellerListingStatus(existing.status, payload.status);
   const isDraft = status === 'draft';
   
   const categoryId = isDraft && !payload.categoryId ? null : toInteger(payload.categoryId!);
@@ -1288,13 +1482,9 @@ export async function updateListing(
       null
     : existing.cover_image_path;
   const restoringSoldListing = existing.status === 'sold' && status === 'active';
-
-  if (existing.status === 'sold' && !restoringSoldListing) {
-    throw new ListingServiceError(
-      'Sold listings can only be restored back to active inventory',
-      409
-    );
-  }
+  const resubmittingPausedListing =
+    (existing.status === 'archived' || existing.status === 'rejected') &&
+    status === 'rejected';
 
   if (!isDraft && (price === null || !Number.isFinite(price) || price < 0)) {
     throw new ListingServiceError('Price must be a valid non-negative number', 422);
@@ -1319,7 +1509,11 @@ export async function updateListing(
   const publishedAt =
     status === 'active'
       ? existing.published_at ?? new Date().toISOString()
-      : null;
+      : status === 'rejected'
+        ? null
+        : existing.published_at;
+
+  const updatedAt = new Date().toISOString();
 
   const { error } = await supabaseAdmin
     .from('listings')
@@ -1339,7 +1533,7 @@ export async function updateListing(
       area_id: areaId,
       sold_at: restoringSoldListing ? null : undefined,
       sold_to_user_id: restoringSoldListing ? null : undefined,
-      updated_at: new Date().toISOString(),
+      updated_at: updatedAt,
     })
     .eq('id', listingId)
     .eq('seller_id', sellerId);
@@ -1351,6 +1545,10 @@ export async function updateListing(
 
   if (shouldReplaceImages) {
     await replaceListingImages(listingId, normalizedImageStoragePaths, coverImageStoragePath);
+  }
+
+  if (resubmittingPausedListing) {
+    await notifyLatestAdminOfResubmission(sellerId, listingId, title);
   }
 
   return getListingByIdForSeller(listingId, sellerId);
@@ -1571,7 +1769,10 @@ export async function getMyListings(
     .eq('seller_id', sellerId);
 
   if (filters.status !== 'all') {
-    listingsQuery = listingsQuery.eq('status', filters.status);
+    listingsQuery =
+      filters.status === 'paused'
+        ? listingsQuery.in('status', ['archived', 'rejected'])
+        : listingsQuery.eq('status', filters.status);
   }
 
   listingsQuery = applyListingSort(listingsQuery, filters.sort);
@@ -1606,7 +1807,7 @@ export async function getMyListings(
   const filteredListings = (filteredListingsResult.data ?? []) as RawListing[];
   const listingIds = filteredListings.map((listing) => listing.id);
 
-  const [favoritesResult, offersResult, imagesMap] = await Promise.all([
+  const [favoritesResult, offersResult, imagesMap, moderationSnapshots] = await Promise.all([
     listingIds.length === 0
       ? Promise.resolve({ data: [], error: null })
       : supabaseAdmin.from('favorites').select('listing_id').in('listing_id', listingIds),
@@ -1614,6 +1815,7 @@ export async function getMyListings(
       ? Promise.resolve({ data: [], error: null })
       : supabaseAdmin.from('offers').select('listing_id, status').in('listing_id', listingIds),
     getListingImages(listingIds),
+    getLatestAdminModerationSnapshots(sellerId, listingIds),
   ]);
 
   if (favoritesResult.error) {
@@ -1642,6 +1844,7 @@ export async function getMyListings(
 
   const statusCounts: MyListingsResponse['statusCounts'] = {
     all: 0,
+    paused: 0,
     draft: 0,
     active: 0,
     reserved: 0,
@@ -1655,6 +1858,10 @@ export async function getMyListings(
 
   for (const listing of (allListingsResult.data ?? []) as RawStatusListing[]) {
     statusCounts.all += 1;
+
+    if (listing.status === 'archived' || listing.status === 'rejected') {
+      statusCounts.paused += 1;
+    }
 
     if (listing.status in statusCounts) {
       const typedStatus = listing.status as keyof typeof statusCounts;
@@ -1694,7 +1901,8 @@ export async function getMyListings(
         imagesMap,
         favoriteCountMap,
         totalOfferCountMap,
-        pendingOfferCountMap
+        pendingOfferCountMap,
+        moderationSnapshots
       )
     ),
   };

@@ -158,6 +158,9 @@ export default function AdminReportsPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [busyReportId, setBusyReportId] = useState<string | null>(null);
   const [busyListingId, setBusyListingId] = useState<string | null>(null);
+  const [busyListingAction, setBusyListingAction] = useState<
+    'pause' | 'resume' | 'approve' | 'reject' | null
+  >(null);
   const [messageSellerId, setMessageSellerId] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -206,6 +209,32 @@ export default function AdminReportsPage() {
     return () => window.clearTimeout(timeout);
   }, [notice]);
 
+  function buildListingDetailsHref(listingId: string) {
+    const currentParams = searchParams.toString();
+    const returnTo = `${ROUTES.ADMIN_REPORTS}${currentParams ? `?${currentParams}` : ''}`;
+
+    return `${ROUTES.ADMIN_LISTINGS}/${listingId}?source=reports&returnTo=${encodeURIComponent(returnTo)}`;
+  }
+
+  function requestReason(actionLabel: string, listingTitle: string) {
+    const value = window.prompt(`${actionLabel} reason for "${listingTitle}"`, '');
+
+    if (value === null) {
+      return null;
+    }
+
+    const trimmedValue = value.trim();
+    if (!trimmedValue) {
+      setNotice({
+        type: 'error',
+        message: `A reason is required to ${actionLabel.toLowerCase()} "${listingTitle}".`,
+      });
+      return null;
+    }
+
+    return trimmedValue;
+  }
+
   async function handleReportAction(
     report: AdminReportListItem,
     action: 'review' | 'resolve' | 'dismiss'
@@ -238,15 +267,33 @@ export default function AdminReportsPage() {
     setRefreshKey((value) => value + 1);
   }
 
-  async function handleListingVisibility(report: AdminReportListItem) {
+  async function handleListingModerationAction(
+    report: AdminReportListItem,
+    action: 'pause' | 'resume' | 'approve' | 'reject'
+  ) {
     if (!token) {
       return;
     }
 
-    const action = report.listing.status === 'archived' ? 'resume' : 'pause';
+    const reason =
+      action === 'pause' || action === 'reject'
+        ? requestReason(action === 'pause' ? 'Pause' : 'Reject', report.listing.title)
+        : undefined;
+
+    if ((action === 'pause' || action === 'reject') && !reason) {
+      return;
+    }
+
     setBusyListingId(report.listing.id);
-    const response = await updateAdminListingStatus(token, report.listing.id, action);
+    setBusyListingAction(action);
+    const response = await updateAdminListingStatus(
+      token,
+      report.listing.id,
+      action,
+      reason ?? undefined
+    );
     setBusyListingId(null);
+    setBusyListingAction(null);
 
     if (!response.data) {
       setNotice({
@@ -258,10 +305,13 @@ export default function AdminReportsPage() {
 
     setNotice({
       type: 'success',
-      message:
-        action === 'pause'
-          ? `"${report.listing.title}" is now paused and hidden from browse.`
-          : `"${report.listing.title}" is live again on browse.`,
+      message: action === 'pause'
+        ? `"${report.listing.title}" is now paused and hidden from browse.`
+        : action === 'resume'
+          ? `"${report.listing.title}" is live again on browse.`
+          : action === 'approve'
+            ? `"${report.listing.title}" was approved and is visible in browse again.`
+            : `"${report.listing.title}" was rejected and moved back to the paused queue.`,
     });
     setRefreshKey((value) => value + 1);
   }
@@ -304,7 +354,7 @@ export default function AdminReportsPage() {
           <h1 className={styles.title}>Reports Management</h1>
           <p className={styles.subtitle}>
             Review listing complaints from shoppers, move them through moderation, and pause public
-            listings when an item needs to disappear from browse immediately.
+            listings with a required reason or handle seller resubmissions before they return to browse.
           </p>
         </div>
 
@@ -419,16 +469,18 @@ export default function AdminReportsPage() {
             const reportBusy = busyReportId === report.id;
             const listingBusy = busyListingId === report.listing.id;
             const sellerBusy = messageSellerId === report.seller.id;
+            const listingDetailsHref = buildListingDetailsHref(report.listing.id);
 
             return (
               <article key={report.id} className={styles.reportCard}>
                 <div className={styles.reportHeader}>
-                  <div className={styles.listingPreview}>
-                    <div className={styles.media}>
-                      {report.listing.coverImagePath ? (
-                        <img
-                          src={report.listing.coverImagePath}
-                          alt={report.listing.title}
+                  <Link href={listingDetailsHref} className={styles.listingPreviewLink}>
+                    <div className={styles.listingPreview}>
+                      <div className={styles.media}>
+                        {report.listing.coverImagePath ? (
+                          <img
+                            src={report.listing.coverImagePath}
+                            alt={report.listing.title}
                           className={styles.mediaImage}
                         />
                       ) : (
@@ -451,8 +503,10 @@ export default function AdminReportsPage() {
                         {formatCurrency(report.listing.price, report.listing.currency)} -{' '}
                         {report.listing.locationLabel} - Seller @{report.seller.username}
                       </p>
+                      <span className={styles.previewLinkNote}>Open full details and photos</span>
                     </div>
-                  </div>
+                    </div>
+                  </Link>
 
                   <div className={styles.reportTime}>
                     <span>Submitted</span>
@@ -548,20 +602,53 @@ export default function AdminReportsPage() {
                     {reportBusy && report.status !== 'rejected' ? 'Saving...' : 'Dismiss Report'}
                   </button>
 
-                  <button
-                    type="button"
-                    className={styles.pauseButton}
-                    onClick={() => void handleListingVisibility(report)}
-                    disabled={listingBusy}
-                  >
-                    {listingBusy
-                      ? report.listing.status === 'archived'
-                        ? 'Resuming...'
-                        : 'Pausing...'
-                      : report.listing.status === 'archived'
-                        ? 'Resume Listing'
-                        : 'Pause Listing'}
-                  </button>
+                  {(report.listing.status === 'active' ||
+                    report.listing.status === 'reserved' ||
+                    report.listing.status === 'archived') && (
+                    <button
+                      type="button"
+                      className={styles.pauseButton}
+                      onClick={() => void handleListingModerationAction(
+                        report,
+                        report.listing.status === 'archived' ? 'resume' : 'pause'
+                      )}
+                      disabled={listingBusy}
+                    >
+                      {listingBusy
+                        ? busyListingAction === 'resume'
+                          ? 'Resuming...'
+                          : 'Pausing...'
+                        : report.listing.status === 'archived'
+                          ? 'Resume Listing'
+                          : 'Pause Listing'}
+                    </button>
+                  )}
+
+                  {report.listing.status === 'rejected' && (
+                    <>
+                      <button
+                        type="button"
+                        className={styles.resolveButton}
+                        onClick={() => void handleListingModerationAction(report, 'approve')}
+                        disabled={listingBusy}
+                      >
+                        {listingBusy && busyListingAction === 'approve'
+                          ? 'Approving...'
+                          : 'Approve Listing'}
+                      </button>
+
+                      <button
+                        type="button"
+                        className={styles.dismissButton}
+                        onClick={() => void handleListingModerationAction(report, 'reject')}
+                        disabled={listingBusy}
+                      >
+                        {listingBusy && busyListingAction === 'reject'
+                          ? 'Rejecting...'
+                          : 'Reject Again'}
+                      </button>
+                    </>
+                  )}
 
                   <button
                     type="button"
