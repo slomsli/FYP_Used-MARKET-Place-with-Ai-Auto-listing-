@@ -9,6 +9,7 @@ import {
   sendMessage,
   sendReply,
   unarchiveConversation,
+  updateSupportTicketStatus,
 } from '../controllers/messageController';
 import { authenticate } from '../middleware/authenticate';
 
@@ -26,5 +27,6 @@ router.put('/:conversationId/archive', archiveConversation);
 router.delete('/:conversationId/archive', unarchiveConversation);
 router.post('/:conversationId/reply', sendReply);
 router.put('/:conversationId/read', markAsRead);
+router.put('/:conversationId/support-status', updateSupportTicketStatus);
 
 export default router;

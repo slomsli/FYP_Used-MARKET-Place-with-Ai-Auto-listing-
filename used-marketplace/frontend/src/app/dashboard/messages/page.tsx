@@ -23,6 +23,14 @@ const SendIcon = () => (
   </svg>
 );
 
+const ImageIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <circle cx="8.5" cy="10.5" r="1.5" />
+    <path d="m21 15-5-5L5 21" />
+  </svg>
+);
+
 const RefreshIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M21 2v6h-6" />
@@ -70,6 +78,8 @@ const BigMessageIcon = () => (
 
 type FilterTab = 'all' | 'unread' | 'buying' | 'selling' | 'archived';
 
+const SUPPORT_TICKET_TITLE_PREFIX = 'Support request:';
+
 interface DraftConversationTarget {
   listingId: string;
   recipientId: string | null;
@@ -84,6 +94,12 @@ const getRole = (convo: ConversationDetail, userId?: string) =>
 
 const isModerationConversation = (convo: ConversationDetail | null | undefined) =>
   Boolean(convo?.listing_details?.is_moderation);
+
+const isSupportTicketConversation = (convo: ConversationDetail | null | undefined) =>
+  Boolean(
+    convo?.listing_details?.is_moderation &&
+      convo.listing_details.title.startsWith(SUPPORT_TICKET_TITLE_PREFIX)
+  );
 
 const getRoleLabel = (convo: ConversationDetail, userId?: string) => {
   if (isModerationConversation(convo)) {
@@ -194,6 +210,7 @@ export default function MessagesPage() {
   const [draftTarget, setDraftTarget] = useState<DraftConversationTarget | null>(null);
   const [filterTab, setFilterTab] = useState<FilterTab>('all');
   const [messageInput, setMessageInput] = useState('');
+  const [pendingAttachments, setPendingAttachments] = useState<messageService.PendingMessageAttachment[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const [loadingConversations, setLoadingConversations] = useState(true);
@@ -205,6 +222,8 @@ export default function MessagesPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingAttachmentsRef = useRef<messageService.PendingMessageAttachment[]>([]);
   const conversationRequestIdRef = useRef(0);
   const messageRequestIdRef = useRef(0);
   const handledRequestKeyRef = useRef<string | null>(null);
@@ -240,6 +259,17 @@ export default function MessagesPage() {
       handledRequestKeyRef.current = null;
     }
   }, [requestKey]);
+
+  useEffect(() => {
+    pendingAttachmentsRef.current = pendingAttachments;
+  }, [pendingAttachments]);
+
+  useEffect(
+    () => () => {
+      messageService.revokePendingAttachmentPreviews(pendingAttachmentsRef.current);
+    },
+    []
+  );
 
   const removeArchivedConversationId = useCallback((conversationId: string) => {
     setArchivedConversationIds((current) =>
@@ -330,11 +360,15 @@ export default function MessagesPage() {
       return null;
     }
 
-    setConversations(data);
+    const visibleConversations = isAdminWorkspace
+      ? data.filter((conversation) => !isSupportTicketConversation(conversation))
+      : data;
+
+    setConversations(visibleConversations);
     setPageError(null);
     setLoadingConversations(false);
-    return data;
-  }, [token]);
+    return visibleConversations;
+  }, [isAdminWorkspace, token]);
 
   const loadMessages = useCallback(
     async (
@@ -806,12 +840,62 @@ export default function MessagesPage() {
     handleArchiveConversation(activeConversation.id);
   };
 
+  const handleAttachmentSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = '';
+
+    if (files.length === 0) {
+      return;
+    }
+
+    const availableSlots = messageService.MAX_MESSAGE_ATTACHMENTS - pendingAttachments.length;
+
+    if (availableSlots <= 0) {
+      setPageError(`You can attach up to ${messageService.MAX_MESSAGE_ATTACHMENTS} images per message.`);
+      return;
+    }
+
+    const acceptedFiles = files.slice(0, availableSlots);
+
+    try {
+      const nextAttachments = await Promise.all(
+        acceptedFiles.map((file) => messageService.readImageFileForMessage(file))
+      );
+      setPendingAttachments((current) => [...current, ...nextAttachments]);
+      setPageError(null);
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : 'Unable to attach this image.');
+    }
+  };
+
+  const removePendingAttachment = (attachmentId: string) => {
+    setPendingAttachments((current) => {
+      const attachment = current.find((item) => item.id === attachmentId);
+      if (attachment) {
+        messageService.revokePendingAttachmentPreviews([attachment]);
+      }
+
+      return current.filter((item) => item.id !== attachmentId);
+    });
+  };
+
   const handleSendMessage = async () => {
-    if (!messageInput.trim() || !token || !user) return;
+    if ((!messageInput.trim() && pendingAttachments.length === 0) || !token || !user) return;
 
     const content = messageInput.trim();
+    const attachmentsToSend = pendingAttachments;
+    const attachmentUploads = messageService.toAttachmentUploads(attachmentsToSend);
+    const tempAttachments = messageService.toPreviewMessageAttachments(attachmentsToSend);
+    const fallbackContent =
+      content ||
+      (attachmentsToSend.length === 1
+        ? 'Sent an image'
+        : attachmentsToSend.length > 1
+          ? `Sent ${attachmentsToSend.length} images`
+          : '');
     setIsSending(true);
     setMessageInput('');
+    setPendingAttachments([]);
     inputRef.current?.focus();
 
     if (selectedConversation) {
@@ -819,7 +903,9 @@ export default function MessagesPage() {
         id: `temp-${Date.now()}`,
         conversation_id: selectedConversation,
         sender_id: user.id,
-        content,
+        content: fallbackContent,
+        attachments: tempAttachments,
+        event: null,
         is_read: false,
         created_at: new Date().toISOString(),
       };
@@ -831,7 +917,7 @@ export default function MessagesPage() {
             ? {
                 ...conversation,
                 last_message: {
-                  content,
+                  content: fallbackContent,
                   created_at: tempMessage.created_at,
                   sender_id: user.id,
                   is_read: false,
@@ -841,11 +927,21 @@ export default function MessagesPage() {
         )
       );
 
-      const { data, error } = await messageService.sendReply(token, selectedConversation, content);
+      const { data, error } = await messageService.sendReply(
+        token,
+        selectedConversation,
+        content,
+        attachmentUploads
+      );
 
       if (error || !data) {
-        console.error('Failed to send message:', error);
+        setPageError(error || 'Failed to send message');
+        setMessages((current) => current.filter((item) => item.id !== tempMessage.id));
+        setMessageInput(content);
+        setPendingAttachments(attachmentsToSend);
+        await loadConversations();
       } else {
+        messageService.revokePendingAttachmentPreviews(attachmentsToSend);
         setMessages((current) => current.map((item) => (item.id === tempMessage.id ? data : item)));
       }
 
@@ -862,15 +958,18 @@ export default function MessagesPage() {
       token,
       draftTarget.listingId,
       content,
-      draftTarget.recipientId ?? undefined
+      draftTarget.recipientId ?? undefined,
+      attachmentUploads
     );
 
     if (error || !data) {
-      console.error('Failed to start conversation:', error);
+      setPageError(error || 'Failed to start conversation');
+      setPendingAttachments(attachmentsToSend);
       setIsSending(false);
       return;
     }
 
+    messageService.revokePendingAttachmentPreviews(attachmentsToSend);
     setMessages([data]);
     setSelectedConversation(data.conversation_id);
     setDraftTarget(null);
@@ -1184,7 +1283,22 @@ export default function MessagesPage() {
                             isMe ? styles.messageBubbleSent : styles.messageBubbleReceived
                           }`}
                         >
-                          {message.content}
+                          {message.attachments?.length > 0 && (
+                            <div className={styles.messageAttachments}>
+                              {message.attachments.map((attachment) => (
+                                <a
+                                  key={attachment.id || attachment.url}
+                                  href={attachment.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className={styles.messageAttachmentLink}
+                                >
+                                  <img src={attachment.url} alt={attachment.file_name || 'Message attachment'} />
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                          {message.content && <p className={styles.messageText}>{message.content}</p>}
                         </div>
                         <div
                           className={`${styles.messageTime} ${
@@ -1207,7 +1321,40 @@ export default function MessagesPage() {
             </div>
 
             <div className={styles.chatInputArea}>
+              {pendingAttachments.length > 0 && (
+                <div className={styles.pendingAttachments}>
+                  {pendingAttachments.map((attachment) => (
+                    <div key={attachment.id} className={styles.pendingAttachment}>
+                      <img src={attachment.previewUrl} alt={attachment.fileName} />
+                      <button
+                        type="button"
+                        onClick={() => removePendingAttachment(attachment.id)}
+                        aria-label={`Remove ${attachment.fileName}`}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className={styles.chatInputRow}>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className={styles.hiddenFileInput}
+                  onChange={(event) => void handleAttachmentSelect(event)}
+                />
+                <button
+                  type="button"
+                  className={styles.chatAttachBtn}
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isSending || pendingAttachments.length >= messageService.MAX_MESSAGE_ATTACHMENTS}
+                  aria-label="Attach images"
+                >
+                  <ImageIcon />
+                </button>
                 <input
                   ref={inputRef}
                   type="text"
@@ -1225,10 +1372,10 @@ export default function MessagesPage() {
                 />
                 <button
                   className={`${styles.chatSendBtn} ${
-                    !messageInput.trim() || isSending ? styles.chatSendBtnDisabled : ''
+                    (!messageInput.trim() && pendingAttachments.length === 0) || isSending ? styles.chatSendBtnDisabled : ''
                   }`}
                   onClick={() => void handleSendMessage()}
-                  disabled={!messageInput.trim() || isSending}
+                  disabled={(!messageInput.trim() && pendingAttachments.length === 0) || isSending}
                   type="button"
                   aria-label="Send message"
                   id="send-message-btn"

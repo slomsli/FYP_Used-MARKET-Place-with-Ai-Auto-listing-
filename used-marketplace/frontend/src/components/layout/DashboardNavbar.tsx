@@ -51,7 +51,8 @@ export default function DashboardNavbar({ userName, avatarUrl }: DashboardNavbar
       {/* Left: Brand + Nav Links */}
       <div className={styles.left}>
         <Link href={ROUTES.DASHBOARD} className={styles.brand}>
-          <img src="/assets/images/remarket_harbor_style_logo_1.png" alt="ReMarket" style={{ height: '100px', width: 'auto' }} />
+          <span className={styles.brandMark}>R</span>
+          <span>ReMarket</span>
         </Link>
 
         <div className={styles.navLinks}>

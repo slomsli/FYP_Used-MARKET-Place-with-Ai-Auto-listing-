@@ -88,6 +88,16 @@ function MessageIcon() {
   );
 }
 
+function TicketIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4V7Z" />
+      <path d="M9 9h6" />
+      <path d="M9 15h4" />
+    </svg>
+  );
+}
+
 function CategoryIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -229,6 +239,8 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
       ? 'Search categories, regions, or districts...'
       : pathname === ROUTES.ADMIN_MESSAGES
         ? 'Inbox search stays inside the messages workspace.'
+        : pathname === ROUTES.ADMIN_SUPPORT
+          ? 'Use the support workspace filters to triage tickets.'
         : 'Overview metrics refresh automatically.';
   const isListingsRoute = pathname === ROUTES.ADMIN_LISTINGS || pathname.startsWith(`${ROUTES.ADMIN_LISTINGS}/`);
 
@@ -239,6 +251,7 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
       { label: 'Listings', href: ROUTES.ADMIN_LISTINGS, icon: <ListingsIcon />, active: isListingsRoute },
       { label: 'Users', href: ROUTES.ADMIN_USERS, icon: <UsersIcon />, active: pathname === ROUTES.ADMIN_USERS },
       { label: 'Messages', href: ROUTES.ADMIN_MESSAGES, icon: <MessageIcon />, active: pathname === ROUTES.ADMIN_MESSAGES },
+      { label: 'Support', href: ROUTES.ADMIN_SUPPORT, icon: <TicketIcon />, active: pathname === ROUTES.ADMIN_SUPPORT },
       { label: 'Guide', href: ROUTES.ADMIN_GUIDE, icon: <HelpIcon />, active: pathname === ROUTES.ADMIN_GUIDE },
       { label: 'Structure', href: ROUTES.ADMIN_STRUCTURE, icon: <CategoryIcon />, active: pathname === ROUTES.ADMIN_STRUCTURE },
     ],

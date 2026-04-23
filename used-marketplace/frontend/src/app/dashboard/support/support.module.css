@@ -258,19 +258,26 @@
 }
 
 .primaryButton,
-.replyButton {
+.replyButton,
+.attachButton,
+.attachButtonSmall,
+.statusButton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-top: 0.85rem;
   border: none;
   border-radius: 16px;
-  background: linear-gradient(135deg, var(--dash-primary), #243a88);
-  color: #ffffff;
   font: inherit;
   font-size: 0.88rem;
   font-weight: 800;
   cursor: pointer;
+}
+
+.primaryButton,
+.replyButton {
+  margin-top: 0.85rem;
+  background: linear-gradient(135deg, var(--dash-primary), #243a88);
+  color: #ffffff;
   box-shadow: 0 12px 24px rgba(26, 35, 126, 0.18);
 }
 
@@ -284,9 +291,42 @@
 }
 
 .primaryButton:disabled,
-.replyButton:disabled {
+.replyButton:disabled,
+.attachButton:disabled,
+.attachButtonSmall:disabled,
+.statusButton:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.attachButton,
+.attachButtonSmall {
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  background: #f8fafc;
+  color: var(--dash-primary);
+  border: 1px solid rgba(26, 35, 126, 0.08);
+}
+
+.attachButton {
+  width: 100%;
+  padding: 0.8rem 1rem;
+}
+
+.attachButtonSmall,
+.statusButton {
+  flex: 0 0 auto;
+  padding: 0.72rem 0.9rem;
+}
+
+.statusButton {
+  background: #eef2ff;
+  color: var(--dash-primary);
+}
+
+.statusButtonDanger {
+  background: #fff1f2;
+  color: #be123c;
 }
 
 .openMessagesLink {
@@ -299,6 +339,41 @@
   font-size: 0.72rem;
   font-weight: 800;
   text-decoration: none;
+}
+
+.threadActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.statusOpen {
+  background: #ecfdf5;
+  color: var(--dash-secondary);
+}
+
+.statusResolved {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.statusClosed {
+  background: #e5e7eb;
+  color: #374151;
 }
 
 .messageList {
@@ -343,9 +418,37 @@
 }
 
 .messageBubble p {
+  margin: 0;
   font-size: 0.88rem;
   line-height: 1.55;
   white-space: pre-wrap;
+}
+
+.messageAttachments {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.messageAttachments a {
+  display: block;
+  overflow: hidden;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.messageAdmin .messageAttachments a {
+  background: #f8fafc;
+  border-color: rgba(26, 35, 126, 0.08);
+}
+
+.messageAttachments img {
+  display: block;
+  width: 100%;
+  max-height: 240px;
+  object-fit: cover;
 }
 
 .messageBubble time {
@@ -361,10 +464,63 @@
   align-items: flex-end;
   gap: 0.7rem;
   margin-top: 1rem;
+  flex-wrap: wrap;
 }
 
 .replyTextarea {
+  flex: 1 1 260px;
   margin-top: 0;
+}
+
+.hiddenFileInput {
+  display: none;
+}
+
+.closedNotice {
+  flex: 1 0 100%;
+  padding: 0.85rem 1rem;
+  border-radius: 16px;
+  background: #f3f4f6;
+  color: #374151;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.pendingAttachments {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+}
+
+.pendingAttachment {
+  position: relative;
+  overflow: hidden;
+  width: 90px;
+  height: 90px;
+  border: 1px solid rgba(26, 35, 126, 0.1);
+  border-radius: 18px;
+  background: #eef2ff;
+  box-shadow: 0 8px 20px rgba(15, 29, 54, 0.08);
+}
+
+.pendingAttachment img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pendingAttachment button {
+  position: absolute;
+  inset: auto 0 0;
+  padding: 0.35rem;
+  border: 0;
+  background: rgba(15, 23, 42, 0.74);
+  color: #ffffff;
+  font-size: 0.62rem;
+  font-weight: 900;
+  cursor: pointer;
 }
 
 @media (max-width: 980px) {

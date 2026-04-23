@@ -15,6 +15,7 @@ export const ROUTES = {
   ADMIN_REPORTS: '/admin/reports',
   ADMIN_LISTINGS: '/admin/listings',
   ADMIN_MESSAGES: '/admin/messages',
+  ADMIN_SUPPORT: '/admin/support',
   ADMIN_USERS: '/admin/users',
   ADMIN_STRUCTURE: '/admin/structure',
   MY_LISTINGS: '/dashboard/my-listings',
