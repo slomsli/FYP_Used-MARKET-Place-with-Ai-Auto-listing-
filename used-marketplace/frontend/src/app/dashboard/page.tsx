@@ -253,6 +253,14 @@ export default function DashboardPage() {
     ? summary.insights.selectedListingLabel
     : 'All Listings';
 
+  function openConciergeAssistant(message: string, autoSend = false) {
+    window.dispatchEvent(
+      new CustomEvent('remarket:open-assistant', {
+        detail: { message, autoSend },
+      })
+    );
+  }
+
   return (
     <div className={styles.dashboard}>
       <section className={styles.welcome} id="welcome-section">
@@ -564,16 +572,53 @@ export default function DashboardPage() {
 
         <div className={styles.rightCol}>
           <div className={styles.conciergeCard}>
-            <div className={styles.conciergeIcon}>
-              <SupportIcon />
+            <div className={styles.conciergeGlow} />
+            <div className={styles.conciergeHeader}>
+              <div className={styles.conciergeIcon}>
+                <SupportIcon />
+              </div>
+              <span className={styles.conciergeStatus}>AI ready</span>
             </div>
-            <h3 className={styles.conciergeTitle}>Concierge Assistance</h3>
+            <h3 className={styles.conciergeTitle}>AI Concierge Assistance</h3>
             <p className={styles.conciergeDesc}>
-              As a premium member, you have access to our direct concierge line for luxury authentications and shipment logistics.
+              Need help with purchases, sold items, reports, or listing guidance? Open the assistant
+              and it will use your current dashboard context.
             </p>
-            <Link href={ROUTES.SUPPORT} className={styles.conciergeBtn}>
-              Contact Support
-            </Link>
+            <div className={styles.conciergePrompts}>
+              <button
+                type="button"
+                className={styles.conciergePrompt}
+                onClick={() => openConciergeAssistant('Show my purchases.', true)}
+              >
+                Purchases
+              </button>
+              <button
+                type="button"
+                className={styles.conciergePrompt}
+                onClick={() => openConciergeAssistant('Show my sold items.', true)}
+              >
+                Sold items
+              </button>
+              <button
+                type="button"
+                className={styles.conciergePrompt}
+                onClick={() => openConciergeAssistant('Help me create a listing.', true)}
+              >
+                Listing help
+              </button>
+            </div>
+            <div className={styles.conciergeActions}>
+              <button
+                type="button"
+                className={styles.conciergeBtn}
+                onClick={() => openConciergeAssistant('Can you help me understand my dashboard?')}
+              >
+                Open Assistant
+              </button>
+              <Link href={ROUTES.DASHBOARD_SUPPORT} className={styles.conciergeSecondaryBtn}>
+                Support
+              </Link>
+            </div>
           </div>
 
           <div className={styles.recommendedCard}>

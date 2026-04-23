@@ -25,6 +25,8 @@ import {
   rejectOfferHandler,
   cancelOfferHandler,
   counterOfferHandler,
+  createBuyerReviewHandler,
+  reportDeliveryIssueHandler,
 } from '../controllers/offerController';
 import {
   getProfileHandler,
@@ -100,6 +102,12 @@ router.patch('/offers/:offerId/cancel', cancelOfferHandler);
 
 // POST /api/dashboard/offers/:offerId/counter
 router.post('/offers/:offerId/counter', counterOfferHandler);
+
+// POST /api/dashboard/offers/:offerId/review
+router.post('/offers/:offerId/review', createBuyerReviewHandler);
+
+// POST /api/dashboard/offers/:offerId/not-received
+router.post('/offers/:offerId/not-received', reportDeliveryIssueHandler);
 
 // ── Listings ───────────────────────────────────────────
 // GET /api/dashboard/listings/metadata

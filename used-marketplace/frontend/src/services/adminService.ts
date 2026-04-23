@@ -1,5 +1,6 @@
 import type {
   AdminDeleteListingResponse,
+  AdminReportDetailResponse,
   AdminListingDetailResponse,
   AdminListingStatusUpdateResponse,
   AdminListingsResponse,
@@ -182,6 +183,15 @@ export async function getAdminReports(
 
   const suffix = params.size ? `?${params.toString()}` : '';
   return authorizedRequest<AdminReportsResponse>(`/api/admin/reports${suffix}`, token, {
+    method: 'GET',
+  });
+}
+
+export async function getAdminReportDetails(
+  token: string,
+  reportId: string
+): Promise<ServiceResponse<AdminReportDetailResponse>> {
+  return authorizedRequest<AdminReportDetailResponse>(`/api/admin/reports/${reportId}`, token, {
     method: 'GET',
   });
 }

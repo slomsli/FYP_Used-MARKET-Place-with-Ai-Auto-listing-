@@ -19,7 +19,6 @@ import type {
   AssistantPersistedMessage,
   AssistantQuickAction,
   AssistantResponse,
-  AssistantResponseBlock,
   AssistantRole,
   AssistantRoleContext,
   AssistantSelectedEntityContext,
@@ -28,6 +27,12 @@ import type {
 import styles from './MarketplaceAssistant.module.css';
 
 const NEW_CHAT_TITLE = 'New chat';
+
+interface AssistantLaunchDetail {
+  message?: string;
+  showHistory?: boolean;
+  autoSend?: boolean;
+}
 
 function SparkIcon() {
   return (
@@ -52,6 +57,16 @@ function SendIcon() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M22 2 11 13" />
       <path d="M22 2 15 22l-4-9-9-4 20-7Z" />
+    </svg>
+  );
+}
+
+function MenuIcon() {
+  return (
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M4 7h16" />
+      <path d="M4 12h16" />
+      <path d="M4 17h16" />
     </svg>
   );
 }
@@ -381,7 +396,9 @@ export default function MarketplaceAssistant() {
   const { user, session, loading } = useAuth();
   const token = session?.access_token;
   const [isOpen, setIsOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');
+  const [pendingAutoSendMessage, setPendingAutoSendMessage] = useState<string | null>(null);
   const [assistantRole, setAssistantRole] = useState<AssistantRole | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [threads, setThreads] = useState<AssistantThreadSummary[]>([]);
@@ -596,6 +613,29 @@ export default function MarketplaceAssistant() {
     };
   }, [isOpen]);
 
+  useEffect(() => {
+    function handleAssistantLaunch(event: Event) {
+      const detail = (event as CustomEvent<AssistantLaunchDetail>).detail;
+      const message = detail?.message?.trim();
+
+      setIsOpen(true);
+      setIsHistoryOpen(Boolean(detail?.showHistory));
+
+      if (message && detail?.autoSend) {
+        setInputValue('');
+        setPendingAutoSendMessage(message);
+      } else if (message) {
+        setInputValue(message);
+      }
+    }
+
+    window.addEventListener('remarket:open-assistant', handleAssistantLaunch);
+
+    return () => {
+      window.removeEventListener('remarket:open-assistant', handleAssistantLaunch);
+    };
+  }, []);
+
   const currentThread = useMemo(() => {
     if (!activeThreadId) {
       return null;
@@ -620,19 +660,15 @@ export default function MarketplaceAssistant() {
     scrollAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [currentMessages, isSending, isOpen]);
 
-  if (loading || profileLoading || !user || !token || !assistantRole) {
-    return null;
-  }
-
   const currentPageContext = buildPageContext(pathname);
   const selectedEntityContext = buildSelectedEntityContext(pathname);
-  const currentRoleContext = buildRoleContext(pathname, assistantRole);
+  const currentRoleContext = assistantRole ? buildRoleContext(pathname, assistantRole) : 'user';
   const latestAssistantResponse = [...currentMessages]
     .reverse()
     .find((message) => message.role === 'assistant' && message.response)?.response;
   const suggestedActions =
     latestAssistantResponse?.blocks.find((block) => block.type === 'quick_actions')?.items ||
-    getSuggestedActions(assistantRole, selectedEntityContext);
+    getSuggestedActions(assistantRole ?? 'user', selectedEntityContext);
   const currentThreadError = currentThread ? threadErrors[currentThread.id] ?? null : null;
   const isThreadActionBusy = isCreatingThread || threadActionId !== null;
 
@@ -730,8 +766,14 @@ export default function MarketplaceAssistant() {
     setThreadListError(null);
     setInputValue('');
     setIsOpen(true);
+    setIsHistoryOpen(false);
 
     return createdThread;
+  }
+
+  function handleSelectThread(threadId: string) {
+    setActiveThreadId(threadId);
+    setIsHistoryOpen(false);
   }
 
   async function handleCreateNewChat() {
@@ -899,6 +941,43 @@ export default function MarketplaceAssistant() {
     void submitMessage(inputValue);
   }
 
+  function handleCloseAssistant() {
+    setIsOpen(false);
+    setIsHistoryOpen(false);
+  }
+
+  useEffect(() => {
+    if (
+      !pendingAutoSendMessage ||
+      loading ||
+      profileLoading ||
+      !user ||
+      !token ||
+      !assistantRole ||
+      isSending ||
+      isThreadActionBusy
+    ) {
+      return;
+    }
+
+    const message = pendingAutoSendMessage;
+    setPendingAutoSendMessage(null);
+    void submitMessage(message);
+  }, [
+    assistantRole,
+    isSending,
+    isThreadActionBusy,
+    loading,
+    pendingAutoSendMessage,
+    profileLoading,
+    token,
+    user,
+  ]);
+
+  if (loading || profileLoading || !user || !token || !assistantRole) {
+    return null;
+  }
+
   return (
     <>
       {isOpen && (
@@ -906,7 +985,7 @@ export default function MarketplaceAssistant() {
           type="button"
           className={styles.backdrop}
           aria-label="Close assistant"
-          onClick={() => setIsOpen(false)}
+          onClick={handleCloseAssistant}
         />
       )}
 
@@ -924,36 +1003,77 @@ export default function MarketplaceAssistant() {
           <span className={styles.launcherLabel}>Assistant</span>
         </button>
 
-        <aside className={`${styles.panel} ${isOpen ? styles.panelOpen : ''}`} aria-hidden={!isOpen}>
+        <aside
+          className={`${styles.panel} ${isOpen ? styles.panelOpen : ''} ${
+            isHistoryOpen ? styles.panelHistoryOpen : ''
+          }`}
+          aria-hidden={!isOpen}
+        >
           <header className={styles.header}>
-            <div>
-              <p className={styles.headerEyebrow}>
-                {assistantRole === 'admin' ? 'Admin tools' : 'Member tools'}
-              </p>
-              <h2 className={styles.headerTitle}>Marketplace Assistant</h2>
-              <p className={styles.headerSubtext}>{currentPageContext.title}</p>
+            <div className={styles.headerLeft}>
+              <button
+                type="button"
+                className={`${styles.menuButton} ${isHistoryOpen ? styles.menuButtonActive : ''}`}
+                onClick={() => setIsHistoryOpen((current) => !current)}
+                aria-label={isHistoryOpen ? 'Hide previous chats' : 'Show previous chats'}
+                aria-expanded={isHistoryOpen}
+              >
+                <MenuIcon />
+              </button>
+
+              <div>
+                <p className={styles.headerEyebrow}>
+                  {assistantRole === 'admin' ? 'Admin tools' : 'Member tools'}
+                </p>
+                <h2 className={styles.headerTitle}>Marketplace Assistant</h2>
+                <p className={styles.headerSubtext}>{currentPageContext.title}</p>
+              </div>
             </div>
 
             <button
               type="button"
               className={styles.closeButton}
-              onClick={() => setIsOpen(false)}
+              onClick={handleCloseAssistant}
               aria-label="Close assistant"
             >
               <CloseIcon />
             </button>
           </header>
 
-          <section className={styles.sessionBar} aria-label="Assistant chats">
-            <button
-              type="button"
-              className={styles.newChatButton}
-              onClick={() => void handleCreateNewChat()}
-              disabled={isSending || isThreadActionBusy}
-            >
-              <PlusIcon />
-              <span>New chat</span>
-            </button>
+          <div className={styles.panelBody}>
+            {isHistoryOpen && (
+              <section className={styles.historyPane} aria-label="Previous assistant chats">
+                <div className={styles.historyHeader}>
+                  <div>
+                    <p className={styles.historyEyebrow}>Saved threads</p>
+                    <h3 className={styles.historyTitle}>Previous chats</h3>
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.historyCloseButton}
+                    onClick={() => setIsHistoryOpen(false)}
+                    aria-label="Hide previous chats"
+                  >
+                    <CloseIcon />
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  className={styles.newChatButton}
+                  onClick={() => void handleCreateNewChat()}
+                  disabled={isSending || isThreadActionBusy}
+                >
+                  <PlusIcon />
+                  <span>New chat</span>
+                </button>
+
+                {threadsLoading && <p className={styles.historyNotice}>Loading your chats...</p>}
+                {!threadsLoading && !threads.length && (
+                  <p className={styles.historyNotice}>
+                    No saved chats yet. Start a conversation and it will appear here.
+                  </p>
+                )}
 
             <div className={styles.sessionList}>
               {threads.map((thread) => {
@@ -970,7 +1090,7 @@ export default function MarketplaceAssistant() {
                     <button
                       type="button"
                       className={styles.sessionButton}
-                      onClick={() => setActiveThreadId(thread.id)}
+                      onClick={() => handleSelectThread(thread.id)}
                       disabled={isSending || isBusy}
                     >
                       <div className={styles.sessionTopRow}>
@@ -1010,20 +1130,33 @@ export default function MarketplaceAssistant() {
                   </article>
                 );
               })}
-            </div>
-          </section>
+                </div>
+              </section>
+            )}
 
-          {currentThread && (
-            <section className={styles.threadStateBar} aria-label="Current thread state">
-              <div className={styles.threadStatePills}>
-                <span className={styles.threadStatePill}>{formatThreadStatus(currentThread.status)}</span>
-                <span className={styles.threadStatePillMuted}>
-                  {formatRoleContext(currentThread.roleContext)}
-                </span>
-              </div>
-              <p className={styles.threadStateText}>{buildThreadStateLabel(currentThread)}</p>
-            </section>
-          )}
+            <section className={styles.chatColumn} aria-label="Marketplace assistant conversation">
+              {currentThread && (
+                <section className={styles.threadStateBar} aria-label="Current thread state">
+                  <div className={styles.threadStateHeader}>
+                    <div className={styles.threadStatePills}>
+                      <span className={styles.threadStatePill}>{formatThreadStatus(currentThread.status)}</span>
+                      <span className={styles.threadStatePillMuted}>
+                        {formatRoleContext(currentThread.roleContext)}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className={styles.compactNewChatButton}
+                      onClick={() => void handleCreateNewChat()}
+                      disabled={isSending || isThreadActionBusy}
+                    >
+                      <PlusIcon />
+                      <span>New chat</span>
+                    </button>
+                  </div>
+                  <p className={styles.threadStateText}>{buildThreadStateLabel(currentThread)}</p>
+                </section>
+              )}
 
           <section className={styles.suggestionBar} aria-label="Quick actions">
             {suggestedActions.map((action) => (
@@ -1058,8 +1191,8 @@ export default function MarketplaceAssistant() {
                     : 'Start a chat for purchases, selling help, reporting, or navigation.'}
                 </h3>
                 <p className={styles.welcomeText}>
-                  Your assistant chats are now saved to the database, so you can reopen them later
-                  and continue from the same state.
+                  Your assistant chats are saved, so the menu button can bring back previous
+                  conversations whenever you need them.
                 </p>
               </section>
             )}
@@ -1316,7 +1449,7 @@ export default function MarketplaceAssistant() {
                     ? 'Ask for sales today, active listings, pending reports, or top categories...'
                     : 'Ask for purchases, sold items, report help, or listing guidance...'
                 }
-                rows={1}
+                rows={2}
                 disabled={isSending || isThreadActionBusy}
               />
             </label>
@@ -1329,6 +1462,8 @@ export default function MarketplaceAssistant() {
               <SendIcon />
             </button>
           </form>
+            </section>
+          </div>
         </aside>
       </div>
     </>

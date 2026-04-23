@@ -38,6 +38,15 @@ export interface ConversationDetail {
   unread_count: number;
 }
 
+export interface SupportConversationResult {
+  conversation_id: string;
+  listing_id: string;
+  listing_title: string;
+  admin_id: string;
+  admin_name: string;
+  message: ChatMessage;
+}
+
 /**
  * Fetch all conversations for the authenticated user
  */
@@ -145,6 +154,33 @@ export async function sendMessage(
   } catch (error) {
     console.error('Error sending message:', error);
     return { data: null, error: 'Network error while sending message' };
+  }
+}
+
+export async function createSupportConversation(
+  token: string,
+  payload: { subject: string; content: string }
+): Promise<{ data: SupportConversationResult | null; error: string | null }> {
+  try {
+    const res = await fetch(`${MESSAGE_API_URL}/support`, {
+      method: 'POST',
+      headers: {
+        ...getAuthHeaders(token),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      return { data: null, error: errorData.error || 'Failed to contact support' };
+    }
+
+    const json = await res.json();
+    return { data: json.data as SupportConversationResult, error: null };
+  } catch (error) {
+    console.error('Error creating support conversation:', error);
+    return { data: null, error: 'Network error while contacting support' };
   }
 }
 

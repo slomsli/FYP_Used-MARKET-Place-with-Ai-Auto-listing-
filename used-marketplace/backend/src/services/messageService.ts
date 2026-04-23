@@ -1,7 +1,9 @@
 import { supabaseAdmin } from '../config/supabase';
 import { getPublicStorageUrl } from '../utils/storage';
 import {
+  buildModerationListingTargetKey,
   isModerationListing,
+  MODERATION_LISTING_BRAND,
   parseModerationListingTargetKey,
 } from '../utils/moderationThread';
 import { isAccountSuspended } from '../utils/accountStatus';
@@ -42,11 +44,24 @@ export interface ConversationDetail {
   unread_count: number;
 }
 
+export interface SupportConversationResult {
+  conversation_id: string;
+  listing_id: string;
+  listing_title: string;
+  admin_id: string;
+  admin_name: string;
+  message: ChatMessage;
+}
+
 interface RawProfile {
   id: string;
   full_name: string | null;
   username: string | null;
   avatar_path: string | null;
+}
+
+interface RawAdminProfile extends RawProfile {
+  role: string;
 }
 
 interface RawListing {
@@ -77,6 +92,12 @@ interface RawConversation {
   seller_profile: RawProfile | RawProfile[] | null;
 }
 
+interface RawSupportConversation {
+  id: string;
+  seller_id: string;
+  listings: Pick<RawListing, 'brand'> | Pick<RawListing, 'brand'>[] | null;
+}
+
 interface RawMessageRow {
   id: string;
   conversation_id: string;
@@ -95,6 +116,7 @@ const AVATAR_BUCKET =
   process.env.SUPABASE_AVATARS_BUCKET?.trim() ||
   process.env.NEXT_PUBLIC_SUPABASE_AVATARS_BUCKET?.trim() ||
   'avatars';
+const SUPPORT_LISTING_TITLE_PREFIX = 'Support request:';
 
 function unwrapRelation<T>(relation: T | T[] | null | undefined): T | null {
   if (Array.isArray(relation)) {
@@ -116,6 +138,123 @@ function buildDisplayName(profile: RawProfile | null): string {
   }
 
   return 'Marketplace User';
+}
+
+function buildSupportListingTitle(subject: string, targetDisplayName: string): string {
+  const trimmedSubject = subject.trim();
+  if (trimmedSubject) {
+    return `${SUPPORT_LISTING_TITLE_PREFIX} ${trimmedSubject.slice(0, 72)}`;
+  }
+
+  const name = targetDisplayName.trim();
+  return name ? `${SUPPORT_LISTING_TITLE_PREFIX} ${name}` : `${SUPPORT_LISTING_TITLE_PREFIX} Marketplace user`;
+}
+
+async function getFallbackCategoryId(): Promise<number> {
+  const { data, error } = await supabaseAdmin
+    .from('categories')
+    .select('id')
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error('Unable to prepare a support conversation');
+  }
+
+  if (typeof data?.id !== 'number') {
+    throw new Error('Create at least one category before support conversations can be created');
+  }
+
+  return data.id;
+}
+
+async function getSupportAdmins(): Promise<RawAdminProfile[]> {
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('id, full_name, username, avatar_path, role')
+    .eq('role', 'admin')
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    throw new Error('Unable to load support admins');
+  }
+
+  return ((data ?? []) as RawAdminProfile[]).filter((admin) => admin.id);
+}
+
+async function chooseLeastLoadedSupportAdmin(requesterId: string): Promise<RawAdminProfile> {
+  const admins = (await getSupportAdmins()).filter((admin) => admin.id !== requesterId);
+
+  if (admins.length === 0) {
+    throw new Error('No support admins are available right now');
+  }
+
+  const loadByAdminId = new Map(admins.map((admin) => [admin.id, 0]));
+  const { data, error } = await supabaseAdmin
+    .from('conversations')
+    .select(`
+      id,
+      seller_id,
+      listings!conversations_listing_id_fkey (
+        brand
+      )
+    `)
+    .in('seller_id', admins.map((admin) => admin.id));
+
+  if (error) {
+    throw new Error('Unable to inspect admin support workload');
+  }
+
+  for (const conversation of ((data ?? []) as RawSupportConversation[])) {
+    const listing = unwrapRelation(conversation.listings);
+    if (listing?.brand === MODERATION_LISTING_BRAND && loadByAdminId.has(conversation.seller_id)) {
+      loadByAdminId.set(conversation.seller_id, (loadByAdminId.get(conversation.seller_id) ?? 0) + 1);
+    }
+  }
+
+  const lowestLoad = Math.min(...Array.from(loadByAdminId.values()));
+  const leastLoadedAdmins = admins.filter((admin) => loadByAdminId.get(admin.id) === lowestLoad);
+  const randomIndex = Math.floor(Math.random() * leastLoadedAdmins.length);
+
+  return leastLoadedAdmins[randomIndex];
+}
+
+async function createSupportListing(
+  adminUserId: string,
+  targetUserId: string,
+  targetDisplayName: string,
+  subject: string
+): Promise<{ id: string; title: string }> {
+  const categoryId = await getFallbackCategoryId();
+  const title = buildSupportListingTitle(subject, targetDisplayName);
+  const { data: createdListing, error: createListingError } = await supabaseAdmin
+    .from('listings')
+    .insert({
+      seller_id: adminUserId,
+      category_id: categoryId,
+      title,
+      description: buildModerationListingTargetKey(targetUserId),
+      brand: MODERATION_LISTING_BRAND,
+      condition: 'good',
+      price: 0,
+      currency: 'MYR',
+      negotiable: false,
+      status: 'draft',
+      state_id: null,
+      area_id: null,
+    })
+    .select('id, title')
+    .single();
+
+  if (createListingError || !createdListing) {
+    throw new Error('Unable to create a support conversation');
+  }
+
+  return {
+    id: createdListing.id,
+    title: createdListing.title,
+  };
 }
 
 function mapMessageRow(message: RawMessageRow): ChatMessage {
@@ -424,6 +563,84 @@ async function touchConversation(conversationId: string): Promise<void> {
   if (error) {
     throw new Error(`Failed to update conversation activity: ${error.message}`);
   }
+}
+
+export async function createSupportConversation(
+  sender: MessagingActor,
+  payload: { subject?: string; content: string }
+): Promise<SupportConversationResult> {
+  const trimmedContent = payload.content.trim();
+  const subject = typeof payload.subject === 'string' ? payload.subject.trim() : '';
+
+  if (!trimmedContent) {
+    throw new Error('Support message is required');
+  }
+
+  if (trimmedContent.length > 2000) {
+    throw new Error('Support message must be 2000 characters or fewer');
+  }
+
+  const [assignedAdmin, requesterProfileResult] = await Promise.all([
+    chooseLeastLoadedSupportAdmin(sender.id),
+    supabaseAdmin
+      .from('profiles')
+      .select('id, full_name, username, avatar_path')
+      .eq('id', sender.id)
+      .maybeSingle(),
+  ]);
+
+  if (requesterProfileResult.error) {
+    throw new Error('Unable to load your profile for support');
+  }
+
+  const requesterProfile = requesterProfileResult.data as RawProfile | null;
+  const requesterName = buildDisplayName(requesterProfile);
+  const supportListing = await createSupportListing(assignedAdmin.id, sender.id, requesterName, subject);
+  const { data: createdConversation, error: createConversationError } = await supabaseAdmin
+    .from('conversations')
+    .insert({
+      listing_id: supportListing.id,
+      buyer_id: sender.id,
+      seller_id: assignedAdmin.id,
+    })
+    .select('id')
+    .single();
+
+  if (createConversationError || !createdConversation) {
+    throw new Error('Unable to create a support conversation');
+  }
+
+  const conversationId = createdConversation.id as string | undefined;
+
+  if (!conversationId) {
+    throw new Error('Unable to prepare a support conversation');
+  }
+
+  const { data: message, error: messageError } = await supabaseAdmin
+    .from('messages')
+    .insert({
+      conversation_id: conversationId,
+      sender_id: sender.id,
+      body: trimmedContent,
+      is_read: false,
+    })
+    .select(MESSAGE_SELECT)
+    .single();
+
+  if (messageError || !message) {
+    throw new Error('Unable to send your support message');
+  }
+
+  await touchConversation(conversationId);
+
+  return {
+    conversation_id: conversationId,
+    listing_id: supportListing.id,
+    listing_title: supportListing.title,
+    admin_id: assignedAdmin.id,
+    admin_name: buildDisplayName(assignedAdmin),
+    message: mapMessageRow(message as RawMessageRow),
+  };
 }
 
 export async function sendMessage(

@@ -114,6 +114,46 @@ export async function sendMessage(req: AuthenticatedRequest, res: Response): Pro
   }
 }
 
+export async function createSupportConversation(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const userId = ensureAuthenticatedUser(req, res);
+  if (!userId || !req.user) {
+    return;
+  }
+
+  const subject = typeof req.body?.subject === 'string' ? req.body.subject.trim() : '';
+  const content = typeof req.body?.content === 'string' ? req.body.content.trim() : '';
+
+  if (!content) {
+    sendError(res, 'Support message is required', 400);
+    return;
+  }
+
+  try {
+    const result = await messageService.createSupportConversation(req.user, {
+      subject,
+      content,
+    });
+    sendSuccess(res, result, 201);
+  } catch (error) {
+    console.error('Error creating support conversation:', error);
+
+    if (
+      error instanceof Error &&
+      (
+        error.message.includes('required') ||
+        error.message.includes('2000 characters') ||
+        error.message.includes('No support admins') ||
+        error.message.includes('Create at least one category')
+      )
+    ) {
+      sendError(res, error.message, 422);
+      return;
+    }
+
+    sendError(res, 'Internal server error while creating the support conversation', 500);
+  }
+}
+
 export async function sendReply(req: AuthenticatedRequest, res: Response): Promise<void> {
   const userId = ensureAuthenticatedUser(req, res);
   if (!userId || !req.user) {

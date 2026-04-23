@@ -15,6 +15,7 @@ import {
   buildModerationListingTargetKey,
   buildModerationListingTitle,
 } from '../utils/moderationThread';
+import { parseDeliveryDisputeDetails } from '../utils/deliveryDispute';
 import {
   buildListingModerationMessage,
   parseListingModerationMessage,
@@ -569,10 +570,18 @@ export interface AdminReportListItem {
   reason: ReportReason;
   reasonLabel: string;
   details: string | null;
+  reportType: 'listing' | 'delivery_issue';
   status: ReportStatus;
   statusLabel: string;
   createdAt: string;
   updatedAt: string;
+  deliveryIssue: {
+    offerId: string | null;
+    agreedPriceLabel: string | null;
+    paymentReference: string | null;
+    proofUrls: string[];
+    buyerStatement: string;
+  } | null;
   listing: {
     id: string;
     title: string;
@@ -623,6 +632,10 @@ export interface AdminReportsResponse {
     totalPages: number;
   };
   reports: AdminReportListItem[];
+}
+
+export interface AdminReportDetailResponse {
+  report: AdminReportListItem;
 }
 
 export interface UpdateAdminReportStatusInput {
@@ -1091,17 +1104,30 @@ function buildAdminReportListItem(
   const reporterArea = unwrapRelation(reporterProfile.areas);
   const sellerState = unwrapRelation(sellerProfile.states);
   const sellerArea = unwrapRelation(sellerProfile.areas);
-  const reasonLabel = REPORT_REASON_LABELS[report.reason] ?? humanizeValue(report.reason);
+  const deliveryIssue = parseDeliveryDisputeDetails(report.details);
+  const reasonLabel = deliveryIssue
+    ? 'Item Not Received'
+    : REPORT_REASON_LABELS[report.reason] ?? humanizeValue(report.reason);
 
   return {
     id: report.id,
     reason: report.reason,
     reasonLabel,
     details: report.details,
+    reportType: deliveryIssue ? 'delivery_issue' : 'listing',
     status: report.status,
     statusLabel: REPORT_STATUS_LABELS[report.status] ?? humanizeValue(report.status),
     createdAt: report.created_at,
     updatedAt: report.updated_at,
+    deliveryIssue: deliveryIssue
+      ? {
+          offerId: deliveryIssue.offerId,
+          agreedPriceLabel: deliveryIssue.agreedPriceLabel,
+          paymentReference: deliveryIssue.paymentReference,
+          proofUrls: deliveryIssue.proofUrls,
+          buyerStatement: deliveryIssue.buyerStatement,
+        }
+      : null,
     listing: {
       id: listing.id,
       title: listing.title,
@@ -2316,7 +2342,9 @@ export async function getAdminListingDetails(
       return {
         id: report.id,
         reason: report.reason,
-        reasonLabel: REPORT_REASON_LABELS[report.reason] ?? humanizeValue(report.reason),
+        reasonLabel: parseDeliveryDisputeDetails(report.details)
+          ? 'Item Not Received'
+          : REPORT_REASON_LABELS[report.reason] ?? humanizeValue(report.reason),
         details: report.details,
         status: report.status,
         statusLabel: REPORT_STATUS_LABELS[report.status] ?? humanizeValue(report.status),
@@ -2413,9 +2441,12 @@ export async function getAdminReports(query: AdminReportsQuery): Promise<AdminRe
       incrementStringMapCount(openReportCountMap, report.listing_id);
 
       if (!latestOpenReasonLabelMap.has(report.listing_id)) {
+        const deliveryIssue = parseDeliveryDisputeDetails(report.details);
         latestOpenReasonLabelMap.set(
           report.listing_id,
-          REPORT_REASON_LABELS[report.reason] ?? humanizeValue(report.reason)
+          deliveryIssue
+            ? 'Item Not Received'
+            : REPORT_REASON_LABELS[report.reason] ?? humanizeValue(report.reason)
         );
       }
     }
@@ -2493,6 +2524,136 @@ export async function getAdminReports(query: AdminReportsQuery): Promise<AdminRe
       totalPages,
     },
     reports: paginatedReports,
+  };
+}
+
+export async function getAdminReportDetails(
+  reportId: string
+): Promise<AdminReportDetailResponse> {
+  const normalizedReportId = reportId.trim();
+
+  if (!normalizedReportId) {
+    throw new AdminServiceError('Report was not found', 404);
+  }
+
+  const { data: report, error: reportError } = await supabaseAdmin
+    .from('reports')
+    .select('id, listing_id, reporter_id, reason, details, status, created_at, updated_at')
+    .eq('id', normalizedReportId)
+    .maybeSingle();
+
+  if (reportError) {
+    console.error('[Admin] Failed to load selected report:', reportError);
+    throw new AdminServiceError('Unable to load the selected report', 500);
+  }
+
+  if (!report) {
+    throw new AdminServiceError('Report was not found', 404);
+  }
+
+  const rawReport = report as RawAdminReport;
+  const [
+    { data: listing, error: listingError },
+    { data: listingReports, error: listingReportsError },
+    { data: reporterProfile, error: reporterError },
+  ] = await Promise.all([
+    supabaseAdmin
+      .from('listings')
+      .select(`
+        id,
+        seller_id,
+        title,
+        price,
+        currency,
+        status,
+        cover_image_path,
+        created_at,
+        updated_at,
+        views_count,
+        brand,
+        states!listings_state_id_fkey ( id, name ),
+        areas!listings_area_id_fkey ( id, name ),
+        categories!listings_category_id_fkey ( id, name )
+      `)
+      .eq('id', rawReport.listing_id)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('reports')
+      .select('id, listing_id, reporter_id, reason, details, status, created_at, updated_at')
+      .eq('listing_id', rawReport.listing_id)
+      .order('created_at', { ascending: false }),
+    supabaseAdmin
+      .from('profiles')
+      .select(`
+        id, username, full_name, avatar_path, role, created_at, updated_at, state_id, area_id,
+        states!profiles_state_id_fkey ( id, name ),
+        areas!profiles_area_id_fkey ( id, name )
+      `)
+      .eq('id', rawReport.reporter_id)
+      .maybeSingle(),
+  ]);
+
+  if (listingError) {
+    console.error('[Admin] Failed to load listing for selected report:', listingError);
+    throw new AdminServiceError('Unable to load the reported listing', 500);
+  }
+
+  if (listingReportsError) {
+    console.error('[Admin] Failed to load related listing reports:', listingReportsError);
+    throw new AdminServiceError('Unable to load report activity for this listing', 500);
+  }
+
+  if (reporterError) {
+    console.error('[Admin] Failed to load reporter for selected report:', reporterError);
+    throw new AdminServiceError('Unable to load the reporter profile', 500);
+  }
+
+  if (!listing) {
+    throw new AdminServiceError('The reported listing was not found', 404);
+  }
+
+  if (!reporterProfile) {
+    throw new AdminServiceError('The reporter profile was not found', 404);
+  }
+
+  const rawListing = listing as RawAdminListing;
+
+  if (rawListing.brand === MODERATION_LISTING_BRAND) {
+    throw new AdminServiceError('Moderation thread reports are not available here', 404);
+  }
+
+  const sellerProfile = await getProfileById(rawListing.seller_id);
+
+  if (sellerProfile.role === 'admin') {
+    throw new AdminServiceError('Admin-owned reports are not available here', 404);
+  }
+
+  const relatedReports = (listingReports ?? []) as RawAdminReport[];
+  const latestOpenReport = relatedReports.find(
+    (relatedReport) =>
+      relatedReport.status === 'pending' || relatedReport.status === 'reviewed'
+  );
+  const latestOpenReasonLabel = latestOpenReport
+    ? parseDeliveryDisputeDetails(latestOpenReport.details)
+      ? 'Item Not Received'
+      : REPORT_REASON_LABELS[latestOpenReport.reason] ?? humanizeValue(latestOpenReport.reason)
+    : null;
+
+  return {
+    report: buildAdminReportListItem(
+      rawReport,
+      rawListing,
+      reporterProfile as RawProfile,
+      sellerProfile,
+      {
+        totalReportCount: relatedReports.length,
+        openReportCount: relatedReports.filter(
+          (relatedReport) =>
+            relatedReport.status === 'pending' || relatedReport.status === 'reviewed'
+        ).length,
+        latestOpenReasonLabel,
+      }
+    ),
   };
 }
 

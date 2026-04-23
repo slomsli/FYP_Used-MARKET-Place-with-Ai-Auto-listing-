@@ -5,6 +5,7 @@ import {
   deleteAdminListing,
   ensureAdminModerationThread,
   getAdminListingDetails,
+  getAdminReportDetails,
   getAdminListings,
   getAdminOverview,
   getAdminReports,
@@ -113,6 +114,18 @@ export async function getAdminReportsHandler(req: Request, res: Response): Promi
     sendSuccess(res, data);
   } catch (error) {
     handleAdminError(res, error, 'Internal server error while fetching admin reports');
+  }
+}
+
+export async function getAdminReportDetailsHandler(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const data = await getAdminReportDetails(req.params.reportId);
+    sendSuccess(res, data);
+  } catch (error) {
+    handleAdminError(res, error, 'Internal server error while fetching admin report details');
   }
 }
 

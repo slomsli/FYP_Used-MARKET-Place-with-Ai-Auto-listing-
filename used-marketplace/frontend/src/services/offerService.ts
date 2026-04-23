@@ -5,6 +5,34 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 export type OfferKind = 'purchase_request' | 'offer' | 'counter_offer';
 export type OfferStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
 
+export type DeliveryIssueStatus = 'pending' | 'reviewed' | 'resolved' | 'rejected';
+
+export interface OfferReviewSummary {
+  id: string;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+}
+
+export interface OfferDeliveryIssueSummary {
+  reportId: string;
+  status: DeliveryIssueStatus;
+  statusLabel: string;
+  createdAt: string;
+  updatedAt: string;
+  paymentReference: string | null;
+  agreedPriceLabel: string | null;
+  proofUrls: string[];
+  buyerStatement: string;
+}
+
+export interface OfferSaleFollowUp {
+  canBuyerConfirmReceived: boolean;
+  canBuyerReportNotReceived: boolean;
+  review: OfferReviewSummary | null;
+  deliveryIssue: OfferDeliveryIssueSummary | null;
+}
+
 export interface OfferSummary {
   id: string;
   listingId: string;
@@ -38,6 +66,7 @@ export interface OfferSummary {
     displayName: string;
     avatarPath: string | null;
   };
+  saleFollowUp: OfferSaleFollowUp | null;
 }
 
 export interface OffersPageResponse {
@@ -55,6 +84,12 @@ interface ApiResult {
   success?: boolean;
   data?: unknown;
   error?: string;
+}
+
+export interface DeliveryIssueProofPayload {
+  fileName: string;
+  contentType: string;
+  base64Data: string;
 }
 
 /* ── Helpers ───────────────────────────────────────────── */
@@ -205,6 +240,40 @@ export async function counterOffer(
 ): Promise<ServiceResponse<OfferSummary>> {
   return authorizedRequest<OfferSummary>(
     `/api/dashboard/offers/${offerId}/counter`,
+    token,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+export async function submitBuyerReview(
+  token: string,
+  offerId: string,
+  payload: { rating: number; comment?: string }
+): Promise<ServiceResponse<OfferReviewSummary>> {
+  return authorizedRequest<OfferReviewSummary>(
+    `/api/dashboard/offers/${offerId}/review`,
+    token,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+export async function reportItemNotReceived(
+  token: string,
+  offerId: string,
+  payload: {
+    buyerStatement: string;
+    paymentReference?: string;
+    proofs?: DeliveryIssueProofPayload[];
+  }
+): Promise<ServiceResponse<OfferDeliveryIssueSummary>> {
+  return authorizedRequest<OfferDeliveryIssueSummary>(
+    `/api/dashboard/offers/${offerId}/not-received`,
     token,
     {
       method: 'POST',

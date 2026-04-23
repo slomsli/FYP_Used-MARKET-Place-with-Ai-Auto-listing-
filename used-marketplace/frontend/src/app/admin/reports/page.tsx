@@ -6,12 +6,7 @@ import { useDeferredValue, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ROUTES } from '@/src/config/routes';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
-import {
-  ensureAdminModerationThread,
-  getAdminReports,
-  updateAdminListingStatus,
-  updateAdminReportStatus,
-} from '@/src/services/adminService';
+import { ensureAdminModerationThread, getAdminReports } from '@/src/services/adminService';
 import type {
   AdminReportListItem,
   AdminReportStatusFilter,
@@ -74,9 +69,19 @@ function RefreshIcon() {
   );
 }
 
+function ArrowUpRightIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M7 17 17 7" />
+      <path d="M7 7h10v10" />
+    </svg>
+  );
+}
+
 function getInitials(value: string) {
   return value
-    .split(' ')
+    .split(/\s+/)
+    .filter(Boolean)
     .map((part) => part[0])
     .join('')
     .toUpperCase()
@@ -84,7 +89,7 @@ function getInitials(value: string) {
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat('en-MY', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -110,6 +115,22 @@ function buildPagination(currentPage: number, totalPages: number) {
     .sort((left, right) => left - right);
 }
 
+function parseStatusFilter(value: string | null): AdminReportStatusFilter {
+  return value === 'pending' || value === 'reviewed' || value === 'resolved' || value === 'rejected'
+    ? value
+    : 'all';
+}
+
+function parseInitialPage(value: string | null) {
+  const parsed = Number(value);
+
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    return 1;
+  }
+
+  return parsed;
+}
+
 function getStatusTone(status: AdminReportListItem['status']) {
   if (status === 'resolved') {
     return styles.statusResolved;
@@ -126,22 +147,36 @@ function getStatusTone(status: AdminReportListItem['status']) {
   return styles.statusPending;
 }
 
-function getReasonTone(reason: AdminReportListItem['reason']) {
-  if (reason === 'scam' || reason === 'fake' || reason === 'prohibited_item') {
+function getReasonTone(report: AdminReportListItem) {
+  if (report.reportType === 'delivery_issue') {
+    return styles.reasonDelivery;
+  }
+
+  if (report.reason === 'scam' || report.reason === 'fake' || report.reason === 'prohibited_item') {
     return styles.reasonCritical;
   }
 
-  if (reason === 'spam' || reason === 'duplicate' || reason === 'wrong_category') {
+  if (report.reason === 'spam' || report.reason === 'duplicate' || report.reason === 'wrong_category') {
     return styles.reasonNotice;
   }
 
   return styles.reasonNeutral;
 }
 
-function parseStatusFilter(value: string | null): AdminReportStatusFilter {
-  return value === 'pending' || value === 'reviewed' || value === 'resolved' || value === 'rejected'
-    ? value
-    : 'all';
+function buildPreviewText(report: AdminReportListItem) {
+  if (report.deliveryIssue?.buyerStatement) {
+    return report.deliveryIssue.buyerStatement;
+  }
+
+  return report.details?.trim() || 'No extra notes were provided for this report.';
+}
+
+function truncateText(value: string, maxLength = 150) {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength).trimEnd()}...`;
 }
 
 export default function AdminReportsPage() {
@@ -150,17 +185,13 @@ export default function AdminReportsPage() {
   const searchParams = useSearchParams();
   const deferredSearch = useDeferredValue(searchParams.get('q') ?? '');
   const requestedStatusFilter = parseStatusFilter(searchParams.get('status'));
+  const initialPage = parseInitialPage(searchParams.get('page'));
 
   const [data, setData] = useState<AdminReportsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(initialPage);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [busyReportId, setBusyReportId] = useState<string | null>(null);
-  const [busyListingId, setBusyListingId] = useState<string | null>(null);
-  const [busyListingAction, setBusyListingAction] = useState<
-    'pause' | 'resume' | 'approve' | 'reject' | null
-  >(null);
   const [messageSellerId, setMessageSellerId] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -170,10 +201,11 @@ export default function AdminReportsPage() {
     }
 
     let cancelled = false;
+    setLoading(true);
 
     getAdminReports(token, {
       page,
-      pageSize: 6,
+      pageSize: 12,
       search: deferredSearch,
       status: requestedStatusFilter,
     }).then((response) => {
@@ -209,111 +241,19 @@ export default function AdminReportsPage() {
     return () => window.clearTimeout(timeout);
   }, [notice]);
 
-  function buildListingDetailsHref(listingId: string) {
-    const currentParams = searchParams.toString();
+  function buildReportDetailsHref(reportId: string) {
+    const returnParams = new URLSearchParams(searchParams.toString());
+
+    if (page > 1) {
+      returnParams.set('page', String(page));
+    } else {
+      returnParams.delete('page');
+    }
+
+    const currentParams = returnParams.toString();
     const returnTo = `${ROUTES.ADMIN_REPORTS}${currentParams ? `?${currentParams}` : ''}`;
 
-    return `${ROUTES.ADMIN_LISTINGS}/${listingId}?source=reports&returnTo=${encodeURIComponent(returnTo)}`;
-  }
-
-  function requestReason(actionLabel: string, listingTitle: string) {
-    const value = window.prompt(`${actionLabel} reason for "${listingTitle}"`, '');
-
-    if (value === null) {
-      return null;
-    }
-
-    const trimmedValue = value.trim();
-    if (!trimmedValue) {
-      setNotice({
-        type: 'error',
-        message: `A reason is required to ${actionLabel.toLowerCase()} "${listingTitle}".`,
-      });
-      return null;
-    }
-
-    return trimmedValue;
-  }
-
-  async function handleReportAction(
-    report: AdminReportListItem,
-    action: 'review' | 'resolve' | 'dismiss'
-  ) {
-    if (!token) {
-      return;
-    }
-
-    setBusyReportId(report.id);
-    const response = await updateAdminReportStatus(token, report.id, action);
-    setBusyReportId(null);
-
-    if (!response.data) {
-      setNotice({
-        type: 'error',
-        message: response.error || 'Failed to update report status',
-      });
-      return;
-    }
-
-    setNotice({
-      type: 'success',
-      message:
-        action === 'review'
-          ? `"${report.listing.title}" is now marked as in review.`
-          : action === 'resolve'
-            ? `Report for "${report.listing.title}" was resolved.`
-            : `Report for "${report.listing.title}" was dismissed.`,
-    });
-    setRefreshKey((value) => value + 1);
-  }
-
-  async function handleListingModerationAction(
-    report: AdminReportListItem,
-    action: 'pause' | 'resume' | 'approve' | 'reject'
-  ) {
-    if (!token) {
-      return;
-    }
-
-    const reason =
-      action === 'pause' || action === 'reject'
-        ? requestReason(action === 'pause' ? 'Pause' : 'Reject', report.listing.title)
-        : undefined;
-
-    if ((action === 'pause' || action === 'reject') && !reason) {
-      return;
-    }
-
-    setBusyListingId(report.listing.id);
-    setBusyListingAction(action);
-    const response = await updateAdminListingStatus(
-      token,
-      report.listing.id,
-      action,
-      reason ?? undefined
-    );
-    setBusyListingId(null);
-    setBusyListingAction(null);
-
-    if (!response.data) {
-      setNotice({
-        type: 'error',
-        message: response.error || 'Failed to update listing visibility',
-      });
-      return;
-    }
-
-    setNotice({
-      type: 'success',
-      message: action === 'pause'
-        ? `"${report.listing.title}" is now paused and hidden from browse.`
-        : action === 'resume'
-          ? `"${report.listing.title}" is live again on browse.`
-          : action === 'approve'
-            ? `"${report.listing.title}" was approved and is visible in browse again.`
-            : `"${report.listing.title}" was rejected and moved back to the paused queue.`,
-    });
-    setRefreshKey((value) => value + 1);
+    return `${ROUTES.ADMIN_REPORTS}/${reportId}?returnTo=${encodeURIComponent(returnTo)}`;
   }
 
   async function handleMessageSeller(report: AdminReportListItem) {
@@ -353,8 +293,8 @@ export default function AdminReportsPage() {
           <p className={styles.eyebrow}>Trust &amp; Safety</p>
           <h1 className={styles.title}>Reports Management</h1>
           <p className={styles.subtitle}>
-            Review listing complaints from shoppers, move them through moderation, and pause public
-            listings with a required reason or handle seller resubmissions before they return to browse.
+            Scan large report queues in a card grid, then open the cases that need deeper admin
+            action on their own detail page.
           </p>
         </div>
 
@@ -375,9 +315,8 @@ export default function AdminReportsPage() {
                   nextParams.set('status', nextStatus);
                 }
 
-                router.replace(
-                  `${ROUTES.ADMIN_REPORTS}${nextParams.size ? `?${nextParams.toString()}` : ''}`
-                );
+                const nextQuery = nextParams.toString();
+                router.replace(`${ROUTES.ADMIN_REPORTS}${nextQuery ? `?${nextQuery}` : ''}`);
               }}
             >
               <option value="all">All Statuses</option>
@@ -425,7 +364,7 @@ export default function AdminReportsPage() {
             </div>
             <p className={styles.statLabel}>Total Reports</p>
             <h2 className={styles.statValue}>{data.stats.totalReports}</h2>
-            <p className={styles.statDetail}>All marketplace complaints linked to user listings.</p>
+            <p className={styles.statDetail}>All marketplace complaints tied to listings and completed sales.</p>
           </article>
 
           <article className={`${styles.statCard} ${styles.statCardPeach}`}>
@@ -443,7 +382,7 @@ export default function AdminReportsPage() {
             </div>
             <p className={styles.statLabel}>In Review</p>
             <h2 className={styles.statValue}>{data.stats.inReviewReports}</h2>
-            <p className={styles.statDetail}>Items actively being investigated by the admin team.</p>
+            <p className={styles.statDetail}>Cases actively being investigated by the admin team.</p>
           </article>
 
           <article className={`${styles.statCard} ${styles.statCardMint}`}>
@@ -465,262 +404,153 @@ export default function AdminReportsPage() {
         ) : !data || data.reports.length === 0 ? (
           <div className={styles.emptyState}>No reports matched the current search and filter.</div>
         ) : (
-          data.reports.map((report) => {
-            const reportBusy = busyReportId === report.id;
-            const listingBusy = busyListingId === report.listing.id;
-            const sellerBusy = messageSellerId === report.seller.id;
-            const listingDetailsHref = buildListingDetailsHref(report.listing.id);
+          <>
+            <div className={styles.reportGrid}>
+              {data.reports.map((report) => {
+                const sellerBusy = messageSellerId === report.seller.id;
+                const previewText = truncateText(buildPreviewText(report), 170);
+                const reportDetailsHref = buildReportDetailsHref(report.id);
 
-            return (
-              <article key={report.id} className={styles.reportCard}>
-                <div className={styles.reportHeader}>
-                  <Link href={listingDetailsHref} className={styles.listingPreviewLink}>
-                    <div className={styles.listingPreview}>
-                      <div className={styles.media}>
+                return (
+                  <article key={report.id} className={styles.reportCard}>
+                    <Link href={reportDetailsHref} className={styles.cardLink}>
+                      <div className={styles.mediaShell}>
                         {report.listing.coverImagePath ? (
                           <img
                             src={report.listing.coverImagePath}
                             alt={report.listing.title}
-                          className={styles.mediaImage}
-                        />
-                      ) : (
-                        getInitials(report.listing.title)
-                      )}
-                    </div>
-
-                    <div className={styles.headerCopy}>
-                      <div className={styles.badgeRow}>
-                        <span className={`${styles.reasonBadge} ${getReasonTone(report.reason)}`}>
-                          {report.reasonLabel}
-                        </span>
-                        <span className={`${styles.statusBadge} ${getStatusTone(report.status)}`}>
-                          {report.statusLabel}
-                        </span>
-                      </div>
-
-                      <h2 className={styles.listingTitle}>{report.listing.title}</h2>
-                      <p className={styles.listingMeta}>
-                        {formatCurrency(report.listing.price, report.listing.currency)} -{' '}
-                        {report.listing.locationLabel} - Seller @{report.seller.username}
-                      </p>
-                      <span className={styles.previewLinkNote}>Open full details and photos</span>
-                    </div>
-                    </div>
-                  </Link>
-
-                  <div className={styles.reportTime}>
-                    <span>Submitted</span>
-                    <strong>{formatDate(report.createdAt)}</strong>
-                  </div>
-                </div>
-
-                <div className={styles.detailsGrid}>
-                  <div className={styles.detailCard}>
-                    <span className={styles.detailLabel}>Reported By</span>
-                    <div className={styles.personRow}>
-                      <div className={styles.personAvatar}>
-                        {report.reporter.avatarPath ? (
-                          <img
-                            src={report.reporter.avatarPath}
-                            alt={report.reporter.fullName}
                             className={styles.mediaImage}
                           />
                         ) : (
-                          getInitials(report.reporter.fullName)
+                          <div className={styles.mediaFallback}>{getInitials(report.listing.title)}</div>
                         )}
+
+                        <div className={styles.badgeRow}>
+                          <span className={`${styles.reasonBadge} ${getReasonTone(report)}`}>
+                            {report.reasonLabel}
+                          </span>
+                          <span className={`${styles.statusBadge} ${getStatusTone(report.status)}`}>
+                            {report.statusLabel}
+                          </span>
+                        </div>
                       </div>
-                      <div>
-                        <strong>{report.reporter.fullName}</strong>
-                        <p>
-                          @{report.reporter.username} - {report.reporter.locationLabel}
-                        </p>
+
+                      <div className={styles.cardBody}>
+                        <div className={styles.cardTop}>
+                          <div>
+                            <h2 className={styles.listingTitle}>{report.listing.title}</h2>
+                            <p className={styles.listingMeta}>
+                              {formatCurrency(report.listing.price, report.listing.currency)} -{' '}
+                              {report.listing.locationLabel}
+                            </p>
+                          </div>
+                          <div className={styles.timePill}>
+                            <span>Submitted</span>
+                            <strong>{formatDate(report.createdAt)}</strong>
+                          </div>
+                        </div>
+
+                        <div className={styles.metricRow}>
+                          <div className={styles.metricCard}>
+                            <span className={styles.metricLabel}>Reporter</span>
+                            <strong>@{report.reporter.username}</strong>
+                          </div>
+                          <div className={styles.metricCard}>
+                            <span className={styles.metricLabel}>Seller</span>
+                            <strong>@{report.seller.username}</strong>
+                          </div>
+                          <div className={styles.metricCard}>
+                            <span className={styles.metricLabel}>Open Reports</span>
+                            <strong>{report.listing.openReportCount}</strong>
+                          </div>
+                        </div>
+
+                        {report.deliveryIssue ? (
+                          <div className={`${styles.previewPanel} ${styles.previewDelivery}`}>
+                            <strong>Buyer says</strong>
+                            <p>{previewText}</p>
+                          </div>
+                        ) : (
+                          <div className={styles.previewPanel}>
+                            <strong>Reporter notes</strong>
+                            <p>{previewText}</p>
+                          </div>
+                        )}
+
+                        <div className={styles.cardFooter}>
+                          <span className={styles.openHint}>Open full details</span>
+                          <span className={styles.openArrow}>
+                            <ArrowUpRightIcon />
+                          </span>
+                        </div>
                       </div>
+                    </Link>
+
+                    <div className={styles.cardQuickActions}>
+                      <button
+                        type="button"
+                        className={styles.ghostButton}
+                        onClick={() => void handleMessageSeller(report)}
+                        disabled={sellerBusy}
+                      >
+                        <MessageIcon />
+                        <span>{sellerBusy ? 'Opening chat...' : 'Message seller'}</span>
+                      </button>
                     </div>
-                  </div>
+                  </article>
+                );
+              })}
+            </div>
 
-                  <div className={styles.detailCard}>
-                    <span className={styles.detailLabel}>Listing State</span>
-                    <strong>{report.listing.statusLabel}</strong>
-                    <p>
-                      {report.listing.hiddenFromBrowse
-                        ? 'This listing is currently hidden from public browse.'
-                        : 'This listing is still visible to shoppers and eligible for visibility controls.'}
-                    </p>
-                  </div>
+            <div className={styles.paginationBar}>
+              <p>
+                Showing page {data.pagination.page} of {data.pagination.totalPages} -{' '}
+                {data.pagination.totalItems} matching report(s)
+              </p>
 
-                  <div className={styles.detailCard}>
-                    <span className={styles.detailLabel}>Moderation Signal</span>
-                    <strong>
-                      {report.listing.openReportCount} open / {report.listing.totalReportCount} total report(s)
-                    </strong>
-                    <p>
-                      {report.listing.latestOpenReasonLabel
-                        ? `Latest open reason: ${report.listing.latestOpenReasonLabel}.`
-                        : 'No open reports remain on this listing right now.'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className={styles.notesCard}>
-                  <span className={styles.detailLabel}>Reporter Notes</span>
-                  <p>
-                    {report.details?.trim() ||
-                      'No extra notes were provided. The reason tag above is the only complaint on file.'}
-                  </p>
-                </div>
-
-                <div className={styles.notesCard}>
-                  <span className={styles.detailLabel}>Moderation Summary</span>
-                  <p>{report.listing.moderationSummary}</p>
-                </div>
-
-                <div className={styles.actionRow}>
-                  <button
-                    type="button"
-                    className={styles.reviewButton}
-                    onClick={() => void handleReportAction(report, 'review')}
-                    disabled={reportBusy}
-                  >
-                    {reportBusy && report.status !== 'reviewed' ? 'Saving...' : 'Mark Reviewing'}
-                  </button>
-
-                  <button
-                    type="button"
-                    className={styles.resolveButton}
-                    onClick={() => void handleReportAction(report, 'resolve')}
-                    disabled={reportBusy}
-                  >
-                    {reportBusy && report.status !== 'resolved' ? 'Saving...' : 'Resolve Report'}
-                  </button>
-
-                  <button
-                    type="button"
-                    className={styles.dismissButton}
-                    onClick={() => void handleReportAction(report, 'dismiss')}
-                    disabled={reportBusy}
-                  >
-                    {reportBusy && report.status !== 'rejected' ? 'Saving...' : 'Dismiss Report'}
-                  </button>
-
-                  {(report.listing.status === 'active' ||
-                    report.listing.status === 'reserved' ||
-                    report.listing.status === 'archived') && (
-                    <button
-                      type="button"
-                      className={styles.pauseButton}
-                      onClick={() => void handleListingModerationAction(
-                        report,
-                        report.listing.status === 'archived' ? 'resume' : 'pause'
-                      )}
-                      disabled={listingBusy}
-                    >
-                      {listingBusy
-                        ? busyListingAction === 'resume'
-                          ? 'Resuming...'
-                          : 'Pausing...'
-                        : report.listing.status === 'archived'
-                          ? 'Resume Listing'
-                          : 'Pause Listing'}
-                    </button>
-                  )}
-
-                  {report.listing.status === 'rejected' && (
-                    <>
-                      <button
-                        type="button"
-                        className={styles.resolveButton}
-                        onClick={() => void handleListingModerationAction(report, 'approve')}
-                        disabled={listingBusy}
-                      >
-                        {listingBusy && busyListingAction === 'approve'
-                          ? 'Approving...'
-                          : 'Approve Listing'}
-                      </button>
-
-                      <button
-                        type="button"
-                        className={styles.dismissButton}
-                        onClick={() => void handleListingModerationAction(report, 'reject')}
-                        disabled={listingBusy}
-                      >
-                        {listingBusy && busyListingAction === 'reject'
-                          ? 'Rejecting...'
-                          : 'Reject Again'}
-                      </button>
-                    </>
-                  )}
-
-                  <button
-                    type="button"
-                    className={styles.linkButton}
-                    onClick={() => void handleMessageSeller(report)}
-                    disabled={sellerBusy}
-                  >
-                    <MessageIcon />
-                    <span>{sellerBusy ? 'Opening chat...' : 'Message Seller'}</span>
-                  </button>
-
-                  <Link
-                    href={`${ROUTES.ADMIN_LISTINGS}?q=${encodeURIComponent(report.listing.title)}`}
-                    className={styles.linkButton}
-                  >
-                    Open Listing Queue
-                  </Link>
-                </div>
-              </article>
-            );
-          })
-        )}
-
-        {data && (
-          <div className={styles.paginationBar}>
-            <p>
-              Showing page {data.pagination.page} of {data.pagination.totalPages} -{' '}
-              {data.pagination.totalItems} matching report(s)
-            </p>
-
-            <div className={styles.paginationButtons}>
-              <button
-                type="button"
-                className={styles.paginationButton}
-                disabled={page <= 1}
-                onClick={() => {
-                  setLoading(true);
-                  setPage((current) => Math.max(1, current - 1));
-                }}
-              >
-                Prev
-              </button>
-
-              {pagination.map((pageNumber) => (
+              <div className={styles.paginationButtons}>
                 <button
-                  key={pageNumber}
                   type="button"
-                  className={`${styles.paginationButton} ${
-                    pageNumber === page ? styles.paginationButtonActive : ''
-                  }`}
+                  className={styles.paginationButton}
+                  disabled={page <= 1}
                   onClick={() => {
                     setLoading(true);
-                    setPage(pageNumber);
+                    setPage((current) => Math.max(1, current - 1));
                   }}
                 >
-                  {pageNumber}
+                  Prev
                 </button>
-              ))}
 
-              <button
-                type="button"
-                className={styles.paginationButton}
-                disabled={page >= (data.pagination.totalPages || 1)}
-                onClick={() => {
-                  setLoading(true);
-                  setPage((current) => Math.min(data.pagination.totalPages, current + 1));
-                }}
-              >
-                Next
-              </button>
+                {pagination.map((pageNumber) => (
+                  <button
+                    key={pageNumber}
+                    type="button"
+                    className={`${styles.paginationButton} ${
+                      pageNumber === page ? styles.paginationButtonActive : ''
+                    }`}
+                    onClick={() => {
+                      setLoading(true);
+                      setPage(pageNumber);
+                    }}
+                  >
+                    {pageNumber}
+                  </button>
+                ))}
+
+                <button
+                  type="button"
+                  className={styles.paginationButton}
+                  disabled={page >= (data.pagination.totalPages || 1)}
+                  onClick={() => {
+                    setLoading(true);
+                    setPage((current) => Math.min(data.pagination.totalPages, current + 1));
+                  }}
+                >
+                  Next
+                </button>
+              </div>
             </div>
-          </div>
+          </>
         )}
       </section>
     </div>

@@ -23,6 +23,7 @@ export const ROUTES = {
   OFFERS: '/dashboard/offers',
   PROFILE: '/dashboard/profile',
   REPORT: '/dashboard/report',
+  DASHBOARD_SUPPORT: '/dashboard/support',
   SETTINGS: '/dashboard/settings',
   ADD_LISTING: '/dashboard/add-listing',
   BROWSE: '/browse',

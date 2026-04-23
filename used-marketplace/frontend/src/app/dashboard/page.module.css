@@ -710,10 +710,37 @@
 
 /* Concierge Card */
 .conciergeCard {
-  background: linear-gradient(145deg, #0e144a, var(--dash-primary));
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 92% 8%, rgba(255, 255, 255, 0.26), transparent 25%),
+    radial-gradient(circle at 12% 90%, rgba(77, 128, 118, 0.42), transparent 34%),
+    linear-gradient(145deg, #0e144a, var(--dash-primary) 58%, #243a88);
   border-radius: 20px;
   padding: 1.5rem;
   color: white;
+  box-shadow: 0 18px 42px rgba(15, 29, 54, 0.22);
+}
+
+.conciergeGlow {
+  position: absolute;
+  right: -54px;
+  top: -54px;
+  width: 138px;
+  height: 138px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  pointer-events: none;
+}
+
+.conciergeHeader {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
 }
 
 .conciergeIcon {
@@ -724,10 +751,25 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 1rem;
+}
+
+.conciergeStatus {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.32rem 0.68rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .conciergeTitle {
+  position: relative;
+  z-index: 1;
   font-size: 1.0625rem;
   font-weight: 700;
   margin-bottom: 0.5rem;
@@ -735,10 +777,46 @@
 }
 
 .conciergeDesc {
+  position: relative;
+  z-index: 1;
   font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.68);
   line-height: 1.6;
-  margin-bottom: 1.125rem;
+  margin-bottom: 1rem;
+}
+
+.conciergePrompts {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+}
+
+.conciergePrompt {
+  padding: 0.42rem 0.62rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.86);
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.conciergePrompt:hover {
+  background: rgba(255, 255, 255, 0.18);
+  transform: translateY(-1px);
+}
+
+.conciergeActions {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.55rem;
 }
 
 .conciergeBtn {
@@ -747,20 +825,40 @@
   justify-content: center;
   width: 100%;
   padding: 0.625rem;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 12px;
-  color: white;
+  color: var(--dash-primary);
   font-size: 0.8125rem;
-  font-weight: 600;
+  font-weight: 800;
   cursor: pointer;
   transition: all 0.2s ease;
-  
   text-decoration: none;
 }
 
 .conciergeBtn:hover {
-  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.14);
+}
+
+.conciergeSecondaryBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.625rem 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.conciergeSecondaryBtn:hover {
+  background: rgba(255, 255, 255, 0.18);
 }
 
 /* Recommended Card */

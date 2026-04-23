@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   archiveConversation,
+  createSupportConversation,
   getArchivedConversations,
   getConversations,
   getMessages,
@@ -18,6 +19,7 @@ router.use(authenticate);
 
 router.get('/', getConversations);
 router.get('/archives', getArchivedConversations);
+router.post('/support', createSupportConversation);
 router.post('/', sendMessage);
 router.get('/:conversationId', getMessages);
 router.put('/:conversationId/archive', archiveConversation);

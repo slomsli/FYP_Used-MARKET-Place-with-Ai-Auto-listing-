@@ -265,10 +265,18 @@ export interface AdminReportListItem {
   reason: ListingReportReason;
   reasonLabel: string;
   details: string | null;
+  reportType: 'listing' | 'delivery_issue';
   status: ListingReportStatus;
   statusLabel: string;
   createdAt: string;
   updatedAt: string;
+  deliveryIssue: {
+    offerId: string | null;
+    agreedPriceLabel: string | null;
+    paymentReference: string | null;
+    proofUrls: string[];
+    buyerStatement: string;
+  } | null;
   listing: {
     id: string;
     title: string;
@@ -319,6 +327,10 @@ export interface AdminReportsResponse {
     totalPages: number;
   };
   reports: AdminReportListItem[];
+}
+
+export interface AdminReportDetailResponse {
+  report: AdminReportListItem;
 }
 
 export interface AdminReportStatusUpdateResponse {
