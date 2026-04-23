@@ -10,6 +10,41 @@ CREATE TABLE public.areas (
   CONSTRAINT areas_pkey PRIMARY KEY (id),
   CONSTRAINT areas_state_id_fkey FOREIGN KEY (state_id) REFERENCES public.states(id)
 );
+CREATE TABLE public.assistant_messages (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  thread_id uuid NOT NULL,
+  sender_type text NOT NULL CHECK (sender_type = ANY (ARRAY['user'::text, 'assistant'::text, 'system'::text])),
+  message_type text NOT NULL DEFAULT 'text'::text CHECK (message_type = ANY (ARRAY['text'::text, 'action'::text, 'error'::text, 'quick_reply'::text, 'system_notice'::text])),
+  content text NOT NULL,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT assistant_messages_pkey PRIMARY KEY (id),
+  CONSTRAINT assistant_messages_thread_id_fkey FOREIGN KEY (thread_id) REFERENCES public.assistant_threads(id)
+);
+CREATE TABLE public.assistant_thread_state (
+  thread_id uuid NOT NULL,
+  pending_intent text,
+  pending_action_type text,
+  requires_confirmation boolean NOT NULL DEFAULT false,
+  state_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT assistant_thread_state_pkey PRIMARY KEY (thread_id),
+  CONSTRAINT assistant_thread_state_thread_id_fkey FOREIGN KEY (thread_id) REFERENCES public.assistant_threads(id)
+);
+CREATE TABLE public.assistant_threads (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  title text NOT NULL DEFAULT 'New chat'::text,
+  role_context text NOT NULL DEFAULT 'user'::text CHECK (role_context = ANY (ARRAY['user'::text, 'seller'::text, 'admin'::text])),
+  status text NOT NULL DEFAULT 'active'::text CHECK (status = ANY (ARRAY['active'::text, 'archived'::text, 'closed'::text])),
+  last_message_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  deleted_at timestamp with time zone,
+  CONSTRAINT assistant_threads_pkey PRIMARY KEY (id),
+  CONSTRAINT assistant_threads_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
 CREATE TABLE public.categories (
   id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
   name text NOT NULL UNIQUE,
@@ -18,6 +53,14 @@ CREATE TABLE public.categories (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT categories_pkey PRIMARY KEY (id),
   CONSTRAINT categories_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES public.categories(id)
+);
+CREATE TABLE public.conversation_archives (
+  user_id uuid NOT NULL,
+  conversation_id uuid NOT NULL,
+  archived_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT conversation_archives_pkey PRIMARY KEY (user_id, conversation_id),
+  CONSTRAINT conversation_archives_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
+  CONSTRAINT conversation_archives_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id)
 );
 CREATE TABLE public.conversations (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

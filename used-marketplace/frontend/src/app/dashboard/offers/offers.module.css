@@ -337,6 +337,94 @@
   font-style: italic;
 }
 
+.fulfillmentBlock {
+  margin-bottom: 1.15rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.fulfillmentPending {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.fulfillmentReceived {
+  background: #ecfdf5;
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.fulfillmentIssue {
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+
+.fulfillmentHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 0.7rem;
+}
+
+.fulfillmentHeader strong {
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+
+.fulfillmentHeader span {
+  color: #64748b;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.fulfillmentText {
+  margin: 0;
+  color: #334155;
+  line-height: 1.55;
+  font-size: 0.92rem;
+}
+
+.fulfillmentMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+}
+
+.fulfillmentMeta span {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.38rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.fulfillmentQuote {
+  margin: 0.75rem 0 0;
+  color: #0f172a;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  font-style: italic;
+}
+
+.ratingRow {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+}
+
+.ratingStar {
+  color: #cbd5e1;
+}
+
+.ratingStarFilled {
+  color: #f59e0b;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -539,6 +627,37 @@
   margin-top: 2rem;
 }
 
+.ratingPicker {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.ratingButton {
+  width: 46px;
+  height: 46px;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.9rem;
+  background: #ffffff;
+  color: #cbd5e1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+
+.ratingButton:hover {
+  transform: translateY(-1px);
+  border-color: #f59e0b;
+}
+
+.ratingButtonActive {
+  color: #f59e0b;
+  border-color: #fbbf24;
+  background: #fffbeb;
+}
+
 @media (max-width: 640px) {
   .offerCard {
     flex-direction: column;
@@ -547,5 +666,11 @@
   .listingImageWrap {
     width: 100%;
     height: 200px;
+  }
+
+  .fulfillmentHeader,
+  .modalActions {
+    flex-direction: column;
+    align-items: stretch;
   }
 }

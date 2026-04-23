@@ -8,6 +8,8 @@ import {
   rejectOffer,
   cancelOffer,
   createCounterOffer,
+  createBuyerReview,
+  reportDeliveryIssue,
   OfferServiceError,
   type OfferKind,
 } from '../services/offerService';
@@ -239,5 +241,111 @@ export async function counterOfferHandler(
     sendSuccess(res, result, 201);
   } catch (error) {
     handleOfferError(res, error, 'Internal server error while creating counter offer');
+  }
+}
+
+/**
+ * POST /api/dashboard/offers/:offerId/review
+ * Body: { rating, comment? }
+ */
+export async function createBuyerReviewHandler(
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> {
+  if (!req.user) {
+    sendError(res, 'Unauthorized', 401);
+    return;
+  }
+
+  try {
+    const { offerId } = req.params;
+    const { rating, comment } = req.body as {
+      rating?: number;
+      comment?: string;
+    };
+
+    if (!offerId?.trim()) {
+      sendError(res, 'offerId is required', 422);
+      return;
+    }
+
+    if (rating === undefined || typeof rating !== 'number') {
+      sendError(res, 'rating is required and must be a number', 422);
+      return;
+    }
+
+    const result = await createBuyerReview(req.user.id, {
+      offerId: offerId.trim(),
+      rating,
+      comment,
+    });
+
+    sendSuccess(res, result, 201);
+  } catch (error) {
+    handleOfferError(res, error, 'Internal server error while creating a buyer review');
+  }
+}
+
+/**
+ * POST /api/dashboard/offers/:offerId/not-received
+ * Body: { buyerStatement, paymentReference?, proofs? }
+ */
+export async function reportDeliveryIssueHandler(
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> {
+  if (!req.user) {
+    sendError(res, 'Unauthorized', 401);
+    return;
+  }
+
+  try {
+    const { offerId } = req.params;
+    const { buyerStatement, paymentReference, proofs } = req.body as {
+      buyerStatement?: string;
+      paymentReference?: string;
+      proofs?: Array<{
+        fileName?: string;
+        contentType?: string;
+        base64Data?: string;
+      }>;
+    };
+
+    if (!offerId?.trim()) {
+      sendError(res, 'offerId is required', 422);
+      return;
+    }
+
+    if (!buyerStatement || typeof buyerStatement !== 'string') {
+      sendError(res, 'buyerStatement is required', 422);
+      return;
+    }
+
+    if (paymentReference !== undefined && typeof paymentReference !== 'string') {
+      sendError(res, 'paymentReference must be a string when provided', 422);
+      return;
+    }
+
+    if (proofs !== undefined && !Array.isArray(proofs)) {
+      sendError(res, 'proofs must be an array when provided', 422);
+      return;
+    }
+
+    const normalizedProofs = (proofs ?? []).map((proof) => ({
+      fileName: typeof proof.fileName === 'string' ? proof.fileName : '',
+      contentType: typeof proof.contentType === 'string' ? proof.contentType : '',
+      base64Data: typeof proof.base64Data === 'string' ? proof.base64Data : '',
+    }));
+
+    const result = await reportDeliveryIssue(req.user.id, {
+      offerId: offerId.trim(),
+      buyerStatement,
+      paymentReference,
+      proofs: normalizedProofs,
+    });
+
+    sendSuccess(res, result, 201);
+  } catch (error) {
+    handleOfferError(res, error, 'Internal server error while reporting a delivery issue');
   }
 }

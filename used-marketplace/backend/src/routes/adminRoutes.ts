@@ -4,6 +4,8 @@ import { requireAdmin } from '../middleware/requireAdmin';
 import {
   deleteAdminListingHandler,
   ensureAdminModerationThreadHandler,
+  getAdminListingDetailsHandler,
+  getAdminReportDetailsHandler,
   getAdminListingsHandler,
   getAdminOverviewHandler,
   getAdminReportsHandler,
@@ -26,7 +28,9 @@ router.use(requireAdmin);
 router.get('/overview', getAdminOverviewHandler);
 router.get('/users', getAdminUsersHandler);
 router.get('/listings', getAdminListingsHandler);
+router.get('/listings/:listingId', getAdminListingDetailsHandler);
 router.get('/reports', getAdminReportsHandler);
+router.get('/reports/:reportId', getAdminReportDetailsHandler);
 router.post('/users', createAdminUserHandler);
 router.get('/users/:userId', getAdminUserDetailsHandler);
 router.patch('/users/:userId/status', updateAdminUserStatusHandler);

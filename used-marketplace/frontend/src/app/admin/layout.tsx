@@ -5,9 +5,10 @@ import { Suspense, useEffect, useMemo, useState, useTransition } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Spinner from '@/src/components/ui/Spinner';
 import { ROUTES } from '@/src/config/routes';
-import { useRequireAuth } from '@/src/hooks/useRequireAuth';
+import { useAuth } from '@/src/hooks/useAuth';
 import { subscribeToDashboardProfileUpdates } from '@/src/lib/profileSync';
 import { getProfile } from '@/src/services/profileService';
+import { signOut } from '@/src/services/authService';
 import styles from './layout.module.css';
 
 function SearchIcon() {
@@ -87,6 +88,16 @@ function MessageIcon() {
   );
 }
 
+function TicketIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4V7Z" />
+      <path d="M9 9h6" />
+      <path d="M9 15h4" />
+    </svg>
+  );
+}
+
 function CategoryIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -118,6 +129,16 @@ function getInitials(name: string) {
     .slice(0, 2);
 }
 
+function LogoutIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
+    </svg>
+  );
+}
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <Suspense
@@ -134,7 +155,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 }
 
 function AdminLayoutShell({ children }: { children: React.ReactNode }) {
-  const { user, token, loading } = useRequireAuth();
+  const { user, session, loading } = useAuth();
+  const token = session?.access_token;
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -142,8 +164,17 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
   const [profileName, setProfileName] = useState<string | null>(null);
   const [profileRole, setProfileRole] = useState<string | null>(null);
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
-  const [accessChecked, setAccessChecked] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(true);
   const searchValue = searchParams.get('q') ?? '';
+
+  const handleLogout = async () => {
+    await signOut();
+    if (typeof window !== 'undefined') {
+      window.location.assign(ROUTES.LOGIN);
+    } else {
+      router.replace(ROUTES.LOGIN);
+    }
+  };
 
   useEffect(() => {
     if (!token) {
@@ -158,26 +189,20 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
       }
 
       if (!response.data) {
-        setAccessChecked(true);
+        setProfileLoading(false);
         return;
       }
 
       setProfileName(response.data.fullName);
       setProfileRole(response.data.role);
       setAvatarPath(response.data.avatarPath);
-
-      if (response.data.role !== 'admin') {
-        router.replace(ROUTES.DASHBOARD);
-        return;
-      }
-
-      setAccessChecked(true);
+      setProfileLoading(false);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [router, token]);
+  }, [token]);
 
   useEffect(
     () =>
@@ -214,22 +239,26 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
       ? 'Search categories, regions, or districts...'
       : pathname === ROUTES.ADMIN_MESSAGES
         ? 'Inbox search stays inside the messages workspace.'
+        : pathname === ROUTES.ADMIN_SUPPORT
+          ? 'Use the support workspace filters to triage tickets.'
         : 'Overview metrics refresh automatically.';
+  const isListingsRoute = pathname === ROUTES.ADMIN_LISTINGS || pathname.startsWith(`${ROUTES.ADMIN_LISTINGS}/`);
 
   const navItems = useMemo(
     () => [
       { label: 'Overview', href: ROUTES.ADMIN, icon: <DashboardIcon />, active: pathname === ROUTES.ADMIN },
       { label: 'Reports', href: ROUTES.ADMIN_REPORTS, icon: <AlertIcon />, active: pathname === ROUTES.ADMIN_REPORTS },
-      { label: 'Listings', href: ROUTES.ADMIN_LISTINGS, icon: <ListingsIcon />, active: pathname === ROUTES.ADMIN_LISTINGS },
+      { label: 'Listings', href: ROUTES.ADMIN_LISTINGS, icon: <ListingsIcon />, active: isListingsRoute },
       { label: 'Users', href: ROUTES.ADMIN_USERS, icon: <UsersIcon />, active: pathname === ROUTES.ADMIN_USERS },
       { label: 'Messages', href: ROUTES.ADMIN_MESSAGES, icon: <MessageIcon />, active: pathname === ROUTES.ADMIN_MESSAGES },
+      { label: 'Support', href: ROUTES.ADMIN_SUPPORT, icon: <TicketIcon />, active: pathname === ROUTES.ADMIN_SUPPORT },
       { label: 'Guide', href: ROUTES.ADMIN_GUIDE, icon: <HelpIcon />, active: pathname === ROUTES.ADMIN_GUIDE },
       { label: 'Structure', href: ROUTES.ADMIN_STRUCTURE, icon: <CategoryIcon />, active: pathname === ROUTES.ADMIN_STRUCTURE },
     ],
-    [pathname]
+    [isListingsRoute, pathname]
   );
 
-  if (loading || !user || !accessChecked || !isAdmin) {
+  if (loading || !user || profileLoading || !isAdmin) {
     return (
       <div className={styles.loadingState}>
         <Spinner size={34} className="text-navy-800" />
@@ -289,6 +318,15 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
               <span>{item.label}</span>
             </Link>
           ))}
+          
+          <button
+            onClick={handleLogout}
+            className={styles.navItem}
+            style={{ width: '100%', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer', outline: 'none', color: 'inherit', fontFamily: 'inherit', fontSize: 'inherit' }}
+          >
+            <span className={styles.navIcon}><LogoutIcon /></span>
+            <span style={{ color: 'inherit' }}>Log Out</span>
+          </button>
         </nav>
 
         <Link href={ROUTES.BROWSE} className={styles.dashboardLink}>

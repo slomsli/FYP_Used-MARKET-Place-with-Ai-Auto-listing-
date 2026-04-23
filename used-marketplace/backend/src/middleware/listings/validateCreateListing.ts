@@ -86,11 +86,22 @@ export function validateCreateListing(req: Request, res: Response, next: NextFun
     return;
   }
 
+  const allowedStatuses: readonly string[] =
+    req.method === 'PATCH'
+      ? [...CREATEABLE_LISTING_STATUSES, 'rejected']
+      : CREATEABLE_LISTING_STATUSES;
+
   if (
     body.status !== undefined &&
-    !CREATEABLE_LISTING_STATUSES.includes(body.status)
+    !allowedStatuses.includes(body.status)
   ) {
-    sendError(res, 'Status must be either draft or active', 422);
+    sendError(
+      res,
+      req.method === 'PATCH'
+        ? 'Status must be one of: draft, active, rejected'
+        : 'Status must be either draft or active',
+      422
+    );
     return;
   }
 

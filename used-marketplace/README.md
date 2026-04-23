@@ -1,5 +1,22 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Auth Architecture
+
+This project now follows a clearer boundary:
+
+- The frontend uses Supabase directly only for browser session mechanics such as setting, reading, refreshing, and clearing the current session.
+- The backend owns auth orchestration that affects account flows such as register, login, email verification, and password reset OTP verification.
+- The backend also owns business data and protected actions.
+
+In practice, the frontend auth pages call the Express auth endpoints, and only after the backend returns tokens does the browser establish the Supabase session.
+
+## Email OTP Configuration
+
+The email-based verification and password reset flows assume OTP emails, not magic links.
+
+- In Supabase email templates, use `{{ .Token }}` instead of `{{ .ConfirmationURL }}` for the relevant email templates.
+- For the reset-password UX in this repo, configure the Supabase email OTP length to `8` so the emailed code matches the frontend validation.
+
 ## Getting Started
 
 First, run the development server:

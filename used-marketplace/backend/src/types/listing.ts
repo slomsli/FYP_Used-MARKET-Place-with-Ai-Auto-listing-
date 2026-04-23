@@ -2,6 +2,7 @@ export const LISTING_CONDITIONS = ['new', 'like_new', 'good', 'fair', 'poor'] as
 export const CREATEABLE_LISTING_STATUSES = ['draft', 'active'] as const;
 export const FILTERABLE_LISTING_STATUSES = [
   'all',
+  'paused',
   'draft',
   'active',
   'reserved',
@@ -25,6 +26,7 @@ export const PUBLIC_LISTING_SORT_OPTIONS = [
 
 export type ListingCondition = (typeof LISTING_CONDITIONS)[number];
 export type CreateableListingStatus = (typeof CREATEABLE_LISTING_STATUSES)[number];
+export type SellerListingSubmissionStatus = CreateableListingStatus | 'rejected';
 export type ListingFilterStatus = (typeof FILTERABLE_LISTING_STATUSES)[number];
 export type ListingSortOption = (typeof LISTING_SORT_OPTIONS)[number];
 export type PublicListingSortOption = (typeof PUBLIC_LISTING_SORT_OPTIONS)[number];
@@ -38,9 +40,11 @@ export interface CreateListingBody {
   price: number | string | null;
   currency?: string;
   negotiable?: boolean;
-  status?: CreateableListingStatus;
+  status?: SellerListingSubmissionStatus;
   stateId?: number | string | null;
   areaId?: number | string | null;
+  imageStoragePaths?: string[];
+  coverImageStoragePath?: string | null;
   imagePaths?: string[];
   coverImagePath?: string | null;
 }
@@ -54,6 +58,7 @@ export interface UploadListingImageBody {
 export interface UploadedListingImage {
   url: string;
   path: string;
+  storagePath: string;
 }
 
 export interface ListingLookupOption {
@@ -106,6 +111,8 @@ export interface ListingSummary {
   statusLabel: string;
   condition: ListingCondition;
   conditionLabel: string;
+  coverImageStoragePath: string | null;
+  imageStoragePaths: string[];
   coverImagePath: string | null;
   imagePaths: string[];
   createdAt: string;
@@ -118,6 +125,8 @@ export interface ListingSummary {
   category: ListingCategorySummary | null;
   location: ListingLocationSummary;
   soldTo: ListingBuyerSummary | null;
+  moderationReason: string | null;
+  moderationReasonUpdatedAt: string | null;
 }
 
 export interface MyListingsResponse {
@@ -127,6 +136,7 @@ export interface MyListingsResponse {
   };
   statusCounts: {
     all: number;
+    paused: number;
     draft: number;
     active: number;
     reserved: number;

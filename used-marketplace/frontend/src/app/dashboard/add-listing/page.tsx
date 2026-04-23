@@ -22,11 +22,11 @@ import {
   generateListingMetadataFromImages,
 } from '@/src/services/listingService';
 import type {
-  CreateableListingStatus,
   ListingAreaOption,
   ListingCondition,
   ListingMetadata,
   ListingSummary,
+  SellerListingSubmissionStatus,
 } from '@/src/types/listing';
 import styles from './page.module.css';
 
@@ -68,6 +68,7 @@ type ListingImageItem = {
   id: string;
   preview: string;
   source: 'local' | 'remote';
+  storagePath?: string | null;
   file?: File;
 };
 
@@ -83,30 +84,57 @@ function formatCurrency(amount: number) {
 const SUSPENDED_LISTING_NOTICE =
   'Your account is suspended. You can stay signed in, but creating or editing listings is disabled until an admin reactivates your account.';
 
-function getStoredImageUrls(listing: Pick<ListingSummary, 'imagePaths' | 'coverImagePath'>) {
-  const seenUrls = new Set<string>();
-
-  return [...listing.imagePaths, listing.coverImagePath]
-    .filter((path): path is string => Boolean(path))
-    .filter((path) => {
-      if (seenUrls.has(path)) {
-        return false;
-      }
-
-      seenUrls.add(path);
-      return true;
-    })
-    .slice(0, MAX_LISTING_IMAGES);
-}
-
 function buildStoredImageItems(
-  listing: Pick<ListingSummary, 'imagePaths' | 'coverImagePath'>
+  listing: Pick<
+    ListingSummary,
+    'imagePaths' | 'coverImagePath' | 'imageStoragePaths' | 'coverImageStoragePath'
+  >
 ): ListingImageItem[] {
-  return getStoredImageUrls(listing).map((preview, index) => ({
-    id: `remote-${index}-${preview}`,
-    preview,
-    source: 'remote',
-  }));
+  const items: ListingImageItem[] = [];
+  const seenStoragePaths = new Set<string>();
+  const seenPreviews = new Set<string>();
+
+  listing.imagePaths.forEach((preview, index) => {
+    const storagePath = listing.imageStoragePaths[index] ?? null;
+
+    if (
+      !preview ||
+      (storagePath && seenStoragePaths.has(storagePath)) ||
+      seenPreviews.has(preview)
+    ) {
+      return;
+    }
+
+    if (storagePath) {
+      seenStoragePaths.add(storagePath);
+    }
+
+    seenPreviews.add(preview);
+    items.push({
+      id: `remote-${index}-${storagePath || preview}`,
+      preview,
+      source: 'remote',
+      storagePath,
+    });
+  });
+
+  if (
+    listing.coverImagePath &&
+    !seenPreviews.has(listing.coverImagePath) &&
+    !(
+      listing.coverImageStoragePath &&
+      seenStoragePaths.has(listing.coverImageStoragePath)
+    )
+  ) {
+    items.push({
+      id: `remote-cover-${listing.coverImageStoragePath || listing.coverImagePath}`,
+      preview: listing.coverImagePath,
+      source: 'remote',
+      storagePath: listing.coverImageStoragePath,
+    });
+  }
+
+  return items.slice(0, MAX_LISTING_IMAGES);
 }
 
 function revokeLocalPreview(image: ListingImageItem) {
@@ -175,7 +203,7 @@ export default function AddListingPage() {
     message: '',
     visible: false,
   });
-  const [submittingStatus, setSubmittingStatus] = useState<CreateableListingStatus | null>(null);
+  const [submittingStatus, setSubmittingStatus] = useState<SellerListingSubmissionStatus | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -507,8 +535,17 @@ export default function AddListingPage() {
   }, [price]);
 
   const displayedAreas = stateId ? areas : [];
+  const isPausedListing = existingListing?.status === 'archived';
+  const isPendingReviewListing = existingListing?.status === 'rejected';
+  const listingModerationReason = existingListing?.moderationReason?.trim() || null;
 
-  const disabled = metadataLoading || listingLoading || submittingStatus !== null || isSuspended || isGeneratingAI;
+  const disabled =
+    metadataLoading ||
+    listingLoading ||
+    submittingStatus !== null ||
+    isSuspended ||
+    isGeneratingAI ||
+    isPendingReviewListing;
 
   const handleGenerateAI = useCallback(async () => {
     if (!token) {
@@ -586,7 +623,7 @@ export default function AddListingPage() {
     fileInputRef.current?.click();
   }, [disabled]);
 
-  const validateForm = useCallback((status: CreateableListingStatus) => {
+  const validateForm = useCallback((status: SellerListingSubmissionStatus) => {
     if (!title.trim()) {
       return 'Please add a title for your listing';
     }
@@ -618,7 +655,7 @@ export default function AddListingPage() {
     return null;
   }, [areaId, categoryId, condition, price, stateId, title]);
 
-  const submitListing = useCallback(async (status: CreateableListingStatus) => {
+  const submitListing = useCallback(async (status: SellerListingSubmissionStatus) => {
     if (isSuspended) {
       showToast(SUSPENDED_LISTING_NOTICE);
       return;
@@ -658,16 +695,17 @@ export default function AddListingPage() {
       areaId: areaId ? Number(areaId) : null,
     };
 
-    const existingImageUrls = images
+    const existingImageStoragePaths = images
       .filter((image): image is ListingImageItem & { source: 'remote' } => image.source === 'remote')
-      .map((image) => image.preview);
+      .map((image) => image.storagePath)
+      .filter((storagePath): storagePath is string => Boolean(storagePath));
 
     const pendingUploads = images.filter(
       (image): image is ListingImageItem & { source: 'local'; file: File } =>
         image.source === 'local' && image.file instanceof File
     );
 
-    const uploadedImageUrls: string[] = [];
+    const uploadedImageStoragePaths: string[] = [];
 
     for (const image of pendingUploads) {
       let base64Data: string;
@@ -694,14 +732,16 @@ export default function AddListingPage() {
         return;
       }
 
-      uploadedImageUrls.push(uploadResponse.data.url);
+      uploadedImageStoragePaths.push(
+        uploadResponse.data.storagePath || uploadResponse.data.path
+      );
     }
 
-    const imagePaths = [...existingImageUrls, ...uploadedImageUrls];
+    const imageStoragePaths = [...existingImageStoragePaths, ...uploadedImageStoragePaths];
     const listingPayload = {
       ...payload,
-      imagePaths,
-      coverImagePath: imagePaths[0] ?? null,
+      imageStoragePaths,
+      coverImageStoragePath: imageStoragePaths[0] ?? null,
     };
 
     const response = isEditMode && listingId
@@ -717,7 +757,9 @@ export default function AddListingPage() {
     const savedListing = response.data;
 
     const successMessage = isEditMode
-      ? status === 'active'
+      ? status === 'rejected'
+        ? 'Listing sent back to admin for review'
+        : status === 'active'
         ? 'Listing updated successfully'
         : 'Draft updated successfully'
       : status === 'active'
@@ -774,7 +816,11 @@ export default function AddListingPage() {
             {isEditMode ? 'Edit Listing' : 'Post New Item'}
           </h1>
           <p className={styles.subtitle}>
-            {isEditMode
+            {isPausedListing
+              ? 'Update the paused listing, then send it back to admin review from this screen.'
+              : isPendingReviewListing
+                ? 'This listing is already waiting for admin review after your latest update.'
+                : isEditMode
               ? `Update this ${existingListing?.statusLabel.toLowerCase() || 'listing'} with data from your database-backed form.`
               : 'Create a real marketplace listing with categories, states, areas, and photos saved through the backend.'}
           </p>
@@ -802,12 +848,28 @@ export default function AddListingPage() {
         </div>
       )}
 
+      {isPausedListing && (
+        <div className={styles.alert}>
+          {listingModerationReason
+            ? `Admin reason: ${listingModerationReason}. Update the listing here, then resubmit it for approval.`
+            : 'This listing is paused by admin. Update the listing here, then resubmit it for approval.'}
+        </div>
+      )}
+
+      {isPendingReviewListing && (
+        <div className={styles.alert}>
+          {listingModerationReason
+            ? `This listing is waiting for admin review. Last admin reason: ${listingModerationReason}. Editing is locked until the next admin decision.`
+            : 'This listing is waiting for admin review. Editing is locked until the next admin decision.'}
+        </div>
+      )}
+
       <div className={styles.layout}>
         <div className={styles.formColumn}>
           <div className={styles.section}>
             <div className={styles.sectionHeader}>
               <span className={styles.stepNumber}>01</span>
-              <h2 className={styles.sectionTitle}>Visual Archive</h2>
+              <h2 className={styles.sectionTitle}>Listing Gallery</h2>
             </div>
 
             <div
@@ -1088,25 +1150,33 @@ export default function AddListingPage() {
             <button
               type="button"
               className={styles.publishBtn}
-              onClick={() => submitListing('active')}
+              onClick={() => submitListing(isPausedListing ? 'rejected' : 'active')}
               id="publish-btn"
               disabled={disabled}
             >
-              {submittingStatus === 'active'
-                ? isEditMode ? 'Saving...' : 'Publishing...'
-                : isEditMode ? 'Save Changes' : 'Publish to Marketplace'}
+              {submittingStatus === 'active' || submittingStatus === 'rejected'
+                ? isPausedListing
+                  ? 'Sending...'
+                  : isEditMode ? 'Saving...' : 'Publishing...'
+                : isPausedListing
+                  ? 'Resubmit to Admin'
+                  : isPendingReviewListing
+                    ? 'Waiting for Admin'
+                    : isEditMode ? 'Save Changes' : 'Publish to Marketplace'}
             </button>
-            <button
-              type="button"
-              className={styles.draftBtn}
-              onClick={() => submitListing('draft')}
-              id="save-draft-btn"
-              disabled={disabled}
-            >
-              {submittingStatus === 'draft'
-                ? 'Saving...'
-                : isEditMode ? 'Move to Draft' : 'Save Draft'}
-            </button>
+            {!isPausedListing && !isPendingReviewListing && (
+              <button
+                type="button"
+                className={styles.draftBtn}
+                onClick={() => submitListing('draft')}
+                id="save-draft-btn"
+                disabled={disabled}
+              >
+                {submittingStatus === 'draft'
+                  ? 'Saving...'
+                  : isEditMode ? 'Move to Draft' : 'Save Draft'}
+              </button>
+            )}
           </div>
         </div>
 

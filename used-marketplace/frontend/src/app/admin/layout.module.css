@@ -47,6 +47,7 @@
   gap: 1.8rem;
   box-shadow: 4px 0 24px rgba(26, 35, 126, 0.08);
   border-right: 1px solid rgba(255, 255, 255, 0.05);
+  overflow-y: auto;
 }
 
 .brandBlock {

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../config/supabase';
+import { getPublicStorageUrl, getPublicStorageUrls } from '../utils/storage';
 
 /* ── Types ─────────────────────────────────────────────── */
 
@@ -125,6 +126,15 @@ const CONDITION_LABELS: Record<string, string> = {
   poor: 'Poor',
 };
 
+const LISTING_IMAGE_BUCKET =
+  process.env.SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
+  process.env.NEXT_PUBLIC_SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
+  'listing-images';
+const AVATAR_BUCKET =
+  process.env.SUPABASE_AVATARS_BUCKET?.trim() ||
+  process.env.NEXT_PUBLIC_SUPABASE_AVATARS_BUCKET?.trim() ||
+  'avatars';
+
 function unwrapRelation<T>(relation: Relation<T>): T | null {
   if (Array.isArray(relation)) {
     return relation[0] ?? null;
@@ -222,7 +232,7 @@ async function getSellerPreviewMap(
     previewMap.set(profile.id, {
       id: profile.id,
       displayName: buildSellerDisplayName(profile),
-      avatarPath: profile.avatar_path ?? null,
+      avatarPath: getPublicStorageUrl(AVATAR_BUCKET, profile.avatar_path ?? null),
     });
   }
 
@@ -305,8 +315,12 @@ export async function getUserFavorites(
   let items: FavoriteItemSummary[] = validFavorites.map((fav) => {
     const listing = unwrapRelation(fav.listings)!;
     const category = unwrapRelation(listing.categories);
-    const imagePaths = imageMap.get(listing.id) ?? [];
-    const coverImagePath = listing.cover_image_path || imagePaths[0] || null;
+    const imageStoragePaths = imageMap.get(listing.id) ?? [];
+    const imagePaths = getPublicStorageUrls(LISTING_IMAGE_BUCKET, imageStoragePaths);
+    const coverImagePath =
+      getPublicStorageUrl(LISTING_IMAGE_BUCKET, listing.cover_image_path) ||
+      imagePaths[0] ||
+      null;
 
     return {
       favoriteCreatedAt: fav.created_at,

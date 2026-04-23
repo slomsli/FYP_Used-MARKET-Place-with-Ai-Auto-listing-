@@ -1,6 +1,11 @@
 import { supabaseAdmin } from '../config/supabase';
+import { getPublicStorageUrl } from '../utils/storage';
 
 const DASHBOARD_TIME_ZONE = 'Asia/Kuala_Lumpur';
+const LISTING_IMAGE_BUCKET =
+  process.env.SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
+  process.env.NEXT_PUBLIC_SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
+  'listing-images';
 
 export interface DashboardSummary {
   stats: {
@@ -346,7 +351,10 @@ function resolveListingImagePath(
   coverImagePath: string | null | undefined,
   imageMap: Map<string, string>
 ): string | null {
-  return coverImagePath || imageMap.get(listingId) || null;
+  return getPublicStorageUrl(
+    LISTING_IMAGE_BUCKET,
+    coverImagePath || imageMap.get(listingId) || null
+  );
 }
 
 export async function getDashboardSummary(

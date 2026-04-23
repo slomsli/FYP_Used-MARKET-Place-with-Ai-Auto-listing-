@@ -4,11 +4,11 @@ import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ROUTES } from '@/src/config/routes';
-import { createClient } from '@/src/lib/supabase/client';
 import styles from './page.module.css';
 import FormError from '@/src/components/feedback/FormError';
 import AuthInput from '@/src/components/forms/AuthInput';
 import SubmitButton from '@/src/components/forms/SubmitButton';
+import { resendVerificationCode, verifyEmailCode } from '@/src/services/authService';
 
 const MailCheckIcon = () => (
   <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -74,16 +74,11 @@ function VerifyEmailForm() {
     setError(undefined);
     setLoading(true);
 
-    const supabase = createClient();
-    const { error: verifyError } = await supabase.auth.verifyOtp({
-      email: email.trim(),
-      token,
-      type: 'signup'
-    });
+    const response = await verifyEmailCode(email, token);
 
     setLoading(false);
 
-    if (verifyError) {
+    if (!response.success) {
       setError('Invalid or expired verification code. Please try again.');
     } else {
       router.push(ROUTES.DASHBOARD);
@@ -98,46 +93,16 @@ function VerifyEmailForm() {
     setError(undefined);
     setSuccessMsg(undefined);
     setLoading(true);
-    
-    // First, securely check with the backend if the account is verified or exists
-    try {
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-      const checkRes = await fetch(`${API_BASE}/api/auth/check-status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() }),
-      });
-      
-      const checkData = await checkRes.json();
-      if (checkData.success) {
-        if (!checkData.data.exists) {
-          setLoading(false);
-          setError('This account does not exist.');
-          return;
-        }
-        if (checkData.data.isVerified) {
-          setLoading(false);
-          setError('This account is already verified.');
-          return;
-        }
-      }
-    } catch (err) {
-      console.error('Status check failed:', err);
-    }
 
-    const supabase = createClient();
-    const { error: resendError } = await supabase.auth.resend({
-      type: 'signup',
-      email: email.trim(),
-    });
+    const response = await resendVerificationCode(email);
     
     setLoading(false);
     
     // Always start cooldown to prevent spamming regardless of success or rate limit error
     setCooldown(60);
 
-    if (resendError) {
-      setError(resendError.message);
+    if (!response.success) {
+      setError(response.error);
     } else {
       setSuccessMsg('Verification code resent successfully.');
     }
@@ -207,7 +172,7 @@ function VerifyEmailForm() {
       </Link>
 
       <p className={styles.tip}>
-        <strong>Note for admin:</strong> To send an OTP code instead of a link, go to Supabase Dashboard &gt; Authentication &gt; Email Templates &gt; <em>Confirm signup</em> and use <code>{'{'}{'{'} .Token {'}'}{'}'}</code> instead of <code>{'{'}{'{'} .ConfirmationURL {'}'}{'}'}</code>.
+        <strong>Note for admin:</strong> Keep the signup email template on <code>{'{'}{'{'} .Token {'}'}{'}'}</code> and make sure your Supabase email OTP length matches the code length you want users to enter.
       </p>
     </div>
   );

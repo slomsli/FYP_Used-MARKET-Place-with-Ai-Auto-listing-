@@ -4,6 +4,8 @@ import {
   AdminServiceError,
   deleteAdminListing,
   ensureAdminModerationThread,
+  getAdminListingDetails,
+  getAdminReportDetails,
   getAdminListings,
   getAdminOverview,
   getAdminReports,
@@ -88,6 +90,18 @@ export async function getAdminListingsHandler(req: Request, res: Response): Prom
   }
 }
 
+export async function getAdminListingDetailsHandler(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const data = await getAdminListingDetails(req.params.listingId);
+    sendSuccess(res, data);
+  } catch (error) {
+    handleAdminError(res, error, 'Internal server error while fetching admin listing details');
+  }
+}
+
 export async function getAdminReportsHandler(req: Request, res: Response): Promise<void> {
   try {
     const data = await getAdminReports({
@@ -100,6 +114,18 @@ export async function getAdminReportsHandler(req: Request, res: Response): Promi
     sendSuccess(res, data);
   } catch (error) {
     handleAdminError(res, error, 'Internal server error while fetching admin reports');
+  }
+}
+
+export async function getAdminReportDetailsHandler(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const data = await getAdminReportDetails(req.params.reportId);
+    sendSuccess(res, data);
+  } catch (error) {
+    handleAdminError(res, error, 'Internal server error while fetching admin report details');
   }
 }
 
@@ -160,8 +186,17 @@ export async function ensureAdminModerationThreadHandler(
   }
 }
 
-export async function deleteAdminListingHandler(req: Request, res: Response): Promise<void> {
+export async function deleteAdminListingHandler(
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> {
+  if (!req.user) {
+    sendError(res, 'Unauthorized', 401);
+    return;
+  }
+
   const listingId = typeof req.params.listingId === 'string' ? req.params.listingId.trim() : '';
+  const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
 
   if (!listingId) {
     sendError(res, 'listingId is required', 422);
@@ -169,7 +204,11 @@ export async function deleteAdminListingHandler(req: Request, res: Response): Pr
   }
 
   try {
-    const data = await deleteAdminListing(listingId);
+    const data = await deleteAdminListing({
+      adminUserId: req.user.id,
+      listingId,
+      reason,
+    });
     sendSuccess(res, data);
   } catch (error) {
     handleAdminError(res, error, 'Internal server error while deleting a listing from admin management');
@@ -177,24 +216,35 @@ export async function deleteAdminListingHandler(req: Request, res: Response): Pr
 }
 
 export async function updateAdminListingStatusHandler(
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response
 ): Promise<void> {
+  if (!req.user) {
+    sendError(res, 'Unauthorized', 401);
+    return;
+  }
+
   const listingId = typeof req.params.listingId === 'string' ? req.params.listingId.trim() : '';
   const action = req.body?.action;
+  const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : undefined;
 
   if (!listingId) {
     sendError(res, 'listingId is required', 422);
     return;
   }
 
-  if (action !== 'pause' && action !== 'resume') {
-    sendError(res, 'action must be either pause or resume', 422);
+  if (action !== 'pause' && action !== 'resume' && action !== 'approve' && action !== 'reject') {
+    sendError(res, 'action must be one of: pause, resume, approve, reject', 422);
     return;
   }
 
   try {
-    const data = await updateAdminListingStatus(listingId, action);
+    const data = await updateAdminListingStatus({
+      adminUserId: req.user.id,
+      listingId,
+      action,
+      reason,
+    });
     sendSuccess(res, data);
   } catch (error) {
     handleAdminError(res, error, 'Internal server error while updating listing status');

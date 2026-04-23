@@ -40,8 +40,8 @@ export async function generateListingData(images: GenerateListingImageInput[]): 
     .order('name', { ascending: true });
 
   if (allCatError) {
-      console.error('[AI Service] Failed to fetch all categories for AI prompt', allCatError);
-      throw new Error('Failed to fetch categories context');
+    console.error('[AI Service] Failed to fetch all categories for AI prompt', allCatError);
+    throw new Error('Failed to fetch categories context');
   }
 
   const categoryListStr = (allCategories || [])
@@ -88,8 +88,8 @@ Generate a compelling description (at least 2-3 sentences).
           brand: { type: 'string', nullable: true, description: 'Brand name if visible or easily inferred, else null' },
           suggestedCategoryName: { type: 'string', description: 'Suggested category name' },
           matchedCategoryId: { type: 'integer', nullable: true, description: 'The integer ID of the category from the provided list that matches best' },
-          condition: { 
-            type: 'string', 
+          condition: {
+            type: 'string',
             enum: ['new', 'like_new', 'good', 'fair', 'poor'],
             description: 'Item condition'
           },

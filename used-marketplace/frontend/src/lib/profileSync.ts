@@ -1,7 +1,5 @@
 'use client';
 
-import { createClient } from '@/src/lib/supabase/client';
-
 const PROFILE_UPDATED_EVENT = 'dashboard-profile-updated';
 
 export interface DashboardProfileUpdate {
@@ -37,39 +35,6 @@ export function subscribeToDashboardProfileUpdates(
   return () => window.removeEventListener(PROFILE_UPDATED_EVENT, handler);
 }
 
-async function syncSessionProfileMetadata(update: DashboardProfileUpdate): Promise<void> {
-  const supabase = createClient();
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError) {
-    console.error('[Profile] Failed to load current auth user:', userError);
-    return;
-  }
-
-  if (!user) {
-    return;
-  }
-
-  const nextMetadata = {
-    ...(user.user_metadata ?? {}),
-    ...(update.fullName !== undefined ? { full_name: update.fullName } : {}),
-    ...(update.avatarPath !== undefined ? { avatar_path: update.avatarPath } : {}),
-    ...(update.role !== undefined ? { role: update.role } : {}),
-  };
-
-  const { error: updateError } = await supabase.auth.updateUser({
-    data: nextMetadata,
-  });
-
-  if (updateError) {
-    console.error('[Profile] Failed to sync browser auth metadata:', updateError);
-  }
-}
-
 export async function syncDashboardProfile(update: DashboardProfileUpdate): Promise<void> {
   broadcastDashboardProfileUpdate(update);
-  await syncSessionProfileMetadata(update);
 }

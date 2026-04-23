@@ -270,6 +270,19 @@
   min-width: 0;
 }
 
+.listingLink {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.listingLink:hover .listingTitle {
+  color: #111859;
+}
+
 .media,
 .sellerAvatar {
   width: 76px;
@@ -338,6 +351,16 @@
   font-size: 0.8rem;
   font-weight: 700;
   border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.detailLink {
+  display: inline-flex;
+  margin-top: 0.85rem;
+  color: var(--admin-secondary, #4D8076);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .signalGrid {

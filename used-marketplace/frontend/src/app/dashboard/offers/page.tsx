@@ -10,6 +10,7 @@ import {
   rejectOffer,
   cancelOffer,
   counterOffer,
+  submitBuyerReview,
   type OfferSummary,
 } from '@/src/services/offerService';
 import { ROUTES } from '@/src/config/routes';
@@ -33,6 +34,17 @@ function formatDate(isoString: string) {
   }).format(date);
 }
 
+function formatDateTime(isoString: string) {
+  const date = new Date(isoString);
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
+}
+
 function buildMessageHref(listingId: string, recipientId: string, recipientName: string) {
   const params = new URLSearchParams({
     listingId,
@@ -43,8 +55,31 @@ function buildMessageHref(listingId: string, recipientId: string, recipientName:
   return `${ROUTES.MESSAGES}?${params.toString()}`;
 }
 
+function buildDeliveryIssueHref(offer: OfferSummary) {
+  const params = new URLSearchParams({
+    listingId: offer.listingId,
+    offerId: offer.id,
+    orderId: offer.id,
+    title: offer.listing.title,
+    amount: formatCurrency(offer.offerPrice, offer.listing.currency),
+    seller: offer.seller.displayName,
+    scope: 'delivery',
+    source: 'offers',
+  });
+
+  return `${ROUTES.REPORT}?${params.toString()}`;
+}
+
 type OfferTab = 'received' | 'sent';
 type SummaryTone = 'action' | 'waiting' | 'neutral';
+
+function StarIcon({ filled }: { filled: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
+      <path d="m12 3 2.6 5.3 5.9.9-4.2 4.1 1 5.8L12 16.7 6.7 19.1l1-5.8L3.5 9.2l5.9-.9L12 3Z" />
+    </svg>
+  );
+}
 
 function getOfferInitiatorId(offer: OfferSummary) {
   if (offer.initiatedBy === offer.buyerId || offer.initiatedBy === offer.sellerId) {
@@ -202,6 +237,10 @@ export default function OffersPage() {
   const [counterPrice, setCounterPrice] = useState('');
   const [counterMessage, setCounterMessage] = useState('');
   const [counterSubmitting, setCounterSubmitting] = useState(false);
+  const [reviewTarget, setReviewTarget] = useState<OfferSummary | null>(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   const fetchOffers = useCallback(async () => {
@@ -287,6 +326,12 @@ export default function OffersPage() {
     setCounterMessage('');
   };
 
+  const openReviewModal = (offer: OfferSummary) => {
+    setReviewTarget(offer);
+    setReviewRating(5);
+    setReviewComment('');
+  };
+
   const submitCounter = async () => {
     if (!token || !showCounterModal) return;
     setCounterSubmitting(true);
@@ -304,6 +349,31 @@ export default function OffersPage() {
       fetchOffers();
     } else {
       setNotice({ type: 'error', message: res.error || 'Failed to submit counter offer' });
+    }
+  };
+
+  const submitReview = async () => {
+    if (!token || !reviewTarget) return;
+    if (reviewRating < 1 || reviewRating > 5) {
+      setNotice({ type: 'error', message: 'Choose a rating between 1 and 5 stars.' });
+      return;
+    }
+
+    setReviewSubmitting(true);
+
+    const res = await submitBuyerReview(token, reviewTarget.id, {
+      rating: reviewRating,
+      comment: reviewComment.trim() || undefined,
+    });
+
+    setReviewSubmitting(false);
+
+    if (res.data) {
+      setReviewTarget(null);
+      setNotice({ type: 'success', message: 'Receipt confirmed and seller review saved.' });
+      void fetchOffers();
+    } else {
+      setNotice({ type: 'error', message: res.error || 'Failed to save your seller review' });
     }
   };
 
@@ -388,6 +458,14 @@ export default function OffersPage() {
                   : offer.status === 'rejected'
                     ? styles.statusRejected
                     : styles.statusCancelled;
+            const saleFollowUp = offer.saleFollowUp;
+            const isCompletedSale = offer.status === 'accepted' && offer.listing.status === 'sold' && Boolean(saleFollowUp);
+            const followUpClass = saleFollowUp?.deliveryIssue
+              ? styles.fulfillmentIssue
+              : saleFollowUp?.review
+                ? styles.fulfillmentReceived
+                : styles.fulfillmentPending;
+            const deliveryIssueHref = buildDeliveryIssueHref(offer);
 
             return (
               <div key={offer.id} className={styles.offerCard}>
@@ -465,6 +543,74 @@ export default function OffersPage() {
                       <p className={styles.messageText}>
                         &ldquo;{offer.message}&rdquo;
                       </p>
+                    </div>
+                  )}
+
+                  {isCompletedSale && saleFollowUp && (
+                    <div className={`${styles.fulfillmentBlock} ${followUpClass}`}>
+                      <div className={styles.fulfillmentHeader}>
+                        <strong>Post-sale follow-up</strong>
+                        <span>
+                          {saleFollowUp.review
+                            ? formatDateTime(saleFollowUp.review.createdAt)
+                            : saleFollowUp.deliveryIssue
+                              ? formatDateTime(saleFollowUp.deliveryIssue.createdAt)
+                              : 'Buyer confirmation pending'}
+                        </span>
+                      </div>
+
+                      {saleFollowUp.review ? (
+                        <>
+                          <p className={styles.fulfillmentText}>
+                            {isReceived
+                              ? `Buyer confirmed the item was received and rated you ${saleFollowUp.review.rating}/5.`
+                              : `You confirmed the item was received and rated ${offer.seller.displayName} ${saleFollowUp.review.rating}/5.`}
+                          </p>
+                          <div className={styles.ratingRow} aria-label={`Rated ${saleFollowUp.review.rating} out of 5`}>
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <span
+                                key={star}
+                                className={`${styles.ratingStar} ${
+                                  star <= saleFollowUp.review!.rating ? styles.ratingStarFilled : ''
+                                }`}
+                              >
+                                <StarIcon filled={star <= saleFollowUp.review!.rating} />
+                              </span>
+                            ))}
+                          </div>
+                          {saleFollowUp.review.comment && (
+                            <p className={styles.fulfillmentQuote}>
+                              &ldquo;{saleFollowUp.review.comment}&rdquo;
+                            </p>
+                          )}
+                        </>
+                      ) : saleFollowUp.deliveryIssue ? (
+                        <>
+                          <p className={styles.fulfillmentText}>
+                            {isReceived
+                              ? `Buyer reported that the item was not received. Admin status: ${saleFollowUp.deliveryIssue.statusLabel}.`
+                              : `You reported that the item was not received. Admin status: ${saleFollowUp.deliveryIssue.statusLabel}.`}
+                          </p>
+                          <div className={styles.fulfillmentMeta}>
+                            {saleFollowUp.deliveryIssue.agreedPriceLabel && (
+                              <span>Agreed price: {saleFollowUp.deliveryIssue.agreedPriceLabel}</span>
+                            )}
+                            {saleFollowUp.deliveryIssue.paymentReference && (
+                              <span>Payment ref: {saleFollowUp.deliveryIssue.paymentReference}</span>
+                            )}
+                            <span>{saleFollowUp.deliveryIssue.proofUrls.length} proof file(s)</span>
+                          </div>
+                          <p className={styles.fulfillmentQuote}>
+                            &ldquo;{saleFollowUp.deliveryIssue.buyerStatement}&rdquo;
+                          </p>
+                        </>
+                      ) : (
+                        <p className={styles.fulfillmentText}>
+                          {isReceived
+                            ? 'The listing is marked as sold. Waiting for the buyer to confirm receipt or raise a delivery issue.'
+                            : 'Your price was accepted. Confirm receipt once the item arrives, or report it to admin if the seller never delivers it.'}
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -564,6 +710,30 @@ export default function OffersPage() {
                         </Link>
                       </>
                     )}
+
+                    {isCompletedSale && saleFollowUp && (
+                      <>
+                        {saleFollowUp.canBuyerConfirmReceived && (
+                          <button
+                            className={`${styles.btn} ${styles.btnAccept}`}
+                            onClick={() => openReviewModal(offer)}
+                            disabled={reviewSubmitting}
+                          >
+                            Item Received
+                          </button>
+                        )}
+
+                        {saleFollowUp.canBuyerReportNotReceived && (
+                          <Link href={deliveryIssueHref} className={`${styles.btn} ${styles.btnDanger}`}>
+                            Item Not Received
+                          </Link>
+                        )}
+
+                        <Link href={messageHref} className={`${styles.btn} ${styles.btnSecondary}`}>
+                          {isReceived ? 'Message Buyer' : 'Message Seller'}
+                        </Link>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -638,6 +808,66 @@ export default function OffersPage() {
                   : activeTab === 'sent'
                     ? 'Send Another Offer'
                     : 'Send Counter Offer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reviewTarget && (
+        <div className={styles.modalOverlay} onClick={() => setReviewTarget(null)}>
+          <div className={styles.modalContent} onClick={(event) => event.stopPropagation()}>
+            <button className={styles.modalClose} onClick={() => setReviewTarget(null)}>
+              x
+            </button>
+            <h2 className={styles.modalTitle}>Confirm Receipt</h2>
+            <p className={styles.modalSubtitle}>
+              Let the marketplace know the item arrived, then rate your experience with {reviewTarget.seller.displayName}.
+            </p>
+
+            <div className={styles.formGroup}>
+              <label className={styles.formLabel}>Seller Rating</label>
+              <div className={styles.ratingPicker}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    className={`${styles.ratingButton} ${
+                      star <= reviewRating ? styles.ratingButtonActive : ''
+                    }`}
+                    onClick={() => setReviewRating(star)}
+                    aria-label={`Rate ${star} star${star === 1 ? '' : 's'}`}
+                  >
+                    <StarIcon filled={star <= reviewRating} />
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className={styles.formGroup}>
+              <label className={styles.formLabel}>Comment (Optional)</label>
+              <textarea
+                className={styles.textareaField}
+                placeholder="Describe the seller, item condition, or overall experience."
+                value={reviewComment}
+                onChange={(event) => setReviewComment(event.target.value)}
+                maxLength={1000}
+              />
+            </div>
+
+            <div className={styles.modalActions}>
+              <button
+                className={`${styles.btn} ${styles.btnSecondary}`}
+                onClick={() => setReviewTarget(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className={`${styles.btn} ${styles.btnAccept}`}
+                onClick={submitReview}
+                disabled={reviewSubmitting}
+              >
+                {reviewSubmitting ? 'Saving...' : 'Submit Review'}
               </button>
             </div>
           </div>

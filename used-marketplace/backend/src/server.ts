@@ -8,6 +8,7 @@ import adminRoutes from './routes/adminRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
 import listingRoutes from './routes/listingRoutes';
 import messageRoutes from './routes/messageRoutes';
+import assistantRoutes from './routes/assistantRoutes';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -91,7 +92,7 @@ app.use(express.json({ limit: '20mb' }));
 app.get('/api/health', (_req, res) => {
   res.json({
     success: true,
-    message: 'Used Marketplace API is running',
+    message: 'ReMarket API is running',
     timestamp: new Date().toISOString(),
   });
 });
@@ -101,6 +102,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/listings', listingRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/assistant', assistantRoutes);
 
 app.use(errorHandler);
 

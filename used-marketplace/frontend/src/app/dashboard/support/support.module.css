@@ -1,0 +1,550 @@
+.page {
+  max-width: 1100px;
+  animation: supportEnter 0.45s ease-out;
+}
+
+@keyframes supportEnter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.loading {
+  padding: 2rem;
+  color: var(--dash-primary);
+  font-weight: 800;
+}
+
+.hero {
+  position: relative;
+  display: flex;
+  gap: 1.1rem;
+  align-items: center;
+  margin-bottom: 1.4rem;
+  padding: 1.4rem;
+  overflow: hidden;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 90% 10%, rgba(77, 128, 118, 0.18), transparent 30%),
+    linear-gradient(135deg, #ffffff 0%, #eef3ff 100%);
+  border: 1px solid rgba(26, 35, 126, 0.08);
+  box-shadow: 0 18px 42px rgba(15, 29, 54, 0.08);
+}
+
+.heroIcon {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  flex: 0 0 auto;
+  border-radius: 18px;
+  background: linear-gradient(135deg, var(--dash-primary), #243a88);
+  color: #ffffff;
+  box-shadow: 0 12px 26px rgba(26, 35, 126, 0.22);
+}
+
+.eyebrow,
+.sectionEyebrow {
+  color: var(--dash-secondary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.title {
+  max-width: 720px;
+  margin-top: 0.25rem;
+  color: var(--dash-primary);
+  font-size: clamp(1.45rem, 3vw, 2.25rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.08;
+}
+
+.subtitle {
+  max-width: 720px;
+  margin-top: 0.6rem;
+  color: var(--dash-neutral);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+.errorBox {
+  margin-bottom: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(220, 38, 38, 0.16);
+  border-radius: 16px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 0.86rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.4fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.ticketListCard,
+.ticketWorkCard {
+  border: 1px solid rgba(26, 35, 126, 0.08);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 16px 34px rgba(15, 29, 54, 0.06);
+}
+
+.ticketListCard {
+  padding: 1rem;
+  position: sticky;
+  top: 5.5rem;
+}
+
+.ticketWorkCard {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.sectionTitle {
+  margin-top: 0.2rem;
+  color: var(--dash-primary);
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.ticketCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: rgba(26, 35, 126, 0.08);
+  color: var(--dash-primary);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.ticketList {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 1rem;
+}
+
+.ticketItem {
+  width: 100%;
+  padding: 0.9rem;
+  border: 1px solid rgba(26, 35, 126, 0.08);
+  border-radius: 18px;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  color: var(--dash-neutral);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ticketItem:hover,
+.ticketItemActive {
+  border-color: rgba(26, 35, 126, 0.25);
+  background: linear-gradient(135deg, #f8fbff, #eef4ff);
+  transform: translateY(-1px);
+}
+
+.ticketItemTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--dash-primary);
+}
+
+.ticketItemTop strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ticketItemTop span {
+  flex: 0 0 auto;
+  padding: 0.18rem 0.45rem;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: var(--dash-secondary);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ticketPreview {
+  display: -webkit-box;
+  margin-top: 0.45rem;
+  overflow: hidden;
+  color: var(--dash-neutral);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.ticketTime {
+  display: block;
+  margin-top: 0.5rem;
+  color: rgba(69, 71, 79, 0.72);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.emptyText {
+  color: var(--dash-neutral);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.newTicketBox,
+.threadBox {
+  padding: 1rem;
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at top right, rgba(77, 128, 118, 0.08), transparent 30%),
+    linear-gradient(180deg, #ffffff, #f8fafc);
+  border: 1px solid rgba(26, 35, 126, 0.06);
+}
+
+.fieldLabel {
+  display: block;
+  margin-top: 0.8rem;
+  color: var(--dash-primary);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.input,
+.textarea,
+.replyTextarea {
+  width: 100%;
+  margin-top: 0.4rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(26, 35, 126, 0.1);
+  border-radius: 16px;
+  background: #ffffff;
+  color: var(--dash-primary);
+  font: inherit;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  box-shadow: 0 8px 20px rgba(15, 29, 54, 0.04);
+}
+
+.textarea,
+.replyTextarea {
+  resize: vertical;
+}
+
+.primaryButton,
+.replyButton,
+.attachButton,
+.attachButtonSmall,
+.statusButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 16px;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.primaryButton,
+.replyButton {
+  margin-top: 0.85rem;
+  background: linear-gradient(135deg, var(--dash-primary), #243a88);
+  color: #ffffff;
+  box-shadow: 0 12px 24px rgba(26, 35, 126, 0.18);
+}
+
+.primaryButton {
+  width: 100%;
+  padding: 0.85rem 1rem;
+}
+
+.replyButton {
+  padding: 0.72rem 1rem;
+}
+
+.primaryButton:disabled,
+.replyButton:disabled,
+.attachButton:disabled,
+.attachButtonSmall:disabled,
+.statusButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.attachButton,
+.attachButtonSmall {
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  background: #f8fafc;
+  color: var(--dash-primary);
+  border: 1px solid rgba(26, 35, 126, 0.08);
+}
+
+.attachButton {
+  width: 100%;
+  padding: 0.8rem 1rem;
+}
+
+.attachButtonSmall,
+.statusButton {
+  flex: 0 0 auto;
+  padding: 0.72rem 0.9rem;
+}
+
+.statusButton {
+  background: #eef2ff;
+  color: var(--dash-primary);
+}
+
+.statusButtonDanger {
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.openMessagesLink {
+  flex: 0 0 auto;
+  padding: 0.52rem 0.68rem;
+  border: 1px solid rgba(26, 35, 126, 0.08);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--dash-primary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.threadActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.statusOpen {
+  background: #ecfdf5;
+  color: var(--dash-secondary);
+}
+
+.statusResolved {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.statusClosed {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.messageList {
+  display: grid;
+  gap: 0.85rem;
+  max-height: 420px;
+  margin-top: 1rem;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
+.messageBubble {
+  width: min(88%, 520px);
+  padding: 0.85rem 0.95rem;
+  border-radius: 18px;
+  box-shadow: 0 10px 22px rgba(15, 29, 54, 0.06);
+}
+
+.messageMine {
+  justify-self: end;
+  background: linear-gradient(135deg, var(--dash-primary), #243a88);
+  color: #ffffff;
+  border-bottom-right-radius: 6px;
+}
+
+.messageAdmin {
+  justify-self: start;
+  background: #ffffff;
+  color: var(--dash-primary);
+  border: 1px solid rgba(26, 35, 126, 0.08);
+  border-bottom-left-radius: 6px;
+}
+
+.messageAuthor {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+.messageBubble p {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.messageAttachments {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.messageAttachments a {
+  display: block;
+  overflow: hidden;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.messageAdmin .messageAttachments a {
+  background: #f8fafc;
+  border-color: rgba(26, 35, 126, 0.08);
+}
+
+.messageAttachments img {
+  display: block;
+  width: 100%;
+  max-height: 240px;
+  object-fit: cover;
+}
+
+.messageBubble time {
+  display: block;
+  margin-top: 0.45rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  opacity: 0.68;
+}
+
+.replyBox {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.7rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.replyTextarea {
+  flex: 1 1 260px;
+  margin-top: 0;
+}
+
+.hiddenFileInput {
+  display: none;
+}
+
+.closedNotice {
+  flex: 1 0 100%;
+  padding: 0.85rem 1rem;
+  border-radius: 16px;
+  background: #f3f4f6;
+  color: #374151;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.pendingAttachments {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+}
+
+.pendingAttachment {
+  position: relative;
+  overflow: hidden;
+  width: 90px;
+  height: 90px;
+  border: 1px solid rgba(26, 35, 126, 0.1);
+  border-radius: 18px;
+  background: #eef2ff;
+  box-shadow: 0 8px 20px rgba(15, 29, 54, 0.08);
+}
+
+.pendingAttachment img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pendingAttachment button {
+  position: absolute;
+  inset: auto 0 0;
+  padding: 0.35rem;
+  border: 0;
+  background: rgba(15, 23, 42, 0.74);
+  color: #ffffff;
+  font-size: 0.62rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+@media (max-width: 980px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ticketListCard {
+    position: static;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .replyBox {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .messageBubble {
+    width: 96%;
+  }
+}

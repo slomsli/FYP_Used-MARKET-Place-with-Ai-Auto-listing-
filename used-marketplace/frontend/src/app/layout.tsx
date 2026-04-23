@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
+import MarketplaceAssistant from '@/src/components/assistant/MarketplaceAssistant';
 import './globals.css';
 
 const inter = Inter({
@@ -9,9 +10,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'Used Market — Buy & Sell with Confidence',
+  title: 'ReMarket | Buy & Sell with Confidence',
   description:
-    'A trusted marketplace for buying and selling quality used items. Verified listings, secure transactions.',
+    'ReMarket is a trusted marketplace for buying and selling quality used items with verified listings and secure transactions.',
 };
 
 export default function RootLayout({
@@ -21,7 +22,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={inter.variable}>
-      <body className={inter.className}>{children}</body>
+      <body className={inter.className}>
+        {children}
+        <MarketplaceAssistant />
+      </body>
     </html>
   );
 }

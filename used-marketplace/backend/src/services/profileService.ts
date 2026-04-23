@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../config/supabase';
 import { isAccountSuspended } from '../utils/accountStatus';
+import { getPublicStorageUrl, removeStorageObjects } from '../utils/storage';
 
 /* ── Types ─────────────────────────────────────────────── */
 
@@ -233,7 +234,7 @@ export async function getProfile(userId: string): Promise<ProfileData> {
     username: data.username,
     fullName: data.full_name,
     phone: data.phone,
-    avatarPath: data.avatar_path,
+    avatarPath: getPublicStorageUrl(AVATAR_BUCKET, data.avatar_path),
     role: data.role,
     createdAt: data.created_at,
     updatedAt: data.updated_at,
@@ -399,6 +400,16 @@ export async function updateAvatar(
   };
   const ext = extMap[mimeType] || 'jpg';
   const filePath = `avatars/${userId}/avatar-${Date.now()}.${ext}`;
+  const { data: existingProfile, error: existingProfileError } = await supabaseAdmin
+    .from('profiles')
+    .select('avatar_path')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (existingProfileError) {
+    console.error('[Profile] Failed to inspect current avatar before upload:', existingProfileError);
+    throw new ProfileServiceError('Failed to inspect your current avatar', 500);
+  }
 
   await ensureAvatarBucket();
 
@@ -429,7 +440,7 @@ export async function updateAvatar(
   const { error: updateErr } = await supabaseAdmin
     .from('profiles')
     .update({
-      avatar_path: publicUrl,
+      avatar_path: filePath,
       updated_at: new Date().toISOString(),
     })
     .eq('id', userId);
@@ -437,6 +448,12 @@ export async function updateAvatar(
   if (updateErr) {
     console.error('[Profile] Failed to update avatar_path:', updateErr);
     throw new ProfileServiceError('Failed to save avatar', 500);
+  }
+
+  try {
+    await removeStorageObjects(AVATAR_BUCKET, [existingProfile?.avatar_path ?? null]);
+  } catch (storageError) {
+    console.error('[Profile] Failed to remove the previous avatar file:', storageError);
   }
 
   await syncAuthUserMetadata(userId, { avatar_path: publicUrl });
@@ -448,6 +465,17 @@ export async function updateAvatar(
  * Remove the user's avatar.
  */
 export async function removeAvatar(userId: string): Promise<{ avatarPath: null }> {
+  const { data: existingProfile, error: profileError } = await supabaseAdmin
+    .from('profiles')
+    .select('avatar_path')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (profileError) {
+    console.error('[Profile] Failed to inspect current avatar before removal:', profileError);
+    throw new ProfileServiceError('Failed to inspect your current avatar', 500);
+  }
+
   const { error } = await supabaseAdmin
     .from('profiles')
     .update({
@@ -459,6 +487,12 @@ export async function removeAvatar(userId: string): Promise<{ avatarPath: null }
   if (error) {
     console.error('[Profile] Failed to remove avatar:', error);
     throw new ProfileServiceError('Failed to remove avatar', 500);
+  }
+
+  try {
+    await removeStorageObjects(AVATAR_BUCKET, [existingProfile?.avatar_path ?? null]);
+  } catch (storageError) {
+    console.error('[Profile] Failed to delete avatar storage object:', storageError);
   }
 
   await syncAuthUserMetadata(userId, { avatar_path: null });

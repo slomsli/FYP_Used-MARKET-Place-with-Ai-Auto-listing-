@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 export async function generateMetadata(): Promise<Metadata> {
   return {
-    title: 'Listing Detail | ReMarket Archive',
+    title: 'Listing Detail | ReMarket',
     description: 'View real seller-published marketplace inventory and listing details.',
   };
 }
