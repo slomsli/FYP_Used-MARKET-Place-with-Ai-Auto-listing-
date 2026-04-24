@@ -122,7 +122,11 @@ export default function DashboardLayout({
       }}
     >
       <div className={styles.shell}>
-        <DashboardNavbar userName={displayName} avatarUrl={resolvedAvatarPath} />
+        <DashboardNavbar
+          userName={displayName}
+          avatarUrl={resolvedAvatarPath}
+          authToken={token ?? null}
+        />
 
         <div className={styles.body}>
           {/* Mobile menu toggle */}

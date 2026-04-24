@@ -9,6 +9,7 @@ import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import {
   deleteListing,
   getMyListings,
+  getListingSaleBuyerCandidates,
   markListingAsActive,
   markListingAsSold,
   updateListing,
@@ -16,6 +17,7 @@ import {
 import type {
   CreateListingPayload,
   ListingFilterStatus,
+  ListingSaleBuyerCandidate,
   ListingSortOption,
   ListingSummary,
   MyListingsResponse,
@@ -261,6 +263,10 @@ export default function MyListingsPage() {
   const [actingOnId, setActingOnId] = useState<string | null>(null);
   const [actionType, setActionType] = useState<'sold' | 'active' | 'delete' | null>(null);
   const [carouselIndexes, setCarouselIndexes] = useState<Record<string, number>>({});
+  const [saleTarget, setSaleTarget] = useState<ListingSummary | null>(null);
+  const [saleCandidates, setSaleCandidates] = useState<ListingSaleBuyerCandidate[]>([]);
+  const [saleCandidatesLoading, setSaleCandidatesLoading] = useState(false);
+  const [selectedSaleBuyerId, setSelectedSaleBuyerId] = useState('');
 
   useEffect(() => {
     if (!user) {
@@ -335,6 +341,49 @@ export default function MyListingsPage() {
     };
   }, [data]);
 
+  useEffect(() => {
+    if (!saleTarget || !token) {
+      return;
+    }
+
+    const currentSaleTarget = saleTarget;
+    const currentToken = token;
+    let cancelled = false;
+    setSaleCandidatesLoading(true);
+    setSaleCandidates([]);
+    setSelectedSaleBuyerId('');
+
+    async function loadSaleCandidates() {
+      const response = await getListingSaleBuyerCandidates(currentToken, currentSaleTarget.id);
+
+      if (cancelled) {
+        return;
+      }
+
+      if (!response.data) {
+        setSaleTarget(null);
+        setNotice({
+          type: 'error',
+          message: response.error || 'Failed to load recent buyers for this listing.',
+        });
+        setSaleCandidatesLoading(false);
+        return;
+      }
+
+      setSaleCandidates(response.data);
+      if (response.data.length === 1) {
+        setSelectedSaleBuyerId(response.data[0].id);
+      }
+      setSaleCandidatesLoading(false);
+    }
+
+    void loadSaleCandidates();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [saleTarget, token]);
+
   const sellerStats = useMemo(() => {
     if (!data) {
       return [];
@@ -358,29 +407,40 @@ export default function MyListingsPage() {
     ];
   }, [data]);
 
-  async function handleMarkSold(listingId: string, title: string) {
+  function closeSaleModal() {
+    setSaleTarget(null);
+    setSaleCandidates([]);
+    setSaleCandidatesLoading(false);
+    setSelectedSaleBuyerId('');
+  }
+
+  async function handleMarkSold(listing: ListingSummary) {
     if (isSuspended) {
       setNotice({ type: 'error', message: SUSPENDED_LISTING_NOTICE });
       return;
     }
 
-    const confirmed = window.confirm(`Mark "${title}" as sold?`);
-    if (!confirmed) {
+    setNotice(null);
+    setSaleTarget(listing);
+  }
+
+  async function submitMarkSold() {
+    if (!saleTarget) {
       return;
     }
 
-    setActingOnId(listingId);
-    setActionType('sold');
-    setNotice(null);
-
     if (!token) {
-      setActingOnId(null);
-      setActionType(null);
       setNotice({ type: 'error', message: 'No auth session found. Please sign in again.' });
       return;
     }
 
-    const response = await markListingAsSold(token, listingId);
+    setActingOnId(saleTarget.id);
+    setActionType('sold');
+    setNotice(null);
+
+    const response = await markListingAsSold(token, saleTarget.id, {
+      buyerUserId: selectedSaleBuyerId || null,
+    });
     if (!response.data) {
       setActingOnId(null);
       setActionType(null);
@@ -388,9 +448,20 @@ export default function MyListingsPage() {
       return;
     }
 
+    const soldBuyerName =
+      response.data.soldTo?.displayName ||
+      saleCandidates.find((candidate) => candidate.id === selectedSaleBuyerId)?.displayName ||
+      null;
+
     setActingOnId(null);
     setActionType(null);
-    setNotice({ type: 'success', message: `"${title}" was marked as sold.` });
+    closeSaleModal();
+    setNotice({
+      type: 'success',
+      message: soldBuyerName
+        ? `"${saleTarget.title}" was marked as sold to ${soldBuyerName}.`
+        : `"${saleTarget.title}" was marked as sold.`,
+    });
     setRefreshKey((current) => current + 1);
   }
 
@@ -760,7 +831,7 @@ export default function MyListingsPage() {
                       <button
                         type="button"
                         className={`${styles.successAction} ${isSuspended ? styles.actionDisabled : ''}`}
-                        onClick={() => handleMarkSold(listing.id, listing.title)}
+                        onClick={() => handleMarkSold(listing)}
                         disabled={isSuspended || actingOnId === listing.id}
                       >
                         {actingOnId === listing.id && actionType === 'sold'
@@ -805,6 +876,101 @@ export default function MyListingsPage() {
           })
         )}
       </section>
+
+      {saleTarget && (
+        <div className={styles.modalOverlay} onClick={closeSaleModal}>
+          <div className={styles.modalCard} onClick={(event) => event.stopPropagation()}>
+            <button type="button" className={styles.modalClose} onClick={closeSaleModal}>
+              x
+            </button>
+
+            <p className={styles.modalEyebrow}>Complete Sale</p>
+            <h2 className={styles.modalTitle}>Mark "{saleTarget.title}" as sold</h2>
+            <p className={styles.modalText}>
+              Save the buyer if this sale came from a marketplace offer or conversation. You can
+              also leave it blank for an outside sale.
+            </p>
+
+            {saleCandidatesLoading ? (
+              <div className={styles.modalLoading}>Loading recent buyers...</div>
+            ) : (
+              <>
+                <div className={styles.saleBuyerChoices}>
+                  <button
+                    type="button"
+                    className={`${styles.saleBuyerOption} ${
+                      selectedSaleBuyerId === '' ? styles.saleBuyerOptionActive : ''
+                    }`}
+                    onClick={() => setSelectedSaleBuyerId('')}
+                  >
+                    <div className={styles.saleBuyerCopy}>
+                      <strong>Leave buyer blank</strong>
+                      <span>Use this when the item sold outside the marketplace flow.</span>
+                    </div>
+                  </button>
+
+                  {saleCandidates.map((candidate) => (
+                    <button
+                      key={candidate.id}
+                      type="button"
+                      className={`${styles.saleBuyerOption} ${
+                        selectedSaleBuyerId === candidate.id ? styles.saleBuyerOptionActive : ''
+                      }`}
+                      onClick={() => setSelectedSaleBuyerId(candidate.id)}
+                    >
+                      <div className={styles.saleBuyerIdentity}>
+                        {candidate.avatarPath ? (
+                          <img
+                            src={candidate.avatarPath}
+                            alt=""
+                            className={styles.saleBuyerAvatar}
+                          />
+                        ) : (
+                          <span className={styles.saleBuyerFallback}>
+                            {candidate.displayName.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                        <div className={styles.saleBuyerCopy}>
+                          <strong>{candidate.displayName}</strong>
+                          <span>{candidate.contextLabel}</span>
+                        </div>
+                      </div>
+                      {candidate.lastActivityAt && (
+                        <span className={styles.saleBuyerMeta}>
+                          {formatRelativeDate(candidate.lastActivityAt)}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                {saleCandidates.length === 0 && (
+                  <div className={styles.saleBuyerHint}>
+                    No marketplace buyer was found for this listing yet, so the sale can only be
+                    saved without a linked buyer.
+                  </div>
+                )}
+
+                <div className={styles.modalActions}>
+                  <button type="button" className={styles.secondaryAction} onClick={closeSaleModal}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.successAction}
+                    onClick={() => void submitMarkSold()}
+                    disabled={actingOnId === saleTarget.id && actionType === 'sold'}
+                  >
+                    {actingOnId === saleTarget.id && actionType === 'sold'
+                      ? 'Saving...'
+                      : 'Mark Sold'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {data && (
         <section className={styles.insights}>

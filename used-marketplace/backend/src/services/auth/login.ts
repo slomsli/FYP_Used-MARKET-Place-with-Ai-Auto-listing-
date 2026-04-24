@@ -3,6 +3,83 @@ import { ensureProfileForUser } from './profileSync';
 import type { LoginBody, ServiceResult } from '../../types/auth';
 import { buildUpdatedAppMetadata } from '../../utils/accountStatus';
 
+const AUTH_USER_EMAIL_CACHE_TTL_MS = 10 * 60 * 1000;
+
+type CachedAuthUser = {
+  id: string;
+  email: string | null;
+  app_metadata: Record<string, unknown>;
+};
+
+const authUserEmailCache = new Map<string, { expiresAt: number; user: CachedAuthUser }>();
+const authUserEmailNegativeCache = new Map<string, number>();
+
+function normalizeEmail(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function toCachedAuthUser(user: {
+  id: string;
+  email?: string | null;
+  app_metadata?: Record<string, unknown> | null;
+}): CachedAuthUser {
+  return {
+    id: user.id,
+    email: user.email ?? null,
+    app_metadata:
+      user.app_metadata && typeof user.app_metadata === 'object' ? user.app_metadata : {},
+  };
+}
+
+function getCachedAuthUserByEmail(email: string): CachedAuthUser | null | undefined {
+  const now = Date.now();
+  const cachedMatch = authUserEmailCache.get(email);
+
+  if (cachedMatch) {
+    if (cachedMatch.expiresAt > now) {
+      return cachedMatch.user;
+    }
+
+    authUserEmailCache.delete(email);
+  }
+
+  const negativeExpiresAt = authUserEmailNegativeCache.get(email);
+  if (!negativeExpiresAt) {
+    return undefined;
+  }
+
+  if (negativeExpiresAt > now) {
+    return null;
+  }
+
+  authUserEmailNegativeCache.delete(email);
+  return undefined;
+}
+
+function cacheAuthUsers(
+  users: Array<{
+    id: string;
+    email?: string | null;
+    app_metadata?: Record<string, unknown> | null;
+  }>
+): void {
+  const expiresAt = Date.now() + AUTH_USER_EMAIL_CACHE_TTL_MS;
+
+  users.forEach((user) => {
+    const normalizedEmail = user.email ? normalizeEmail(user.email) : '';
+
+    if (!normalizedEmail) {
+      return;
+    }
+
+    authUserEmailCache.set(normalizedEmail, {
+      expiresAt,
+      user: toCachedAuthUser(user),
+    });
+    authUserEmailNegativeCache.delete(normalizedEmail);
+  });
+}
+
 function mapAuthError(error: string): string {
   const lower = error.toLowerCase();
   if (lower.includes('invalid login credentials'))
@@ -19,7 +96,12 @@ function mapAuthError(error: string): string {
 }
 
 async function findAuthUserByEmail(email: string) {
-  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedEmail = normalizeEmail(email);
+  const cachedUser = getCachedAuthUserByEmail(normalizedEmail);
+
+  if (cachedUser !== undefined) {
+    return cachedUser;
+  }
 
   for (let page = 1; page <= 20; page += 1) {
     const { data, error } = await supabaseAdmin.auth.admin.listUsers({
@@ -32,18 +114,25 @@ async function findAuthUserByEmail(email: string) {
       return null;
     }
 
+    cacheAuthUsers(data.users);
+
     const matchedUser = data.users.find(
-      (user) => user.email?.trim().toLowerCase() === normalizedEmail
+      (user) => user.email && normalizeEmail(user.email) === normalizedEmail
     );
 
     if (matchedUser) {
-      return matchedUser;
+      return toCachedAuthUser(matchedUser);
     }
 
     if (data.users.length < 1000) {
       break;
     }
   }
+
+  authUserEmailNegativeCache.set(
+    normalizedEmail,
+    Date.now() + AUTH_USER_EMAIL_CACHE_TTL_MS
+  );
 
   return null;
 }
@@ -71,7 +160,7 @@ async function migrateLegacySuspendedUser(email: string): Promise<boolean> {
 export async function loginUser(body: LoginBody): Promise<ServiceResult> {
   const { email, password } = body;
   
-  let finalEmail = email.trim().toLowerCase();
+  let finalEmail = normalizeEmail(email);
 
   // If it does not contain '@', it might be a username.
   if (!finalEmail.includes('@')) {

@@ -67,6 +67,10 @@ export interface CreateListingPayload {
   coverImagePath?: string | null;
 }
 
+export interface MarkListingSoldPayload {
+  buyerUserId?: string | null;
+}
+
 export interface ListingImageUploadPayload {
   fileName: string;
   contentType: string;
@@ -96,6 +100,14 @@ export interface ListingBuyerSummary {
   id: string;
   displayName: string;
   avatarPath: string | null;
+}
+
+export interface ListingSaleBuyerCandidate {
+  id: string;
+  displayName: string;
+  avatarPath: string | null;
+  contextLabel: string;
+  lastActivityAt: string | null;
 }
 
 export interface ListingSummary {

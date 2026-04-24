@@ -3,6 +3,7 @@ import type {
   DeleteListingResult,
   ListingImageUploadPayload,
   ListingCondition,
+  ListingSaleBuyerCandidate,
   ListingMetadata,
   ListingLookupOption,
   ListingAreaOption,
@@ -10,6 +11,7 @@ import type {
   ListingFilterStatus,
   ListingSortOption,
   ListingSummary,
+  MarkListingSoldPayload,
   MyListingsResponse,
   PublicListingDetailResponse,
   PublicListingsResponse,
@@ -407,13 +409,28 @@ export async function updateListing(
 
 export async function markListingAsSold(
   token: string,
-  listingId: string
+  listingId: string,
+  payload?: MarkListingSoldPayload
 ): Promise<ServiceResponse<ListingSummary>> {
   return authorizedRequest<ListingSummary>(
     `/api/dashboard/listings/${listingId}/mark-sold`,
     token,
     {
       method: 'PATCH',
+      body: JSON.stringify(payload ?? {}),
+    }
+  );
+}
+
+export async function getListingSaleBuyerCandidates(
+  token: string,
+  listingId: string
+): Promise<ServiceResponse<ListingSaleBuyerCandidate[]>> {
+  return authorizedRequest<ListingSaleBuyerCandidate[]>(
+    `/api/dashboard/listings/${listingId}/sale-candidates`,
+    token,
+    {
+      method: 'GET',
     }
   );
 }

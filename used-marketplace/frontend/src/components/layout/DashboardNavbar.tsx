@@ -1,14 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ROUTES } from '@/src/config/routes';
+import { subscribeToDashboardNotificationUpdates } from '@/src/lib/notificationSync';
+import { getNotifications } from '@/src/services/notificationService';
 import styles from './DashboardNavbar.module.css';
 
 interface DashboardNavbarProps {
   userName?: string;
   avatarUrl?: string | null;
+  authToken?: string | null;
 }
 
 /* ── Inline SVG Icons ── */
@@ -32,12 +35,63 @@ const MailIcon = () => (
   </svg>
 );
 
-export default function DashboardNavbar({ userName, avatarUrl }: DashboardNavbarProps) {
+export default function DashboardNavbar({
+  userName,
+  avatarUrl,
+  authToken,
+}: DashboardNavbarProps) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const initials = userName
     ? userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     : 'U';
+
+  useEffect(() => {
+    if (!authToken) {
+      setUnreadNotificationCount(0);
+      return;
+    }
+
+    const currentToken = authToken;
+    let cancelled = false;
+
+    async function loadUnreadCount() {
+      const response = await getNotifications(currentToken, 10);
+
+      if (!cancelled && response.data) {
+        setUnreadNotificationCount(response.data.unreadCount);
+      }
+    }
+
+    void loadUnreadCount();
+
+    const intervalId = window.setInterval(() => {
+      void loadUnreadCount();
+    }, 20000);
+
+    const handleFocus = () => {
+      void loadUnreadCount();
+    };
+
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [authToken]);
+
+  useEffect(
+    () =>
+      subscribeToDashboardNotificationUpdates(({ unreadCount }) => {
+        if (typeof unreadCount === 'number') {
+          setUnreadNotificationCount(unreadCount);
+        }
+      }),
+    []
+  );
 
   function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -77,8 +131,22 @@ export default function DashboardNavbar({ userName, avatarUrl }: DashboardNavbar
         </form>
 
         <div className={styles.iconGroup}>
-          <Link href={ROUTES.OFFERS} className={styles.iconBtn} aria-label="Notifications" id="notifications-btn">
+          <Link
+            href={ROUTES.NOTIFICATIONS}
+            className={`${styles.iconBtn} ${unreadNotificationCount > 0 ? styles.iconBtnAlert : ''}`}
+            aria-label={
+              unreadNotificationCount > 0
+                ? `Notifications (${unreadNotificationCount} unread)`
+                : 'Notifications'
+            }
+            id="notifications-btn"
+          >
             <BellIcon />
+            {unreadNotificationCount > 0 && (
+              <span className={styles.iconBadge}>
+                {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+              </span>
+            )}
           </Link>
           <Link href={ROUTES.MESSAGES} className={styles.iconBtn} aria-label="Messages" id="messages-btn">
             <MailIcon />

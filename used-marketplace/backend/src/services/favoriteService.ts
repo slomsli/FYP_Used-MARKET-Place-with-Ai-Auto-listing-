@@ -38,6 +38,7 @@ interface RawFavoriteListing {
   cover_image_path: string | null;
   created_at: string;
   views_count: unknown;
+  deleted_at: string | null;
   categories: Relation<RawCategory>;
   states: Relation<RawState>;
   areas: Relation<RawArea>;
@@ -269,6 +270,7 @@ export async function getUserFavorites(
         cover_image_path,
         created_at,
         views_count,
+        deleted_at,
         categories!listings_category_id_fkey (
           id, name, slug
         ),
@@ -293,7 +295,7 @@ export async function getUserFavorites(
   // Filter out favorites whose listing no longer exists
   const validFavorites = favorites.filter((fav) => {
     const listing = unwrapRelation(fav.listings);
-    return listing !== null;
+    return listing !== null && listing.deleted_at === null;
   });
 
   // 2) Collect listing IDs and seller IDs for batch lookups
@@ -397,6 +399,7 @@ export async function toggleFavorite(
     .from('listings')
     .select('id')
     .eq('id', listingId)
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (listingError) {

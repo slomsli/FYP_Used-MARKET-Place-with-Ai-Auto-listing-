@@ -8,7 +8,11 @@ import {
   parseModerationListingTargetKey,
 } from '../utils/moderationThread';
 import { isAccountSuspended } from '../utils/accountStatus';
-import { toListingModerationDisplayText } from '../utils/listingModeration';
+import {
+  parseListingModerationMessage,
+  toListingModerationDisplayText,
+} from '../utils/listingModeration';
+import { createNotification } from './notificationService';
 
 export interface ChatMessage {
   id: string;
@@ -143,6 +147,17 @@ interface RawMessageRow {
   body: string;
   is_read: boolean;
   created_at: string;
+}
+
+interface RawConversationNotificationContext {
+  id: string;
+  buyer_id: string;
+  seller_id: string;
+  listing_id: string;
+  listings:
+    | Pick<RawListing, 'title' | 'brand' | 'status' | 'description'>
+    | Pick<RawListing, 'title' | 'brand' | 'status' | 'description'>[]
+    | null;
 }
 
 const MESSAGE_SELECT = 'id, conversation_id, sender_id, body, is_read, created_at';
@@ -648,6 +663,170 @@ function mapMessageRow(message: RawMessageRow): ChatMessage {
   };
 }
 
+function toSingleLineNotificationText(value: string, fallback: string): string {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+
+  if (!normalized) {
+    return fallback;
+  }
+
+  return normalized.length > 180 ? `${normalized.slice(0, 177)}...` : normalized;
+}
+
+function buildConversationMessageLinkPath(
+  conversationId: string,
+  recipientId: string,
+  conversation: Pick<RawConversationNotificationContext, 'buyer_id' | 'seller_id'>,
+  listing: Pick<RawListing, 'brand' | 'title'> | null
+): string {
+  if (listing && isSupportListing(listing)) {
+    return recipientId === conversation.seller_id
+      ? '/admin/support'
+      : '/dashboard/support';
+  }
+
+  if (listing && isModerationListing(listing)) {
+    return recipientId === conversation.seller_id
+      ? `/admin/messages?conversationId=${encodeURIComponent(conversationId)}`
+      : `/dashboard/messages?conversationId=${encodeURIComponent(conversationId)}`;
+  }
+
+  return `/dashboard/messages?conversationId=${encodeURIComponent(conversationId)}`;
+}
+
+async function createConversationMessageNotification(
+  senderId: string,
+  conversationId: string,
+  rawText: string,
+  previewText: string
+): Promise<void> {
+  const { data: conversation, error } = await supabaseAdmin
+    .from('conversations')
+    .select(`
+      id,
+      buyer_id,
+      seller_id,
+      listing_id,
+      listings (
+        title,
+        brand,
+        status,
+        description
+      )
+    `)
+    .eq('id', conversationId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to inspect conversation for notifications: ${error.message}`);
+  }
+
+  if (!conversation) {
+    return;
+  }
+
+  const conversationContext = conversation as RawConversationNotificationContext;
+  const recipientId =
+    conversationContext.buyer_id === senderId
+      ? conversationContext.seller_id
+      : conversationContext.buyer_id;
+
+  if (!recipientId || recipientId === senderId) {
+    return;
+  }
+
+  const listing = unwrapRelation(conversationContext.listings);
+  const genericPreview = toSingleLineNotificationText(
+    previewText,
+    'You have a new message in one of your conversations.'
+  );
+  const linkPath = buildConversationMessageLinkPath(
+    conversationId,
+    recipientId,
+    conversationContext,
+    listing
+  );
+
+  if (listing && isModerationListing(listing)) {
+    const parsedModerationMessage = parseListingModerationMessage(rawText);
+
+    if (parsedModerationMessage) {
+      let title = 'Listing moderation update';
+
+      switch (parsedModerationMessage.eventType) {
+        case 'paused':
+          title = 'Listing paused by admin';
+          break;
+        case 'approved':
+          title = 'Listing approved';
+          break;
+        case 'rejected':
+          title = 'Listing needs more changes';
+          break;
+        case 'resubmitted':
+          title = 'Listing resubmitted for review';
+          break;
+        case 'deleted':
+          title = 'Listing removed by admin';
+          break;
+        default:
+          title = 'Listing moderation update';
+      }
+
+      const moderationLinkPath =
+        recipientId === conversationContext.seller_id
+          ? `/admin/listings/${encodeURIComponent(parsedModerationMessage.listingId)}`
+          : '/dashboard/my-listings';
+
+      await createNotification({
+        userId: recipientId,
+        type: 'system',
+        title,
+        body: toSingleLineNotificationText(
+          toListingModerationDisplayText(rawText),
+          'There is a new update on one of your listings.'
+        ),
+        linkPath: moderationLinkPath,
+      });
+
+      return;
+    }
+
+    await createNotification({
+      userId: recipientId,
+      type: 'system',
+      title: 'New moderation message',
+      body: genericPreview,
+      linkPath,
+    });
+
+    return;
+  }
+
+  if (listing && isSupportListing(listing)) {
+    await createNotification({
+      userId: recipientId,
+      type: 'message',
+      title:
+        senderId === conversationContext.seller_id
+          ? 'Support replied to your ticket'
+          : 'New support ticket message',
+      body: genericPreview,
+      linkPath,
+    });
+
+    return;
+  }
+
+  await createNotification({
+    userId: recipientId,
+    type: 'message',
+    title: `New message about "${listing?.title?.trim() || 'your listing'}"`,
+    body: genericPreview,
+    linkPath,
+  });
+}
+
 async function assertMessagingAllowed(
   sender: MessagingActor,
   listing: Pick<RawListing, 'brand' | 'title'>
@@ -996,8 +1175,20 @@ async function createConversationMessage(
   }
 
   await touchConversation(conversationId);
+  const mappedMessage = mapMessageRow(message as RawMessageRow);
 
-  return mapMessageRow(message as RawMessageRow);
+  try {
+    await createConversationMessageNotification(
+      senderId,
+      conversationId,
+      content,
+      mappedMessage.content
+    );
+  } catch (notificationError) {
+    console.error('[Messages] Failed to create message notification:', notificationError);
+  }
+
+  return mappedMessage;
 }
 
 export async function createSupportConversation(
@@ -1076,6 +1267,7 @@ export async function sendMessage(
     .from('listings')
     .select('seller_id, title, brand, description')
     .eq('id', payload.listing_id)
+    .is('deleted_at', null)
     .single();
 
   if (listingError || !listing) {

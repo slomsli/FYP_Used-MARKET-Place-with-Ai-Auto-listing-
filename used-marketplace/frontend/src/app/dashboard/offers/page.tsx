@@ -11,6 +11,7 @@ import {
   cancelOffer,
   counterOffer,
   submitBuyerReview,
+  submitSellerReviewResponse,
   type OfferSummary,
 } from '@/src/services/offerService';
 import { ROUTES } from '@/src/config/routes';
@@ -187,6 +188,13 @@ function getOfferPresentation(
         ? `You rejected the buyer's ${typeLabel} at ${formattedPrice}.`
         : `Your ${typeLabel} at ${formattedPrice} was rejected.`;
     }
+  } else if (offer.status === 'withdrawn') {
+    summaryText = isReceived
+      ? `This competing ${typeLabel} was automatically closed after you sold the item elsewhere.`
+      : `Your ${typeLabel} at ${formattedPrice} was automatically closed because another buyer completed the sale first.`;
+    summarySubtext = isReceived
+      ? 'The listing is already sold, so this thread is archived as a competing offer.'
+      : 'This was not manually rejected by the seller. The item was sold through a different accepted offer.';
   } else {
     summaryText = isInitiatedByCurrentUser
       ? offer.offerKind === 'counter_offer'
@@ -212,6 +220,8 @@ function getOfferPresentation(
       ? isWaitingForCurrentUser
         ? 'Action needed'
         : 'Waiting'
+      : offer.status === 'withdrawn'
+      ? 'Withdrawn'
       : offer.status;
 
   return {
@@ -241,6 +251,9 @@ export default function OffersPage() {
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [sellerReplyTarget, setSellerReplyTarget] = useState<OfferSummary | null>(null);
+  const [sellerReplyText, setSellerReplyText] = useState('');
+  const [sellerReplySubmitting, setSellerReplySubmitting] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   const fetchOffers = useCallback(async () => {
@@ -332,6 +345,11 @@ export default function OffersPage() {
     setReviewComment('');
   };
 
+  const openSellerReplyModal = (offer: OfferSummary) => {
+    setSellerReplyTarget(offer);
+    setSellerReplyText(offer.saleFollowUp?.review?.sellerResponse?.body ?? '');
+  };
+
   const submitCounter = async () => {
     if (!token || !showCounterModal) return;
     setCounterSubmitting(true);
@@ -374,6 +392,30 @@ export default function OffersPage() {
       void fetchOffers();
     } else {
       setNotice({ type: 'error', message: res.error || 'Failed to save your seller review' });
+    }
+  };
+
+  const submitSellerReply = async () => {
+    if (!token || !sellerReplyTarget) return;
+    if (sellerReplyText.trim().length < 3) {
+      setNotice({ type: 'error', message: 'Your reply should be at least 3 characters long.' });
+      return;
+    }
+
+    setSellerReplySubmitting(true);
+
+    const res = await submitSellerReviewResponse(token, sellerReplyTarget.id, {
+      response: sellerReplyText.trim(),
+    });
+
+    setSellerReplySubmitting(false);
+
+    if (res.data) {
+      setSellerReplyTarget(null);
+      setNotice({ type: 'success', message: 'Seller reply saved successfully.' });
+      void fetchOffers();
+    } else {
+      setNotice({ type: 'error', message: res.error || 'Failed to save your reply' });
     }
   };
 
@@ -457,6 +499,8 @@ export default function OffersPage() {
                   ? styles.statusAccepted
                   : offer.status === 'rejected'
                     ? styles.statusRejected
+                    : offer.status === 'withdrawn'
+                      ? styles.statusWithdrawn
                     : styles.statusCancelled;
             const saleFollowUp = offer.saleFollowUp;
             const isCompletedSale = offer.status === 'accepted' && offer.listing.status === 'sold' && Boolean(saleFollowUp);
@@ -582,6 +626,17 @@ export default function OffersPage() {
                             <p className={styles.fulfillmentQuote}>
                               &ldquo;{saleFollowUp.review.comment}&rdquo;
                             </p>
+                          )}
+                          {saleFollowUp.review.sellerResponse && (
+                            <div className={styles.sellerReplyBlock}>
+                              <div className={styles.sellerReplyHeader}>
+                                <strong>Seller reply</strong>
+                                <span>{formatDateTime(saleFollowUp.review.sellerResponse.updatedAt)}</span>
+                              </div>
+                              <p className={styles.sellerReplyText}>
+                                &ldquo;{saleFollowUp.review.sellerResponse.body}&rdquo;
+                              </p>
+                            </div>
                           )}
                         </>
                       ) : saleFollowUp.deliveryIssue ? (
@@ -734,6 +789,16 @@ export default function OffersPage() {
                         </Link>
                       </>
                     )}
+
+                    {isCompletedSale && saleFollowUp?.review && isReceived && (
+                      <button
+                        className={`${styles.btn} ${styles.btnPrimary}`}
+                        onClick={() => openSellerReplyModal(offer)}
+                        disabled={sellerReplySubmitting}
+                      >
+                        {saleFollowUp.review.sellerResponse ? 'Edit Review Reply' : 'Reply to Review'}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -868,6 +933,48 @@ export default function OffersPage() {
                 disabled={reviewSubmitting}
               >
                 {reviewSubmitting ? 'Saving...' : 'Submit Review'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {sellerReplyTarget && (
+        <div className={styles.modalOverlay} onClick={() => setSellerReplyTarget(null)}>
+          <div className={styles.modalContent} onClick={(event) => event.stopPropagation()}>
+            <button className={styles.modalClose} onClick={() => setSellerReplyTarget(null)}>
+              x
+            </button>
+            <h2 className={styles.modalTitle}>Reply to Buyer Review</h2>
+            <p className={styles.modalSubtitle}>
+              Add context for {sellerReplyTarget.buyer.displayName} on the completed sale of{' '}
+              {sellerReplyTarget.listing.title}.
+            </p>
+
+            <div className={styles.formGroup}>
+              <label className={styles.formLabel}>Seller Reply</label>
+              <textarea
+                className={styles.textareaField}
+                placeholder="Thank the buyer or add helpful context about the transaction."
+                value={sellerReplyText}
+                onChange={(event) => setSellerReplyText(event.target.value)}
+                maxLength={1000}
+              />
+            </div>
+
+            <div className={styles.modalActions}>
+              <button
+                className={`${styles.btn} ${styles.btnSecondary}`}
+                onClick={() => setSellerReplyTarget(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className={`${styles.btn} ${styles.btnPrimary}`}
+                onClick={submitSellerReply}
+                disabled={sellerReplySubmitting}
+              >
+                {sellerReplySubmitting ? 'Saving...' : 'Save Reply'}
               </button>
             </div>
           </div>

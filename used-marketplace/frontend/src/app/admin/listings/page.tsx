@@ -277,10 +277,22 @@ export default function AdminListingsPage() {
     }
 
     const confirmed = window.confirm(
-      `Delete "${listing.title}" by ${listing.seller.fullName}? This will also remove its related offers, reports, and conversation history.`
+      `Remove "${listing.title}" by ${listing.seller.fullName} from the marketplace? The listing will be hidden, pending offers will be closed, and history will be preserved for audit and support.`
     );
 
     if (!confirmed) {
+      return;
+    }
+
+    const typedConfirmation = window.prompt(
+      `Type DELETE to remove "${listing.title}" from the marketplace while preserving its related history.`
+    );
+
+    if (typedConfirmation !== 'DELETE') {
+      setNotice({
+        type: 'error',
+        message: 'Listing deletion was cancelled because DELETE was not entered exactly.',
+      });
       return;
     }
 
@@ -298,7 +310,7 @@ export default function AdminListingsPage() {
 
     setNotice({
       type: 'success',
-      message: `"${listing.title}" was removed. Deleted ${response.data.deletedRecords.conversations} conversation(s), ${response.data.deletedRecords.offers} offer(s), and ${response.data.deletedRecords.reports} report(s).`,
+      message: `"${listing.title}" was removed from marketplace view. Preserved ${response.data.deletedRecords.conversations} conversation(s), ${response.data.deletedRecords.offers} offer record(s), and ${response.data.deletedRecords.reports} report(s).`,
     });
     setRefreshKey((value) => value + 1);
   }

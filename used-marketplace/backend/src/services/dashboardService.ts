@@ -380,6 +380,7 @@ export async function getDashboardSummary(
       'id, title, condition, status, created_at, updated_at, views_count, price, currency, cover_image_path'
     )
     .eq('seller_id', userId)
+    .is('deleted_at', null)
     .order('created_at', { ascending: false });
   logQueryError('user listings', userListingsResult.error);
 
@@ -394,7 +395,13 @@ export async function getDashboardSummary(
 
   const favoritesResult = await supabaseAdmin
     .from('favorites')
-    .select('*', { count: 'exact', head: true })
+    .select(`
+      listing_id,
+      listings (
+        id,
+        deleted_at
+      )
+    `)
     .eq('user_id', userId);
   logQueryError('favorites', favoritesResult.error);
 
@@ -450,6 +457,7 @@ export async function getDashboardSummary(
     .select('id, title, price, currency, cover_image_path')
     .neq('seller_id', userId)
     .eq('status', 'active')
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
     .limit(1);
   logQueryError('recommended listing', recommendedResult.error);
@@ -618,7 +626,13 @@ export async function getDashboardSummary(
     stats: {
       activeListings: userListings.filter((listing) => listing.status === 'active').length,
       unreadMessages,
-      favorites: favoritesResult.count || 0,
+      favorites: ((favoritesResult.data ?? []) as Array<{
+        listing_id: string;
+        listings: Relation<{ id: string; deleted_at: string | null }>;
+      }>).filter((favorite) => {
+        const listing = unwrapRelation(favorite.listings);
+        return listing !== null && listing.deleted_at === null;
+      }).length,
       pendingOffers: pendingOffersResult.count || 0,
     },
     insights: {

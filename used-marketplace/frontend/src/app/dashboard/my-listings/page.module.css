@@ -568,6 +568,172 @@
   background: #e4e9f6;
 }
 
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.2rem;
+  background: rgba(15, 23, 48, 0.58);
+  backdrop-filter: blur(6px);
+}
+
+.modalCard {
+  position: relative;
+  width: min(680px, 100%);
+  max-height: min(88vh, 760px);
+  overflow: auto;
+  border-radius: 28px;
+  background: #ffffff;
+  padding: 1.5rem;
+  box-shadow: 0 30px 70px rgba(17, 24, 39, 0.22);
+}
+
+.modalClose {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 2.2rem;
+  height: 2.2rem;
+  border: none;
+  border-radius: 999px;
+  background: #eef1fb;
+  color: #2f3553;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.modalEyebrow {
+  margin: 0 0 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6c79a7;
+}
+
+.modalTitle {
+  margin: 0;
+  font-size: clamp(1.35rem, 2vw, 1.85rem);
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+  color: #121526;
+}
+
+.modalText {
+  margin: 0.75rem 0 1.1rem;
+  font-size: 0.94rem;
+  line-height: 1.65;
+  color: #61697f;
+}
+
+.modalLoading {
+  padding: 1rem 0;
+  color: #2f3553;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.saleBuyerChoices {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.saleBuyerOption {
+  width: 100%;
+  border: 1px solid rgba(24, 34, 74, 0.08);
+  border-radius: 22px;
+  background: #f8f9fd;
+  padding: 0.95rem 1rem;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.saleBuyerOption:hover {
+  transform: translateY(-1px);
+  border-color: rgba(24, 34, 74, 0.16);
+}
+
+.saleBuyerOptionActive {
+  border-color: rgba(20, 184, 166, 0.45);
+  background: #ecfffb;
+  box-shadow: 0 12px 24px rgba(20, 184, 166, 0.12);
+}
+
+.saleBuyerIdentity {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.saleBuyerAvatar,
+.saleBuyerFallback {
+  width: 2.7rem;
+  height: 2.7rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.saleBuyerAvatar {
+  object-fit: cover;
+}
+
+.saleBuyerFallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #dde4fb;
+  color: #223267;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.saleBuyerCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+
+.saleBuyerCopy strong {
+  color: #111827;
+  font-size: 0.92rem;
+}
+
+.saleBuyerCopy span {
+  color: #61697f;
+  font-size: 0.83rem;
+  line-height: 1.45;
+}
+
+.saleBuyerMeta {
+  display: inline-flex;
+  margin-top: 0.7rem;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.saleBuyerHint {
+  margin-top: 0.9rem;
+  padding: 0.9rem 1rem;
+  border-radius: 18px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.7rem;
+  margin-top: 1.2rem;
+}
+
 .insights {
   margin-top: 1.55rem;
   border-radius: 28px;
@@ -782,6 +948,22 @@
 
   .managementActions {
     flex-direction: column;
+  }
+
+  .modalCard {
+    padding: 1.15rem;
+  }
+
+  .modalActions {
+    flex-direction: column;
+  }
+
+  .saleBuyerOption {
+    padding: 0.88rem 0.9rem;
+  }
+
+  .saleBuyerIdentity {
+    align-items: flex-start;
   }
 
   .moreButton {

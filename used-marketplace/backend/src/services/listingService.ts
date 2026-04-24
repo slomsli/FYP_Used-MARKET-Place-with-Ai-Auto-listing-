@@ -26,6 +26,7 @@ import {
   type ListingLocationSummary,
   type ListingLookupOption,
   type ListingMetadata,
+  type ListingSaleBuyerCandidate,
   type ListingSortOption,
   type ListingSummary,
   type MyListingsResponse,
@@ -134,6 +135,21 @@ interface RawOwnedListing {
   status: string;
   published_at: string | null;
   cover_image_path: string | null;
+}
+
+interface RawSaleBuyerOffer {
+  buyer_id: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  buyer_profile: Relation<RawProfile>;
+}
+
+interface RawSaleBuyerConversation {
+  buyer_id: string;
+  created_at: string;
+  last_message_at: string;
+  buyer_profile: Relation<RawProfile>;
 }
 
 interface RawModerationConversation {
@@ -448,6 +464,55 @@ function buildBuyerDisplayName(profile: Pick<RawProfile, 'full_name' | 'username
   return buildSellerDisplayName(profile);
 }
 
+function getOfferCandidatePriority(status: string | null): number {
+  switch (status) {
+    case 'accepted':
+      return 0;
+    case 'pending':
+      return 1;
+    case 'withdrawn':
+      return 2;
+    case 'rejected':
+      return 3;
+    case 'cancelled':
+      return 4;
+    default:
+      return 5;
+  }
+}
+
+function getLatestIsoTimestamp(currentValue: string | null, nextValue: string | null): string | null {
+  if (!nextValue) {
+    return currentValue;
+  }
+
+  if (!currentValue) {
+    return nextValue;
+  }
+
+  return new Date(nextValue).getTime() >= new Date(currentValue).getTime() ? nextValue : currentValue;
+}
+
+function buildSaleBuyerContextLabel(offerStatus: string | null, hasConversation: boolean): string {
+  if (offerStatus === 'accepted') {
+    return hasConversation ? 'Accepted offer and chat' : 'Accepted offer';
+  }
+
+  if (offerStatus === 'pending') {
+    return hasConversation ? 'Pending offer and chat' : 'Pending offer';
+  }
+
+  if (offerStatus === 'withdrawn') {
+    return hasConversation ? 'Auto-closed offer and chat' : 'Auto-closed offer';
+  }
+
+  if (offerStatus) {
+    return hasConversation ? 'Past offer and chat' : 'Past offer';
+  }
+
+  return hasConversation ? 'Conversation' : 'Marketplace activity';
+}
+
 function buildPublicListingSummary(
   listing: RawListing,
   imageMap: Map<string, string[]>,
@@ -558,6 +623,7 @@ async function getOwnedListingForSeller(
     .select('id, status, published_at, cover_image_path')
     .eq('id', listingId)
     .eq('seller_id', sellerId)
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (error) {
@@ -570,6 +636,137 @@ async function getOwnedListingForSeller(
   }
 
   return data as RawOwnedListing;
+}
+
+async function loadSaleBuyerCandidatesForListing(
+  listingId: string
+): Promise<ListingSaleBuyerCandidate[]> {
+  const [offersResult, conversationsResult] = await Promise.all([
+    supabaseAdmin
+      .from('offers')
+      .select(`
+        buyer_id,
+        status,
+        created_at,
+        updated_at,
+        buyer_profile:profiles!offers_buyer_id_fkey (
+          username,
+          full_name,
+          avatar_path
+        )
+      `)
+      .eq('listing_id', listingId),
+    supabaseAdmin
+      .from('conversations')
+      .select(`
+        buyer_id,
+        created_at,
+        last_message_at,
+        buyer_profile:profiles!conversations_buyer_id_fkey (
+          username,
+          full_name,
+          avatar_path
+        )
+      `)
+      .eq('listing_id', listingId),
+  ]);
+
+  if (offersResult.error) {
+    console.error('[Listings] Failed to load sale buyer offer candidates:', offersResult.error);
+    throw new ListingServiceError('Unable to load sale buyer candidates', 500);
+  }
+
+  if (conversationsResult.error) {
+    console.error(
+      '[Listings] Failed to load sale buyer conversation candidates:',
+      conversationsResult.error
+    );
+    throw new ListingServiceError('Unable to load sale buyer candidates', 500);
+  }
+
+  const candidateMap = new Map<
+    string,
+    {
+      id: string;
+      displayName: string;
+      avatarPath: string | null;
+      bestOfferStatus: string | null;
+      hasConversation: boolean;
+      lastActivityAt: string | null;
+    }
+  >();
+
+  for (const offer of (offersResult.data ?? []) as RawSaleBuyerOffer[]) {
+    const buyerProfile = unwrapRelation(offer.buyer_profile);
+    const existingCandidate = candidateMap.get(offer.buyer_id);
+    const nextOfferPriority = getOfferCandidatePriority(offer.status);
+    const currentOfferPriority = getOfferCandidatePriority(existingCandidate?.bestOfferStatus ?? null);
+
+    candidateMap.set(offer.buyer_id, {
+      id: offer.buyer_id,
+      displayName: existingCandidate?.displayName ?? buildBuyerDisplayName(buyerProfile),
+      avatarPath:
+        existingCandidate?.avatarPath ??
+        getPublicStorageUrl(AVATAR_BUCKET, buyerProfile?.avatar_path ?? null),
+      bestOfferStatus:
+        existingCandidate && currentOfferPriority <= nextOfferPriority
+          ? existingCandidate.bestOfferStatus
+          : offer.status,
+      hasConversation: existingCandidate?.hasConversation ?? false,
+      lastActivityAt: getLatestIsoTimestamp(
+        existingCandidate?.lastActivityAt ?? null,
+        offer.updated_at || offer.created_at
+      ),
+    });
+  }
+
+  for (const conversation of (conversationsResult.data ?? []) as RawSaleBuyerConversation[]) {
+    const buyerProfile = unwrapRelation(conversation.buyer_profile);
+    const existingCandidate = candidateMap.get(conversation.buyer_id);
+
+    candidateMap.set(conversation.buyer_id, {
+      id: conversation.buyer_id,
+      displayName: existingCandidate?.displayName ?? buildBuyerDisplayName(buyerProfile),
+      avatarPath:
+        existingCandidate?.avatarPath ??
+        getPublicStorageUrl(AVATAR_BUCKET, buyerProfile?.avatar_path ?? null),
+      bestOfferStatus: existingCandidate?.bestOfferStatus ?? null,
+      hasConversation: true,
+      lastActivityAt: getLatestIsoTimestamp(
+        existingCandidate?.lastActivityAt ?? null,
+        conversation.last_message_at || conversation.created_at
+      ),
+    });
+  }
+
+  return Array.from(candidateMap.values())
+    .sort((left, right) => {
+      const priorityDifference =
+        getOfferCandidatePriority(left.bestOfferStatus) -
+        getOfferCandidatePriority(right.bestOfferStatus);
+
+      if (priorityDifference !== 0) {
+        return priorityDifference;
+      }
+
+      const rightTimestamp = right.lastActivityAt ? new Date(right.lastActivityAt).getTime() : 0;
+      const leftTimestamp = left.lastActivityAt ? new Date(left.lastActivityAt).getTime() : 0;
+      if (rightTimestamp !== leftTimestamp) {
+        return rightTimestamp - leftTimestamp;
+      }
+
+      return left.displayName.localeCompare(right.displayName);
+    })
+    .map((candidate) => ({
+      id: candidate.id,
+      displayName: candidate.displayName,
+      avatarPath: candidate.avatarPath,
+      contextLabel: buildSaleBuyerContextLabel(
+        candidate.bestOfferStatus,
+        candidate.hasConversation
+      ),
+      lastActivityAt: candidate.lastActivityAt,
+    }));
 }
 
 async function getListingImages(listingIds: string[]): Promise<Map<string, string[]>> {
@@ -692,6 +889,7 @@ async function getStoredListingImagePaths(listingId: string): Promise<string[]> 
     .from('listings')
     .select('cover_image_path')
     .eq('id', listingId)
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (listingError) {
@@ -808,6 +1006,7 @@ async function getListingByIdForSeller(listingId: string, sellerId: string): Pro
     `)
     .eq('id', listingId)
     .eq('seller_id', sellerId)
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (error) {
@@ -963,7 +1162,8 @@ async function getPublicListingLookups(): Promise<{
         slug
       )
     `)
-    .eq('status', PUBLIC_BROWSE_LISTING_STATUS);
+    .eq('status', PUBLIC_BROWSE_LISTING_STATUS)
+    .is('deleted_at', null);
 
   if (error) {
     console.error('[Listings] Failed to fetch public listing lookups:', error);
@@ -1554,9 +1754,18 @@ export async function updateListing(
   return getListingByIdForSeller(listingId, sellerId);
 }
 
-export async function markListingAsSold(
+export async function getListingSaleBuyerCandidates(
   sellerId: string,
   listingId: string
+): Promise<ListingSaleBuyerCandidate[]> {
+  await getOwnedListingForSeller(listingId, sellerId);
+  return loadSaleBuyerCandidatesForListing(listingId);
+}
+
+export async function markListingAsSold(
+  sellerId: string,
+  listingId: string,
+  buyerUserId?: string | null
 ): Promise<ListingSummary> {
   const existing = await getOwnedListingForSeller(listingId, sellerId);
 
@@ -1571,12 +1780,27 @@ export async function markListingAsSold(
     );
   }
 
+  const normalizedBuyerUserId = trimOptional(buyerUserId);
+  let soldToUserId: string | null = normalizedBuyerUserId;
+  const saleBuyerCandidates = await loadSaleBuyerCandidatesForListing(listingId);
+
+  if (normalizedBuyerUserId) {
+    if (!saleBuyerCandidates.some((candidate) => candidate.id === normalizedBuyerUserId)) {
+      throw new ListingServiceError(
+        'Selected buyer must come from an offer or conversation on this listing',
+        422
+      );
+    }
+  } else if (saleBuyerCandidates.length === 1) {
+    soldToUserId = saleBuyerCandidates[0].id;
+  }
+
   const { error } = await supabaseAdmin
     .from('listings')
     .update({
       status: 'sold',
       sold_at: new Date().toISOString(),
-      sold_to_user_id: null,
+      sold_to_user_id: soldToUserId,
       updated_at: new Date().toISOString(),
     })
     .eq('id', listingId)
@@ -1766,7 +1990,8 @@ export async function getMyListings(
         avatar_path
       )
     `)
-    .eq('seller_id', sellerId);
+    .eq('seller_id', sellerId)
+    .is('deleted_at', null);
 
   if (filters.status !== 'all') {
     listingsQuery =
@@ -1782,7 +2007,8 @@ export async function getMyListings(
     supabaseAdmin
       .from('listings')
       .select('id, status, price')
-      .eq('seller_id', sellerId),
+      .eq('seller_id', sellerId)
+      .is('deleted_at', null),
     supabaseAdmin
       .from('reviews')
       .select('rating')
@@ -1949,7 +2175,8 @@ export async function getPublicListings(
     `,
       { count: 'exact' }
     )
-    .eq('status', PUBLIC_BROWSE_LISTING_STATUS);
+    .eq('status', PUBLIC_BROWSE_LISTING_STATUS)
+    .is('deleted_at', null);
 
   if (filters.categoryIds && filters.categoryIds.length > 0) {
     listingsQuery = listingsQuery.in('category_id', filters.categoryIds);
@@ -2085,6 +2312,7 @@ export async function getPublicListingById(
     `)
     .eq('id', listingId)
     .in('status', [...PUBLIC_DETAIL_VISIBLE_STATUSES])
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (error) {
@@ -2133,6 +2361,7 @@ export async function getPublicListingById(
       )
     `)
     .eq('status', PUBLIC_BROWSE_LISTING_STATUS)
+    .is('deleted_at', null)
     .neq('id', listingId)
     .limit(4);
 
@@ -2194,6 +2423,32 @@ export async function getPublicListingById(
   };
 }
 
+async function tryIncrementListingViewAtomically(listingId: string): Promise<number | null> {
+  const { data, error } = await supabaseAdmin.rpc('increment_listing_view_atomic', {
+    p_listing_id: listingId,
+  });
+
+  if (error) {
+    const errorCode = typeof error.code === 'string' ? error.code : '';
+    const errorMessage =
+      typeof error.message === 'string' ? error.message.toLowerCase() : '';
+
+    if (errorCode === 'PGRST202' || errorMessage.includes('could not find the function')) {
+      return null;
+    }
+
+    console.error('[Listings] Failed to increment listing views via RPC:', error);
+    throw new ListingServiceError('Unable to record listing view', 500);
+  }
+
+  const result = Array.isArray(data) ? data[0] : data;
+  if (!result || typeof result !== 'object') {
+    throw new ListingServiceError('Unable to record listing view', 500);
+  }
+
+  return toNumber((result as { views_count?: unknown }).views_count);
+}
+
 export async function incrementPublicListingView(
   listingId: string
 ): Promise<ListingViewResult> {
@@ -2202,6 +2457,7 @@ export async function incrementPublicListingView(
     .select('id, views_count, status')
     .eq('id', listingId)
     .in('status', [...PUBLIC_DETAIL_VISIBLE_STATUSES])
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (error) {
@@ -2211,6 +2467,14 @@ export async function incrementPublicListingView(
 
   if (!data) {
     throw new ListingServiceError('Listing not found', 404);
+  }
+
+  const atomicViewsCount = await tryIncrementListingViewAtomically(listingId);
+  if (atomicViewsCount !== null) {
+    return {
+      id: listingId,
+      viewsCount: atomicViewsCount,
+    };
   }
 
   const nextViewsCount = toNumber(data.views_count) + 1;

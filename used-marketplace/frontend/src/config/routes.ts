@@ -21,6 +21,7 @@ export const ROUTES = {
   MY_LISTINGS: '/dashboard/my-listings',
   FAVORITES: '/dashboard/favorites',
   MESSAGES: '/dashboard/messages',
+  NOTIFICATIONS: '/dashboard/notifications',
   OFFERS: '/dashboard/offers',
   PROFILE: '/dashboard/profile',
   REPORT: '/dashboard/report',

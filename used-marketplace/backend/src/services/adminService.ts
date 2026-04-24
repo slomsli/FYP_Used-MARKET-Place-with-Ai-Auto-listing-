@@ -1195,7 +1195,10 @@ async function listAllAuthUsers(): Promise<AuthAdminUser[]> {
 }
 
 async function getListingCountMap(): Promise<Map<string, number>> {
-  const { data, error } = await supabaseAdmin.from('listings').select('seller_id, brand');
+  const { data, error } = await supabaseAdmin
+    .from('listings')
+    .select('seller_id, brand')
+    .is('deleted_at', null);
 
   if (error) {
     console.error('[Admin] Failed to load listing counts:', error);
@@ -1220,6 +1223,7 @@ async function getListingCountForUser(userId: string): Promise<number> {
     .from('listings')
     .select('id', { count: 'exact', head: true })
     .eq('seller_id', userId)
+    .is('deleted_at', null)
     .or(`brand.is.null,brand.neq.${MODERATION_LISTING_BRAND}`);
 
   if (error) {
@@ -1403,7 +1407,11 @@ async function buildAdminSellerDetail(
 ): Promise<AdminListingDetailResponse['seller']> {
   const [reviewsResult, listingsResult] = await Promise.all([
     supabaseAdmin.from('reviews').select('rating').eq('seller_id', sellerProfile.id),
-    supabaseAdmin.from('listings').select('status, brand').eq('seller_id', sellerProfile.id),
+    supabaseAdmin
+      .from('listings')
+      .select('status, brand')
+      .eq('seller_id', sellerProfile.id)
+      .is('deleted_at', null),
   ]);
 
   if (reviewsResult.error) {
@@ -1598,6 +1606,7 @@ export async function getAdminOverview(): Promise<AdminOverviewResponse> {
     supabaseAdmin
       .from('listings')
       .select('id, title, brand, status, created_at, sold_at, state_id')
+      .is('deleted_at', null)
       .order('created_at', { ascending: false }),
     supabaseAdmin
       .from('reports')
@@ -1956,6 +1965,7 @@ export async function getAdminListings(query: AdminListingsQuery): Promise<Admin
         areas!listings_area_id_fkey ( id, name ),
         categories!listings_category_id_fkey ( id, name )
       `)
+      .is('deleted_at', null)
       .or(`brand.is.null,brand.neq.${MODERATION_LISTING_BRAND}`)
       .order('created_at', { ascending: false }),
     supabaseAdmin.from('reports').select('listing_id, status'),
@@ -2173,6 +2183,7 @@ export async function getAdminListingDetails(
       )
     `)
     .eq('id', trimmedListingId)
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (error) {
@@ -2670,6 +2681,7 @@ export async function updateAdminListingStatus(
     .from('listings')
     .select('id, seller_id, title, status, brand, published_at')
     .eq('id', input.listingId)
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (listingError) {
@@ -2721,6 +2733,7 @@ export async function updateAdminListingStatus(
       published_at: nextStatus === 'active' ? listing.published_at ?? timestamp : listing.published_at,
     })
     .eq('id', input.listingId)
+    .is('deleted_at', null)
     .select('id, title, status')
     .single();
 
@@ -2816,8 +2829,9 @@ export async function deleteAdminListing(input: {
   const reason = normalizeRequiredReason(input.reason, 'Delete');
   const { data: listing, error: listingError } = await supabaseAdmin
     .from('listings')
-    .select('id, seller_id, title, brand')
+    .select('id, seller_id, title, brand, status')
     .eq('id', input.listingId)
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (listingError) {
@@ -2893,40 +2907,59 @@ export async function deleteAdminListing(input: {
     }
   }
 
-  if (conversationIds.length > 0) {
-    const { error: deleteMessagesError } = await supabaseAdmin
-      .from('messages')
-      .delete()
-      .in('conversation_id', conversationIds);
+  const timestamp = new Date().toISOString();
+  const { data: pendingOffers, error: pendingOffersError } = await supabaseAdmin
+    .from('offers')
+    .select('id')
+    .eq('listing_id', input.listingId)
+    .eq('status', 'pending');
 
-    if (deleteMessagesError) {
-      console.error('[Admin] Failed to delete listing messages:', deleteMessagesError);
-      throw new AdminServiceError('Unable to remove related messages before deleting the listing', 500);
+  if (pendingOffersError) {
+    console.error('[Admin] Failed to inspect pending offers before listing deletion:', pendingOffersError);
+    throw new AdminServiceError('Unable to inspect pending offers before deleting the listing', 500);
+  }
+
+  const pendingOfferIds = ((pendingOffers ?? []) as Array<{ id: string }>).map((offer) => offer.id);
+
+  if (pendingOfferIds.length > 0) {
+    const { error: withdrawOffersError } = await supabaseAdmin
+      .from('offers')
+      .update({ status: 'withdrawn', updated_at: timestamp })
+      .eq('listing_id', input.listingId)
+      .eq('status', 'pending');
+
+    if (withdrawOffersError) {
+      console.error('[Admin] Failed to withdraw pending offers during soft delete:', withdrawOffersError);
+      throw new AdminServiceError('Unable to close pending offers before removing the listing', 500);
     }
   }
 
-  const cleanupResults = await Promise.all([
-    supabaseAdmin.from('favorites').delete().eq('listing_id', input.listingId),
-    supabaseAdmin.from('listing_images').delete().eq('listing_id', input.listingId),
-    supabaseAdmin.from('listing_daily_views').delete().eq('listing_id', input.listingId),
-    supabaseAdmin.from('reports').delete().eq('listing_id', input.listingId),
-    supabaseAdmin.from('reviews').delete().eq('listing_id', input.listingId),
-    supabaseAdmin.from('offers').delete().eq('listing_id', input.listingId),
-    supabaseAdmin.from('conversations').delete().eq('listing_id', input.listingId),
-  ]);
+  const nextStatus = listing.status === 'sold' ? 'sold' : 'archived';
+  const { error: softDeleteError } = await supabaseAdmin
+    .from('listings')
+    .update({
+      status: nextStatus,
+      deleted_at: timestamp,
+      updated_at: timestamp,
+    })
+    .eq('id', input.listingId)
+    .is('deleted_at', null);
 
-  for (const cleanupResult of cleanupResults) {
-    if (cleanupResult.error) {
-      console.error('[Admin] Failed during admin listing cleanup:', cleanupResult.error);
-      throw new AdminServiceError('Unable to clean up related records before deleting the listing', 500);
+  if (softDeleteError) {
+    console.error('[Admin] Failed to soft-delete listing from admin management:', softDeleteError);
+
+    if (pendingOfferIds.length > 0) {
+      const { error: rollbackError } = await supabaseAdmin
+        .from('offers')
+        .update({ status: 'pending', updated_at: new Date().toISOString() })
+        .in('id', pendingOfferIds);
+
+      if (rollbackError) {
+        console.error('[Admin] Failed to roll back withdrawn offers after soft-delete error:', rollbackError);
+      }
     }
-  }
 
-  const { error: deleteError } = await supabaseAdmin.from('listings').delete().eq('id', input.listingId);
-
-  if (deleteError) {
-    console.error('[Admin] Failed to delete listing from admin management:', deleteError);
-    throw new AdminServiceError('Unable to delete the listing', 500);
+    throw new AdminServiceError('Unable to remove the listing from the marketplace', 500);
   }
 
   try {
@@ -3067,6 +3100,7 @@ export async function getAdminUserDetails(userId: string): Promise<AdminUserDeta
       .from('listings')
       .select('id, status, views_count')
       .eq('seller_id', userId)
+      .is('deleted_at', null)
       .or(`brand.is.null,brand.neq.${MODERATION_LISTING_BRAND}`),
     supabaseAdmin
       .from('listings')
@@ -3084,6 +3118,7 @@ export async function getAdminUserDetails(userId: string): Promise<AdminUserDeta
         categories!listings_category_id_fkey ( id, name )
       `)
       .eq('seller_id', userId)
+      .is('deleted_at', null)
       .or(`brand.is.null,brand.neq.${MODERATION_LISTING_BRAND}`)
       .order('created_at', { ascending: false })
       .limit(6),
@@ -3327,7 +3362,7 @@ export async function getAdminStructure(
     supabaseAdmin.from('categories').select('id, name, slug, parent_id, created_at').order('name'),
     supabaseAdmin.from('states').select('id, name, slug').order('name'),
     supabaseAdmin.from('areas').select('id, state_id, name, slug, created_at').order('name'),
-    supabaseAdmin.from('listings').select('category_id, state_id, area_id'),
+    supabaseAdmin.from('listings').select('category_id, state_id, area_id').is('deleted_at', null),
   ]);
 
   if (categoryError) {

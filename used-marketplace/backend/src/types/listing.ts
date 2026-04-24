@@ -49,6 +49,10 @@ export interface CreateListingBody {
   coverImagePath?: string | null;
 }
 
+export interface MarkListingSoldBody {
+  buyerUserId?: string | null;
+}
+
 export interface UploadListingImageBody {
   fileName: string;
   contentType: string;
@@ -97,6 +101,14 @@ export interface ListingBuyerSummary {
   id: string;
   displayName: string;
   avatarPath: string | null;
+}
+
+export interface ListingSaleBuyerCandidate {
+  id: string;
+  displayName: string;
+  avatarPath: string | null;
+  contextLabel: string;
+  lastActivityAt: string | null;
 }
 
 export interface ListingSummary {

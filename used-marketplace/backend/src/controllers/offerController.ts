@@ -9,6 +9,7 @@ import {
   cancelOffer,
   createCounterOffer,
   createBuyerReview,
+  createSellerReviewResponse,
   reportDeliveryIssue,
   OfferServiceError,
   type OfferKind,
@@ -283,6 +284,46 @@ export async function createBuyerReviewHandler(
     sendSuccess(res, result, 201);
   } catch (error) {
     handleOfferError(res, error, 'Internal server error while creating a buyer review');
+  }
+}
+
+/**
+ * PATCH /api/dashboard/offers/:offerId/review-response
+ * Body: { response }
+ */
+export async function createSellerReviewResponseHandler(
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> {
+  if (!req.user) {
+    sendError(res, 'Unauthorized', 401);
+    return;
+  }
+
+  try {
+    const { offerId } = req.params;
+    const { response } = req.body as {
+      response?: string;
+    };
+
+    if (!offerId?.trim()) {
+      sendError(res, 'offerId is required', 422);
+      return;
+    }
+
+    if (typeof response !== 'string') {
+      sendError(res, 'response is required and must be a string', 422);
+      return;
+    }
+
+    const result = await createSellerReviewResponse(req.user.id, {
+      offerId: offerId.trim(),
+      response,
+    });
+
+    sendSuccess(res, result);
+  } catch (error) {
+    handleOfferError(res, error, 'Internal server error while saving a seller review reply');
   }
 }
 
