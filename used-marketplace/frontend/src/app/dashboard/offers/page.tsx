@@ -510,6 +510,14 @@ export default function OffersPage() {
                 ? styles.fulfillmentReceived
                 : styles.fulfillmentPending;
             const deliveryIssueHref = buildDeliveryIssueHref(offer);
+            const receipt = saleFollowUp?.receipt ?? null;
+            const receiptHref = receipt ? `${ROUTES.PURCHASES}/${receipt.id}` : ROUTES.PURCHASES;
+            const receiptStatusClass =
+              receipt?.paymentStatus === 'seller_confirmed_paid'
+                ? styles.receiptStatusPaid
+                : receipt?.paymentStatus === 'buyer_marked_paid'
+                  ? styles.receiptStatusWaiting
+                  : styles.receiptStatusPending;
 
             return (
               <div key={offer.id} className={styles.offerCard}>
@@ -666,6 +674,30 @@ export default function OffersPage() {
                             : 'Your price was accepted. Confirm receipt once the item arrives, or report it to admin if the seller never delivers it.'}
                         </p>
                       )}
+
+                      {receipt && (
+                        <div className={styles.receiptBlock}>
+                          <div className={styles.receiptHeader}>
+                            <strong>Receipt {receipt.receiptNumber}</strong>
+                            <span className={`${styles.receiptStatus} ${receiptStatusClass}`}>
+                              {receipt.paymentStatusLabel}
+                            </span>
+                          </div>
+                          <div className={styles.receiptMeta}>
+                            <span>
+                              Total: {formatCurrency(receipt.totalAmount, receipt.currency)}
+                            </span>
+                            {receipt.buyerMarkedPaidAt && (
+                              <span>Buyer marked paid: {formatDateTime(receipt.buyerMarkedPaidAt)}</span>
+                            )}
+                            {receipt.sellerConfirmedPaidAt && (
+                              <span>
+                                Seller confirmed: {formatDateTime(receipt.sellerConfirmedPaidAt)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -787,6 +819,11 @@ export default function OffersPage() {
                         <Link href={messageHref} className={`${styles.btn} ${styles.btnSecondary}`}>
                           {isReceived ? 'Message Buyer' : 'Message Seller'}
                         </Link>
+                        {receipt && (
+                          <Link href={receiptHref} className={`${styles.btn} ${styles.btnPrimary}`}>
+                            View Receipt
+                          </Link>
+                        )}
                       </>
                     )}
 

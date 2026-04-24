@@ -5,8 +5,13 @@ import {
   parseDeliveryDisputeDetails,
 } from '../utils/deliveryDispute';
 import { REPORT_STATUS_LABELS, type ReportStatus } from '../types/report';
+import type { PurchasePaymentStatus } from '../types/purchase';
 import { getPublicStorageUrl, removeStorageObjects } from '../utils/storage';
 import { createNotification, createNotifications } from './notificationService';
+import {
+  backfillPurchaseReceiptsForUser,
+  ensurePurchaseReceiptForAcceptedOffer,
+} from './purchaseService';
 
 /* ── Types ─────────────────────────────────────────────── */
 
@@ -98,6 +103,17 @@ interface RawCompletedSaleOffer {
   listings: Relation<RawCompletedSaleListing>;
 }
 
+interface RawPurchaseReceipt {
+  id: string;
+  offer_id: string | null;
+  receipt_number: string;
+  payment_status: PurchasePaymentStatus;
+  total_amount: unknown;
+  currency: string;
+  buyer_marked_paid_at: string | null;
+  seller_confirmed_paid_at: string | null;
+}
+
 export type OfferKind = 'purchase_request' | 'offer' | 'counter_offer';
 export type OfferStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'withdrawn';
 
@@ -127,11 +143,23 @@ export interface OfferDeliveryIssueSummary {
   buyerStatement: string;
 }
 
+export interface OfferPurchaseReceiptSummary {
+  id: string;
+  receiptNumber: string;
+  paymentStatus: PurchasePaymentStatus;
+  paymentStatusLabel: string;
+  totalAmount: number;
+  currency: string;
+  buyerMarkedPaidAt: string | null;
+  sellerConfirmedPaidAt: string | null;
+}
+
 export interface OfferSaleFollowUp {
   canBuyerConfirmReceived: boolean;
   canBuyerReportNotReceived: boolean;
   review: OfferReviewSummary | null;
   deliveryIssue: OfferDeliveryIssueSummary | null;
+  receipt: OfferPurchaseReceiptSummary | null;
 }
 
 export interface OfferSummary {
@@ -540,6 +568,31 @@ function mapDeliveryIssue(report: RawReport): OfferDeliveryIssueSummary | null {
   };
 }
 
+function getPurchasePaymentStatusLabel(status: PurchasePaymentStatus): string {
+  switch (status) {
+    case 'buyer_marked_paid':
+      return 'Waiting for seller confirmation';
+    case 'seller_confirmed_paid':
+      return 'Paid';
+    case 'pending':
+    default:
+      return 'Not paid yet';
+  }
+}
+
+function mapOfferReceipt(receipt: RawPurchaseReceipt): OfferPurchaseReceiptSummary {
+  return {
+    id: receipt.id,
+    receiptNumber: receipt.receipt_number,
+    paymentStatus: receipt.payment_status,
+    paymentStatusLabel: getPurchasePaymentStatusLabel(receipt.payment_status),
+    totalAmount: toNumber(receipt.total_amount),
+    currency: receipt.currency || 'MYR',
+    buyerMarkedPaidAt: receipt.buyer_marked_paid_at,
+    sellerConfirmedPaidAt: receipt.seller_confirmed_paid_at,
+  };
+}
+
 async function uploadDeliveryProofs(
   buyerId: string,
   proofs: DeliveryIssueProofInput[]
@@ -627,7 +680,10 @@ async function attachSaleFollowUp(
     return offers;
   }
 
+  await backfillPurchaseReceiptsForUser(currentUserId);
+
   const completedSaleOfferIdSet = new Set(completedSales.map((saleOffer) => saleOffer.id));
+  const completedOfferIds = completedSales.map((saleOffer) => saleOffer.id);
 
   const saleKeys = new Set<string>();
   const listingIds: string[] = [];
@@ -644,7 +700,7 @@ async function attachSaleFollowUp(
     buyerIds.push(saleOffer.buyer_id);
   }
 
-  const [reviewsResult, reportsResult] = await Promise.all([
+  const [reviewsResult, reportsResult, receiptsResult] = await Promise.all([
     supabaseAdmin
       .from('reviews')
       .select(`
@@ -668,6 +724,19 @@ async function attachSaleFollowUp(
       .in('listing_id', listingIds)
       .in('reporter_id', buyerIds)
       .order('created_at', { ascending: false }),
+    supabaseAdmin
+      .from('purchase_receipts')
+      .select(`
+        id,
+        offer_id,
+        receipt_number,
+        payment_status,
+        total_amount,
+        currency,
+        buyer_marked_paid_at,
+        seller_confirmed_paid_at
+      `)
+      .in('offer_id', completedOfferIds),
   ]);
 
   if (reviewsResult.error) {
@@ -678,6 +747,11 @@ async function attachSaleFollowUp(
   if (reportsResult.error) {
     console.error('[Offers] Failed to load sale follow-up delivery issues:', reportsResult.error);
     throw new OfferServiceError('Unable to load delivery issue reports', 500);
+  }
+
+  if (receiptsResult.error) {
+    console.error('[Offers] Failed to load sale follow-up receipts:', receiptsResult.error);
+    throw new OfferServiceError('Unable to load sale receipts', 500);
   }
 
   const reviewMap = new Map<string, OfferReviewSummary>();
@@ -701,11 +775,19 @@ async function attachSaleFollowUp(
     }
   }
 
+  const receiptMap = new Map<string, OfferPurchaseReceiptSummary>();
+  for (const receipt of (receiptsResult.data ?? []) as RawPurchaseReceipt[]) {
+    if (receipt.offer_id && !receiptMap.has(receipt.offer_id)) {
+      receiptMap.set(receipt.offer_id, mapOfferReceipt(receipt));
+    }
+  }
+
   return offers.map((offer) => {
     const saleKey = buildSaleFollowUpKey(offer.listingId, offer.buyerId);
     const review = reviewMap.get(saleKey) ?? null;
     const deliveryIssue = deliveryIssueMap.get(saleKey) ?? null;
     const isCompletedSale = completedSaleOfferIdSet.has(offer.id);
+    const receipt = receiptMap.get(offer.id) ?? null;
 
     if (!isCompletedSale) {
       return offer;
@@ -718,6 +800,7 @@ async function attachSaleFollowUp(
         canBuyerReportNotReceived: currentUserId === offer.buyerId && !review && !deliveryIssue,
         review,
         deliveryIssue,
+        receipt,
       },
     };
   });
@@ -1157,6 +1240,12 @@ export async function acceptOffer(
     );
   } catch (notificationError) {
     console.error('[Offers] Failed to notify competing offer buyers:', notificationError);
+  }
+
+  try {
+    await ensurePurchaseReceiptForAcceptedOffer(offerId);
+  } catch (receiptError) {
+    console.error('[Offers] Failed to create accepted-offer receipt:', receiptError);
   }
 
   return acceptedOffer;

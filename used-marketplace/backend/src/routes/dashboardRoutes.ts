@@ -44,6 +44,12 @@ import {
   markAllNotificationsReadHandler,
   markNotificationReadHandler,
 } from '../controllers/notificationController';
+import {
+  confirmPurchaseReceiptPaymentHandler,
+  getPurchaseReceiptDetailHandler,
+  getPurchasesHandler,
+  markPurchaseReceiptPaidHandler,
+} from '../controllers/purchaseController';
 import { authenticate } from '../middleware/authenticate';
 import { requireMarketplaceUser } from '../middleware/requireUnsuspendedTransactionUser';
 import { validateCreateListing } from '../middleware/listings/validateCreateListing';
@@ -67,6 +73,7 @@ router.use('/summary', requireMarketplaceUser);
 router.use('/favorites', requireMarketplaceUser);
 router.use('/offers', requireMarketplaceUser);
 router.use('/listings', requireMarketplaceUser);
+router.use('/purchases', requireMarketplaceUser);
 
 // GET /api/dashboard/summary
 router.get('/summary', getSummary);
@@ -133,6 +140,18 @@ router.patch('/offers/:offerId/review-response', createSellerReviewResponseHandl
 
 // POST /api/dashboard/offers/:offerId/not-received
 router.post('/offers/:offerId/not-received', reportDeliveryIssueHandler);
+
+// GET /api/dashboard/purchases
+router.get('/purchases', getPurchasesHandler);
+
+// GET /api/dashboard/purchases/:receiptId
+router.get('/purchases/:receiptId', getPurchaseReceiptDetailHandler);
+
+// PATCH /api/dashboard/purchases/:receiptId/mark-paid
+router.patch('/purchases/:receiptId/mark-paid', markPurchaseReceiptPaidHandler);
+
+// PATCH /api/dashboard/purchases/:receiptId/confirm-payment
+router.patch('/purchases/:receiptId/confirm-payment', confirmPurchaseReceiptPaymentHandler);
 
 // ── Listings ───────────────────────────────────────────
 // GET /api/dashboard/listings/metadata

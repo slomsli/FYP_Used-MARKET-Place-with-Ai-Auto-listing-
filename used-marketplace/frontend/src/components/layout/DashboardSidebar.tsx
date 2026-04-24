@@ -55,6 +55,15 @@ const OffersIcon = () => (
   </svg>
 );
 
+const ReceiptIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5 3h14v18l-2.5-1.5L14 21l-2.5-1.5L9 21l-2.5-1.5L5 21V3Z" />
+    <path d="M9 8h6" />
+    <path d="M9 12h6" />
+    <path d="M9 16h4" />
+  </svg>
+);
+
 const ShieldIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M12 3l7 4v5c0 5-3.2 8.8-7 10-3.8-1.2-7-5-7-10V7l7-4Z" />
@@ -98,6 +107,7 @@ export default function DashboardSidebar({ userName, userRole, avatarUrl, isOpen
     { label: 'Messages', icon: <MessagesIcon />, href: ROUTES.MESSAGES },
     { label: 'Support', icon: <TicketIcon />, href: ROUTES.DASHBOARD_SUPPORT },
     { label: 'Offers', icon: <OffersIcon />, href: ROUTES.OFFERS },
+    { label: 'Purchases', icon: <ReceiptIcon />, href: ROUTES.PURCHASES },
     ...(userRole === 'admin'
       ? [{ label: 'Admin Console', icon: <ShieldIcon />, href: ROUTES.ADMIN }]
       : []),

@@ -23,6 +23,7 @@ export const ROUTES = {
   MESSAGES: '/dashboard/messages',
   NOTIFICATIONS: '/dashboard/notifications',
   OFFERS: '/dashboard/offers',
+  PURCHASES: '/dashboard/purchases',
   PROFILE: '/dashboard/profile',
   REPORT: '/dashboard/report',
   DASHBOARD_SUPPORT: '/dashboard/support',

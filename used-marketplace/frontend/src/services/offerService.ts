@@ -1,3 +1,5 @@
+import type { PurchasePaymentStatus } from '@/src/types/purchase';
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 /* ── Types ─────────────────────────────────────────────── */
@@ -33,11 +35,23 @@ export interface OfferDeliveryIssueSummary {
   buyerStatement: string;
 }
 
+export interface OfferPurchaseReceiptSummary {
+  id: string;
+  receiptNumber: string;
+  paymentStatus: PurchasePaymentStatus;
+  paymentStatusLabel: string;
+  totalAmount: number;
+  currency: string;
+  buyerMarkedPaidAt: string | null;
+  sellerConfirmedPaidAt: string | null;
+}
+
 export interface OfferSaleFollowUp {
   canBuyerConfirmReceived: boolean;
   canBuyerReportNotReceived: boolean;
   review: OfferReviewSummary | null;
   deliveryIssue: OfferDeliveryIssueSummary | null;
+  receipt: OfferPurchaseReceiptSummary | null;
 }
 
 export interface OfferSummary {

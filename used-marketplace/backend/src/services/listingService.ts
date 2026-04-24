@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { supabaseAdmin } from '../config/supabase';
 import { sendReply } from './messageService';
+import { ensurePurchaseReceiptForManualSale } from './purchaseService';
 import {
   getPublicStorageUrl,
   getPublicStorageUrls,
@@ -1809,6 +1810,18 @@ export async function markListingAsSold(
   if (error) {
     console.error('[Listings] Failed to mark listing as sold:', error);
     throw new ListingServiceError('Failed to mark listing as sold', 500);
+  }
+
+  if (soldToUserId) {
+    try {
+      await ensurePurchaseReceiptForManualSale({
+        listingId,
+        sellerId,
+        buyerId: soldToUserId,
+      });
+    } catch (receiptError) {
+      console.error('[Listings] Failed to create manual sale receipt:', receiptError);
+    }
   }
 
   return getListingByIdForSeller(listingId, sellerId);

@@ -138,6 +138,12 @@ export default function NotificationsPage() {
     broadcastDashboardNotificationUpdate({ unreadCount });
   }, []);
 
+  useEffect(() => {
+    if (typeof data?.unreadCount === 'number') {
+      syncUnreadCount(data.unreadCount);
+    }
+  }, [data?.unreadCount, syncUnreadCount]);
+
   const loadNotifications = useCallback(
     async (showLoader = true) => {
       if (!token) {
@@ -156,7 +162,6 @@ export default function NotificationsPage() {
       if (response.data) {
         setData(response.data);
         setErrorMsg(null);
-        syncUnreadCount(response.data.unreadCount);
       } else {
         setErrorMsg(response.error || 'Failed to load notifications');
       }
@@ -175,12 +180,10 @@ export default function NotificationsPage() {
           return current;
         }
 
-        const next = updater(current);
-        syncUnreadCount(next.unreadCount);
-        return next;
+        return updater(current);
       });
     },
-    [syncUnreadCount]
+    []
   );
 
   useEffect(() => {
