@@ -98,8 +98,8 @@ export async function createOfferHandler(
       return;
     }
 
-    if (offerPrice === undefined || typeof offerPrice !== 'number' || offerPrice < 0) {
-      sendError(res, 'offerPrice must be a non-negative number', 422);
+    if (offerPrice === undefined || typeof offerPrice !== 'number' || offerPrice <= 0) {
+      sendError(res, 'offerPrice must be greater than 0', 422);
       return;
     }
 
@@ -228,8 +228,8 @@ export async function counterOfferHandler(
       return;
     }
 
-    if (counterPrice === undefined || typeof counterPrice !== 'number' || counterPrice < 0) {
-      sendError(res, 'counterPrice must be a non-negative number', 422);
+    if (counterPrice === undefined || typeof counterPrice !== 'number' || counterPrice <= 0) {
+      sendError(res, 'counterPrice must be greater than 0', 422);
       return;
     }
 

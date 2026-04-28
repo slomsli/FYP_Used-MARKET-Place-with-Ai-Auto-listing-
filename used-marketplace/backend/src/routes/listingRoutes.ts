@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/authenticate';
+import { listingViewThrottle } from '../middleware/listingViewThrottle';
 import {
   browsePublicListings,
   createPublicListingReport,
@@ -19,6 +20,6 @@ router.get('/:listingId', getPublicListing);
 router.post('/:listingId/reports', authenticate, createPublicListingReport);
 
 // POST /api/listings/:listingId/views
-router.post('/:listingId/views', recordPublicListingView);
+router.post('/:listingId/views', listingViewThrottle, recordPublicListingView);
 
 export default router;

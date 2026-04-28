@@ -1,9 +1,9 @@
 import {
   FunctionCallingConfigMode,
-  GoogleGenAI,
   type FunctionCall,
   type FunctionDeclaration,
 } from '@google/genai';
+import { geminiClient } from '../config/gemini';
 import { supabaseAdmin } from '../config/supabase';
 import {
   createListingReport,
@@ -39,8 +39,6 @@ import {
 import { MODERATION_LISTING_BRAND } from '../utils/moderationThread';
 import { getPublicStorageUrl } from '../utils/storage';
 import { logAssistantToolCall } from '../utils/assistantAudit';
-
-const ai = new GoogleGenAI({});
 
 const DEFAULT_ASSISTANT_MODEL =
   process.env.GEMINI_ASSISTANT_MODEL?.trim() || 'gemini-2.5-flash';
@@ -1723,7 +1721,7 @@ async function generateAssistantContent(params: {
   tools: FunctionDeclaration[];
 }): Promise<{
   model: string;
-  response: Awaited<ReturnType<typeof ai.models.generateContent>>;
+  response: Awaited<ReturnType<typeof geminiClient.models.generateContent>>;
 }> {
   const modelsToTry = [
     params.model,
@@ -1736,7 +1734,7 @@ async function generateAssistantContent(params: {
   for (const candidateModel of modelsToTry) {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        const response = await ai.models.generateContent({
+  const response = await geminiClient.models.generateContent({
           model: candidateModel,
           contents: params.contents,
           config: {

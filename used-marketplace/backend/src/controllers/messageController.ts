@@ -3,6 +3,20 @@ import type { AuthenticatedRequest } from '../types/auth';
 import { sendSuccess, sendError } from '../utils/apiResponse';
 import * as messageService from '../services/messageService';
 
+function handleMessageError(
+  res: Response,
+  error: unknown,
+  fallbackMessage: string
+): void {
+  if (error instanceof messageService.MessageServiceError) {
+    sendError(res, error.message, error.status);
+    return;
+  }
+
+  console.error(fallbackMessage, error);
+  sendError(res, fallbackMessage, 500);
+}
+
 function ensureAuthenticatedUser(req: AuthenticatedRequest, res: Response): string | null {
   if (!req.user) {
     sendError(res, 'Unauthorized', 401);
@@ -22,8 +36,7 @@ export async function getConversations(req: AuthenticatedRequest, res: Response)
     const conversations = await messageService.getConversationsForUser(userId);
     sendSuccess(res, conversations);
   } catch (error) {
-    console.error('Error fetching conversations:', error);
-    sendError(res, 'Internal server error while fetching conversations', 500);
+    handleMessageError(res, error, 'Internal server error while fetching conversations');
   }
 }
 
@@ -37,8 +50,7 @@ export async function getArchivedConversations(req: AuthenticatedRequest, res: R
     const archivedConversationIds = await messageService.getArchivedConversationIds(userId);
     sendSuccess(res, archivedConversationIds);
   } catch (error) {
-    console.error('Error fetching archived conversations:', error);
-    sendError(res, 'Internal server error while fetching archived conversations', 500);
+    handleMessageError(res, error, 'Internal server error while fetching archived conversations');
   }
 }
 
@@ -54,12 +66,7 @@ export async function getMessages(req: AuthenticatedRequest, res: Response): Pro
     const messages = await messageService.getConversationMessages(conversationId, userId);
     sendSuccess(res, messages);
   } catch (error) {
-    console.error('Error fetching messages:', error);
-    if (error instanceof Error && error.message.includes('Conversation not found or access denied')) {
-        sendError(res, error.message, 403);
-        return;
-    }
-    sendError(res, 'Internal server error while fetching messages', 500);
+    handleMessageError(res, error, 'Internal server error while fetching messages');
   }
 }
 
@@ -85,37 +92,7 @@ export async function sendMessage(req: AuthenticatedRequest, res: Response): Pro
     });
     sendSuccess(res, message, 201);
   } catch (error) {
-    console.error('Error sending message:', error);
-    if (error instanceof Error && error.message === 'Listing not found') {
-      sendError(res, error.message, 404);
-      return;
-    }
-    if (
-      error instanceof Error &&
-      (
-        error.message.includes('recipient_id is required') ||
-        error.message.includes('You cannot start a conversation with yourself') ||
-        error.message.includes('required') ||
-        error.message.includes('2000 characters') ||
-        error.message.includes('images') ||
-        error.message.includes('image')
-      )
-    ) {
-      sendError(res, error.message, 400);
-      return;
-    }
-    if (
-      error instanceof Error &&
-      (
-        error.message.includes('suspended') ||
-        error.message.includes('disabled for this role') ||
-        error.message.includes('moderation thread')
-      )
-    ) {
-      sendError(res, error.message, 403);
-      return;
-    }
-    sendError(res, 'Internal server error while sending message', 500);
+    handleMessageError(res, error, 'Internal server error while sending message');
   }
 }
 
@@ -142,24 +119,7 @@ export async function createSupportConversation(req: AuthenticatedRequest, res: 
     });
     sendSuccess(res, result, 201);
   } catch (error) {
-    console.error('Error creating support conversation:', error);
-
-    if (
-      error instanceof Error &&
-      (
-        error.message.includes('required') ||
-        error.message.includes('2000 characters') ||
-        error.message.includes('images') ||
-        error.message.includes('image') ||
-        error.message.includes('No support admins') ||
-        error.message.includes('Create at least one category')
-      )
-    ) {
-      sendError(res, error.message, 422);
-      return;
-    }
-
-    sendError(res, 'Internal server error while creating the support conversation', 500);
+    handleMessageError(res, error, 'Internal server error while creating the support conversation');
   }
 }
 
@@ -184,36 +144,7 @@ export async function sendReply(req: AuthenticatedRequest, res: Response): Promi
     const message = await messageService.sendReply(req.user, conversationId, safeContent, safeAttachments);
     sendSuccess(res, message, 201);
   } catch (error) {
-    console.error('Error sending reply:', error);
-    if (error instanceof Error && error.message.includes('Conversation not found or access denied')) {
-        sendError(res, error.message, 403);
-        return;
-    }
-    if (
-      error instanceof Error &&
-      (
-        error.message.includes('suspended') ||
-        error.message.includes('disabled for this role') ||
-        error.message.includes('moderation thread') ||
-        error.message.includes('support ticket is closed')
-      )
-    ) {
-      sendError(res, error.message, 403);
-      return;
-    }
-    if (
-      error instanceof Error &&
-      (
-        error.message.includes('required') ||
-        error.message.includes('2000 characters') ||
-        error.message.includes('images') ||
-        error.message.includes('image')
-      )
-    ) {
-      sendError(res, error.message, 422);
-      return;
-    }
-    sendError(res, 'Internal server error while sending reply', 500);
+    handleMessageError(res, error, 'Internal server error while sending reply');
   }
 }
 
@@ -239,25 +170,7 @@ export async function updateSupportTicketStatus(req: AuthenticatedRequest, res: 
     );
     sendSuccess(res, result);
   } catch (error) {
-    console.error('Error updating support ticket status:', error);
-
-    if (
-      error instanceof Error &&
-      (
-        error.message.includes('Conversation not found or access denied') ||
-        error.message.includes('only available for support tickets')
-      )
-    ) {
-      sendError(res, error.message, 403);
-      return;
-    }
-
-    if (error instanceof Error && error.message.includes('Unsupported')) {
-      sendError(res, error.message, 422);
-      return;
-    }
-
-    sendError(res, 'Internal server error while updating the support ticket', 500);
+    handleMessageError(res, error, 'Internal server error while updating the support ticket');
   }
 }
 
@@ -273,8 +186,7 @@ export async function markAsRead(req: AuthenticatedRequest, res: Response): Prom
     await messageService.markConversationAsRead(userId, conversationId);
     sendSuccess(res, { success: true });
   } catch (error) {
-    console.error('Error marking as read:', error);
-    sendError(res, 'Internal server error while marking as read', 500);
+    handleMessageError(res, error, 'Internal server error while marking as read');
   }
 }
 
@@ -290,12 +202,7 @@ export async function archiveConversation(req: AuthenticatedRequest, res: Respon
     await messageService.archiveConversation(userId, conversationId);
     sendSuccess(res, { archived: true });
   } catch (error) {
-    console.error('Error archiving conversation:', error);
-    if (error instanceof Error && error.message.includes('Conversation not found or access denied')) {
-      sendError(res, error.message, 403);
-      return;
-    }
-    sendError(res, 'Internal server error while archiving the conversation', 500);
+    handleMessageError(res, error, 'Internal server error while archiving the conversation');
   }
 }
 
@@ -311,11 +218,6 @@ export async function unarchiveConversation(req: AuthenticatedRequest, res: Resp
     await messageService.unarchiveConversation(userId, conversationId);
     sendSuccess(res, { archived: false });
   } catch (error) {
-    console.error('Error restoring conversation archive state:', error);
-    if (error instanceof Error && error.message.includes('Conversation not found or access denied')) {
-      sendError(res, error.message, 403);
-      return;
-    }
-    sendError(res, 'Internal server error while restoring the conversation', 500);
+    handleMessageError(res, error, 'Internal server error while restoring the conversation');
   }
 }

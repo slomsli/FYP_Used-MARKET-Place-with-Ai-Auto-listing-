@@ -103,10 +103,14 @@ async function findAuthUserByEmail(email: string) {
     return cachedUser;
   }
 
-  for (let page = 1; page <= 20; page += 1) {
+  const perPage = 1000;
+  let page = 1;
+  let lastPage = 1;
+
+  while (page <= lastPage) {
     const { data, error } = await supabaseAdmin.auth.admin.listUsers({
       page,
-      perPage: 1000,
+      perPage,
     });
 
     if (error) {
@@ -124,9 +128,15 @@ async function findAuthUserByEmail(email: string) {
       return toCachedAuthUser(matchedUser);
     }
 
-    if (data.users.length < 1000) {
+    if (typeof data.lastPage === 'number' && data.lastPage > 0) {
+      lastPage = data.lastPage;
+    }
+
+    if (!data.nextPage || data.users.length < perPage) {
       break;
     }
+
+    page = data.nextPage;
   }
 
   authUserEmailNegativeCache.set(
@@ -174,6 +184,7 @@ export async function loginUser(body: LoginBody): Promise<ServiceResult> {
       const { data: userData } = await supabaseAdmin.auth.admin.getUserById(profile.id);
       
       if (userData?.user?.email) {
+        cacheAuthUsers([userData.user]);
         finalEmail = userData.user.email;
       } else {
         return { success: false, error: 'User not found or invalid username', status: 404 };
@@ -201,6 +212,7 @@ export async function loginUser(body: LoginBody): Promise<ServiceResult> {
         if (!retry.error) {
           try {
             await ensureProfileForUser(retry.data.user);
+            cacheAuthUsers([retry.data.user]);
           } catch (profileError) {
             console.error('[Auth] Failed to sync profile during suspended-login retry:', profileError);
             return { success: false, error: 'Unable to prepare your account profile', status: 500 };
@@ -232,6 +244,7 @@ export async function loginUser(body: LoginBody): Promise<ServiceResult> {
 
   try {
     await ensureProfileForUser(data.user);
+    cacheAuthUsers([data.user]);
   } catch (profileError) {
     console.error('[Auth] Failed to sync profile during login:', profileError);
     return { success: false, error: 'Unable to prepare your account profile', status: 500 };

@@ -13,6 +13,7 @@ import {
   sendAssistantMessage as sendAssistantMessageRequest,
 } from '@/src/services/assistantService';
 import { getProfile } from '@/src/services/profileService';
+import { resolveSupabaseUserRole } from '@/src/utils/authHelpers';
 import type {
   AssistantConversationMessage,
   AssistantCurrentPageContext,
@@ -430,12 +431,12 @@ export default function MarketplaceAssistant() {
           return;
         }
 
-        if (response.data?.role === 'admin') {
+        const resolvedRole = resolveSupabaseUserRole(user, response.data?.role ?? null);
+
+        if (resolvedRole === 'admin') {
           setAssistantRole('admin');
-        } else if (response.data?.role === 'user') {
+        } else if (resolvedRole === 'user') {
           setAssistantRole('user');
-        } else if (user?.user_metadata?.role === 'admin') {
-          setAssistantRole('admin');
         } else {
           setAssistantRole('user');
         }
@@ -447,7 +448,9 @@ export default function MarketplaceAssistant() {
           return;
         }
 
-        if (user?.user_metadata?.role === 'admin') {
+        const resolvedRole = resolveSupabaseUserRole(user);
+
+        if (resolvedRole === 'admin') {
           setAssistantRole('admin');
         } else if (user) {
           setAssistantRole('user');

@@ -8,6 +8,7 @@ import { ROUTES } from '@/src/config/routes';
 import { useAuth } from '@/src/hooks/useAuth';
 import { subscribeToDashboardProfileUpdates } from '@/src/lib/profileSync';
 import { getProfile } from '@/src/services/profileService';
+import { resolveSupabaseUserRole } from '@/src/utils/authHelpers';
 import { signOut } from '@/src/services/authService';
 import styles from './layout.module.css';
 
@@ -223,7 +224,7 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
   );
 
   const displayName = profileName?.trim() || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Admin User';
-  const isAdmin = (profileRole || user?.user_metadata?.role) === 'admin';
+  const isAdmin = resolveSupabaseUserRole(user, profileRole) === 'admin';
   const canSearch =
     pathname === ROUTES.ADMIN_REPORTS ||
     pathname === ROUTES.ADMIN_USERS ||

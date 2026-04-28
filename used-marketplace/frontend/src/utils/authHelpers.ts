@@ -1,4 +1,17 @@
+import type { User } from '@supabase/supabase-js';
 import type { SignupFormData, LoginFormData, SignupFormErrors, LoginFormErrors } from '@/src/types/auth';
+
+export function resolveSupabaseUserRole(
+  user: Pick<User, 'app_metadata'> | null | undefined,
+  profileRole?: string | null
+): string | null {
+  if (typeof profileRole === 'string' && profileRole.trim()) {
+    return profileRole.trim();
+  }
+
+  const appRole = user?.app_metadata?.role;
+  return typeof appRole === 'string' && appRole.trim() ? appRole.trim() : null;
+}
 
 export function trimFormValues<T extends Record<string, string>>(values: T): T {
   const trimmed = {} as T;

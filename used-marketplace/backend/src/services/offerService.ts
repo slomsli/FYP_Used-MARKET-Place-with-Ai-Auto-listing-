@@ -4,18 +4,25 @@ import {
   buildDeliveryDisputeDetails,
   parseDeliveryDisputeDetails,
 } from '../utils/deliveryDispute';
+import { buildDisplayName } from '../utils/profile';
+import { type Relation, unwrapRelation } from '../utils/relation';
+import { sanitizeStorageFileName } from '../utils/storageFile';
 import { REPORT_STATUS_LABELS, type ReportStatus } from '../types/report';
 import type { PurchasePaymentStatus } from '../types/purchase';
 import { getPublicStorageUrl, removeStorageObjects } from '../utils/storage';
+import {
+  AVATAR_BUCKET,
+  DELIVERY_PROOF_BUCKET,
+  LISTING_IMAGE_BUCKET,
+} from '../utils/storageBuckets';
+import { toNumber, trimOptional } from '../utils/value';
 import { createNotification, createNotifications } from './notificationService';
 import {
-  backfillPurchaseReceiptsForUser,
   ensurePurchaseReceiptForAcceptedOffer,
+  isPurchaseReceiptsTableMissingError,
 } from './purchaseService';
 
 /* ── Types ─────────────────────────────────────────────── */
-
-type Relation<T> = T | T[] | null;
 
 interface RawProfile {
   id: string;
@@ -38,6 +45,7 @@ interface RawListing {
   currency: string;
   negotiable: boolean;
   status: string;
+  deleted_at: string | null;
   sold_to_user_id: string | null;
   cover_image_path: string | null;
   categories: Relation<RawCategory>;
@@ -90,6 +98,7 @@ interface RawCompletedSaleListing {
   title: string;
   currency: string;
   status: string;
+  deleted_at: string | null;
   sold_to_user_id: string | null;
 }
 
@@ -260,57 +269,16 @@ export class OfferServiceError extends Error {
   }
 }
 
-const LISTING_IMAGE_BUCKET =
-  process.env.SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
-  process.env.NEXT_PUBLIC_SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
-  'listing-images';
-const AVATAR_BUCKET =
-  process.env.SUPABASE_AVATARS_BUCKET?.trim() ||
-  process.env.NEXT_PUBLIC_SUPABASE_AVATARS_BUCKET?.trim() ||
-  'avatars';
-const DELIVERY_PROOF_BUCKET =
-  process.env.SUPABASE_TRANSACTION_PROOFS_BUCKET?.trim() ||
-  process.env.NEXT_PUBLIC_SUPABASE_TRANSACTION_PROOFS_BUCKET?.trim() ||
-  'transaction-proofs';
 const MAX_DELIVERY_PROOF_SIZE_BYTES = 4 * 1024 * 1024;
 const DELIVERY_PROOF_MIME_TYPES = ['image/*'];
 let deliveryProofBucketPromise: Promise<void> | null = null;
 
+interface UploadedDeliveryProof {
+  publicUrl: string;
+  storagePath: string;
+}
+
 /* ── Helpers ───────────────────────────────────────────── */
-
-function unwrapRelation<T>(relation: Relation<T>): T | null {
-  if (Array.isArray(relation)) return relation[0] ?? null;
-  return relation ?? null;
-}
-
-function toNumber(value: unknown, fallback = 0): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string' && value.trim()) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return fallback;
-}
-
-function trimOptional(value: string | null | undefined): string | null {
-  if (typeof value !== 'string') {
-    return null;
-  }
-
-  const trimmedValue = value.trim();
-  return trimmedValue ? trimmedValue : null;
-}
-
-function sanitizeStorageFileName(fileName: string): string {
-  const normalizedFileName = fileName
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-
-  return normalizedFileName || `proof-${randomUUID()}.jpg`;
-}
 
 function formatCurrency(value: number, currency = 'MYR'): string {
   try {
@@ -500,13 +468,32 @@ async function ensureDeliveryProofBucket(): Promise<void> {
   return deliveryProofBucketPromise;
 }
 
-function buildDisplayName(profile: Pick<RawProfile, 'full_name' | 'username'> | null): string {
-  if (!profile) return 'User';
-  const fullName = profile.full_name?.trim();
-  if (fullName) return fullName;
-  const username = profile.username?.trim();
-  if (username) return username;
-  return 'User';
+function filterVisibleOffers(rawOffers: RawOffer[]): RawOffer[] {
+  return rawOffers.filter((offer) => unwrapRelation(offer.listings)?.deleted_at === null);
+}
+
+async function countVisibleOffers(
+  column: 'buyer_id' | 'seller_id',
+  userId: string
+): Promise<number> {
+  const { data, error } = await supabaseAdmin
+    .from('offers')
+    .select(`
+      id,
+      listings!offers_listing_id_fkey (
+        deleted_at
+      )
+    `)
+    .eq(column, userId);
+
+  if (error) {
+    console.error(`[Offers] Failed to count visible offers by ${column}:`, error);
+    return 0;
+  }
+
+  return ((data ?? []) as Array<{ listings: Relation<{ deleted_at: string | null }> }>).filter(
+    (offer) => unwrapRelation(offer.listings)?.deleted_at === null
+  ).length;
 }
 
 function getOfferInitiatorUserId(
@@ -596,14 +583,14 @@ function mapOfferReceipt(receipt: RawPurchaseReceipt): OfferPurchaseReceiptSumma
 async function uploadDeliveryProofs(
   buyerId: string,
   proofs: DeliveryIssueProofInput[]
-): Promise<string[]> {
+): Promise<UploadedDeliveryProof[]> {
   if (proofs.length === 0) {
     return [];
   }
 
   await ensureDeliveryProofBucket();
 
-  const proofUrls: string[] = [];
+  const uploadedProofs: UploadedDeliveryProof[] = [];
 
   for (const proof of proofs) {
     const fileName = trimOptional(proof.fileName);
@@ -633,7 +620,10 @@ async function uploadDeliveryProofs(
       throw new OfferServiceError('Each proof image must be 4 MB or smaller', 422);
     }
 
-    const storagePath = `delivery-proofs/${buyerId}/${new Date().toISOString().slice(0, 10)}/${randomUUID()}-${sanitizeStorageFileName(fileName)}`;
+    const storagePath = `delivery-proofs/${buyerId}/${new Date().toISOString().slice(0, 10)}/${randomUUID()}-${sanitizeStorageFileName(
+      fileName,
+      'proof'
+    )}`;
     const { error: uploadError } = await supabaseAdmin.storage
       .from(DELIVERY_PROOF_BUCKET)
       .upload(storagePath, fileBuffer, {
@@ -655,18 +645,22 @@ async function uploadDeliveryProofs(
       throw new OfferServiceError('Unable to generate a proof image URL', 500);
     }
 
-    proofUrls.push(publicUrl);
+    uploadedProofs.push({
+      publicUrl,
+      storagePath,
+    });
   }
 
-  return proofUrls;
+  return uploadedProofs;
 }
 
 async function attachSaleFollowUp(
   currentUserId: string,
   rawOffers: RawOffer[]
 ): Promise<OfferSummary[]> {
-  const offers = rawOffers.map(mapOffer);
-  const completedSales = rawOffers.filter((offer) => {
+  const visibleRawOffers = filterVisibleOffers(rawOffers);
+  const offers = visibleRawOffers.map(mapOffer);
+  const completedSales = visibleRawOffers.filter((offer) => {
     const listing = unwrapRelation(offer.listings);
 
     return (
@@ -679,8 +673,6 @@ async function attachSaleFollowUp(
   if (completedSales.length === 0) {
     return offers;
   }
-
-  await backfillPurchaseReceiptsForUser(currentUserId);
 
   const completedSaleOfferIdSet = new Set(completedSales.map((saleOffer) => saleOffer.id));
   const completedOfferIds = completedSales.map((saleOffer) => saleOffer.id);
@@ -749,7 +741,10 @@ async function attachSaleFollowUp(
     throw new OfferServiceError('Unable to load delivery issue reports', 500);
   }
 
-  if (receiptsResult.error) {
+  const shouldSkipReceipts =
+    receiptsResult.error && isPurchaseReceiptsTableMissingError(receiptsResult.error);
+
+  if (receiptsResult.error && !shouldSkipReceipts) {
     console.error('[Offers] Failed to load sale follow-up receipts:', receiptsResult.error);
     throw new OfferServiceError('Unable to load sale receipts', 500);
   }
@@ -776,7 +771,7 @@ async function attachSaleFollowUp(
   }
 
   const receiptMap = new Map<string, OfferPurchaseReceiptSummary>();
-  for (const receipt of (receiptsResult.data ?? []) as RawPurchaseReceipt[]) {
+  for (const receipt of (shouldSkipReceipts ? [] : receiptsResult.data ?? []) as RawPurchaseReceipt[]) {
     if (receipt.offer_id && !receiptMap.has(receipt.offer_id)) {
       receiptMap.set(receipt.offer_id, mapOfferReceipt(receipt));
     }
@@ -821,6 +816,7 @@ async function getCompletedSaleOfferById(offerId: string): Promise<RawCompletedS
         title,
         currency,
         status,
+        deleted_at,
         sold_to_user_id
       )
     `)
@@ -856,6 +852,10 @@ function assertBuyerCanManageSale(
     throw new OfferServiceError('Listing not found for this purchase', 404);
   }
 
+  if (listing.deleted_at !== null) {
+    throw new OfferServiceError('Listing not found for this purchase', 404);
+  }
+
   if (listing.status !== 'sold' || listing.sold_to_user_id !== offer.buyer_id) {
     throw new OfferServiceError('This listing is not marked as sold to you', 422);
   }
@@ -877,6 +877,10 @@ function assertSellerCanRespondToReview(
 
   const listing = unwrapRelation(offer.listings);
   if (!listing) {
+    throw new OfferServiceError('Listing not found for this purchase', 404);
+  }
+
+  if (listing.deleted_at !== null) {
     throw new OfferServiceError('Listing not found for this purchase', 404);
   }
 
@@ -944,7 +948,7 @@ const OFFER_SELECT = `
   initiated_by,
   offer_kind,
   listings!offers_listing_id_fkey (
-    id, seller_id, title, price, currency, negotiable, status, sold_to_user_id, cover_image_path,
+    id, seller_id, title, price, currency, negotiable, status, deleted_at, sold_to_user_id, cover_image_path,
     categories!listings_category_id_fkey ( id, name, slug )
   ),
   buyer_profile:profiles!offers_buyer_id_fkey (
@@ -972,20 +976,12 @@ export async function getReceivedOffers(userId: string): Promise<OffersPageRespo
     throw new OfferServiceError('Unable to load received offers', 500);
   }
 
-  const { count: sentCount, error: sentCountErr } = await supabaseAdmin
-    .from('offers')
-    .select('id', { count: 'exact', head: true })
-    .eq('buyer_id', userId);
-
-  if (sentCountErr) {
-    console.error('[Offers] Failed to count sent offers:', sentCountErr);
-  }
-
   const offers = await attachSaleFollowUp(userId, (received ?? []) as RawOffer[]);
+  const sentCount = await countVisibleOffers('buyer_id', userId);
 
   return {
     receivedCount: offers.length,
-    sentCount: sentCount ?? 0,
+    sentCount,
     offers,
   };
 }
@@ -1005,19 +1001,11 @@ export async function getSentOffers(userId: string): Promise<OffersPageResponse>
     throw new OfferServiceError('Unable to load sent offers', 500);
   }
 
-  const { count: receivedCount, error: recvCountErr } = await supabaseAdmin
-    .from('offers')
-    .select('id', { count: 'exact', head: true })
-    .eq('seller_id', userId);
-
-  if (recvCountErr) {
-    console.error('[Offers] Failed to count received offers:', recvCountErr);
-  }
-
   const offers = await attachSaleFollowUp(userId, (sent ?? []) as RawOffer[]);
+  const receivedCount = await countVisibleOffers('seller_id', userId);
 
   return {
-    receivedCount: receivedCount ?? 0,
+    receivedCount,
     sentCount: offers.length,
     offers,
   };
@@ -1031,6 +1019,10 @@ export async function createOffer(
   input: CreateOfferInput
 ): Promise<OfferSummary> {
   const { listingId, offerPrice, message, offerKind } = input;
+
+  if (!Number.isFinite(offerPrice) || offerPrice <= 0) {
+    throw new OfferServiceError('offerPrice must be greater than 0', 422);
+  }
 
   // Validate listing exists and is active
   const { data: listing, error: listingErr } = await supabaseAdmin
@@ -1370,6 +1362,10 @@ export async function createCounterOffer(
 ): Promise<OfferSummary> {
   const { offerId, counterPrice, message } = input;
 
+  if (!Number.isFinite(counterPrice) || counterPrice <= 0) {
+    throw new OfferServiceError('counterPrice must be greater than 0', 422);
+  }
+
   const { data: original, error: fetchErr } = await supabaseAdmin
     .from('offers')
     .select('id, listing_id, buyer_id, seller_id, status, initiated_by, offer_kind')
@@ -1391,9 +1387,12 @@ export async function createCounterOffer(
     throw new OfferServiceError('You can only counter a proposal when it is your turn to respond', 403);
   }
 
+  const counterUpdatedAt = new Date().toISOString();
+  const counterOfferId = randomUUID();
+
   const { error: rejectErr } = await supabaseAdmin
     .from('offers')
-    .update({ status: 'rejected', updated_at: new Date().toISOString() })
+    .update({ status: 'rejected', updated_at: counterUpdatedAt })
     .eq('id', offerId);
 
   if (rejectErr) {
@@ -1401,9 +1400,10 @@ export async function createCounterOffer(
     throw new OfferServiceError('Unable to process counter offer', 500);
   }
 
-  const { data: counterOffer, error: insertErr } = await supabaseAdmin
+  const { error: insertErr } = await supabaseAdmin
     .from('offers')
     .insert({
+      id: counterOfferId,
       listing_id: originalRecord.listing_id,
       buyer_id: originalRecord.buyer_id,
       seller_id: originalRecord.seller_id,
@@ -1413,13 +1413,33 @@ export async function createCounterOffer(
       offer_kind: 'counter_offer',
       initiated_by: userId,
       parent_offer_id: offerId,
-    })
+      updated_at: counterUpdatedAt,
+    });
+
+  if (insertErr) {
+    console.error('[Offers] Failed to create counter offer:', insertErr);
+
+    const { error: rollbackErr } = await supabaseAdmin
+      .from('offers')
+      .update({ status: 'pending', updated_at: new Date().toISOString() })
+      .eq('id', offerId);
+
+    if (rollbackErr) {
+      console.error('[Offers] Failed to roll back original offer after counter insert error:', rollbackErr);
+    }
+
+    throw new OfferServiceError('Unable to create counter offer', 500);
+  }
+
+  const { data: counterOffer, error: refetchErr } = await supabaseAdmin
+    .from('offers')
     .select(OFFER_SELECT)
+    .eq('id', counterOfferId)
     .single();
 
-  if (insertErr || !counterOffer) {
-    console.error('[Offers] Failed to create counter offer:', insertErr);
-    throw new OfferServiceError('Unable to create counter offer', 500);
+  if (refetchErr || !counterOffer) {
+    console.error('[Offers] Counter offer created but failed to fetch updated data:', refetchErr);
+    throw new OfferServiceError('Counter offer created but unable to fetch updated data', 500);
   }
 
   const createdCounterOffer = mapOffer(counterOffer as RawOffer);
@@ -1680,12 +1700,12 @@ export async function reportDeliveryIssue(
     toNumber(offer.offer_price),
     listing.currency
   );
-  const proofUrls = await uploadDeliveryProofs(userId, proofs);
+  const uploadedProofs = await uploadDeliveryProofs(userId, proofs);
   const reportDetails = buildDeliveryDisputeDetails({
     offerId: input.offerId,
     agreedPriceLabel,
     paymentReference,
-    proofUrls,
+    proofUrls: uploadedProofs.map((proof) => proof.publicUrl),
     buyerStatement,
   });
   const timestamp = new Date().toISOString();
@@ -1707,9 +1727,12 @@ export async function reportDeliveryIssue(
   if (insertError || !createdReport) {
     console.error('[Offers] Failed to create delivery issue report:', insertError);
 
-    if (proofUrls.length > 0) {
+    if (uploadedProofs.length > 0) {
       try {
-        await removeStorageObjects(DELIVERY_PROOF_BUCKET, proofUrls);
+        await removeStorageObjects(
+          DELIVERY_PROOF_BUCKET,
+          uploadedProofs.map((proof) => proof.storagePath)
+        );
       } catch (cleanupError) {
         console.error('[Offers] Failed to clean up uploaded proof images:', cleanupError);
       }

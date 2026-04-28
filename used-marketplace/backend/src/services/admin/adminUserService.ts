@@ -41,6 +41,9 @@ import {
   unwrapRelation,
 } from './shared';
 
+const MIN_ADMIN_USER_PASSWORD_LENGTH = 8;
+const MAX_ADMIN_USER_PASSWORD_LENGTH = 72;
+
 function buildAdminUserListItem(
   profile: RawProfile,
   authUser: AuthAdminUser | undefined,
@@ -269,8 +272,25 @@ export async function createAdminUser(input: CreateAdminUserInput): Promise<Admi
     throw new AdminServiceError('A valid email address is required', 422);
   }
 
-  if (!password || password.length < 8) {
-    throw new AdminServiceError('Password must be at least 8 characters', 422);
+  if (!password.trim()) {
+    throw new AdminServiceError('Password is required', 422);
+  }
+
+  if (
+    password.length < MIN_ADMIN_USER_PASSWORD_LENGTH ||
+    password.length > MAX_ADMIN_USER_PASSWORD_LENGTH
+  ) {
+    throw new AdminServiceError(
+      `Password must be between ${MIN_ADMIN_USER_PASSWORD_LENGTH} and ${MAX_ADMIN_USER_PASSWORD_LENGTH} characters`,
+      422
+    );
+  }
+
+  if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password)) {
+    throw new AdminServiceError(
+      'Password must include uppercase, lowercase, and number characters',
+      422
+    );
   }
 
   const { data: existingUsername, error: existingUsernameError } = await supabaseAdmin

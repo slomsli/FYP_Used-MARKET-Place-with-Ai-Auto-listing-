@@ -9,10 +9,12 @@ import type {
   PurchaseReceiptSummary,
   PurchasesDashboardResponse,
 } from '../types/purchase';
+import { buildDisplayName } from '../utils/profile';
+import { type Relation, unwrapRelation } from '../utils/relation';
 import { createNotification } from './notificationService';
 import { getPublicStorageUrl } from '../utils/storage';
-
-type Relation<T> = T | T[] | null;
+import { AVATAR_BUCKET, LISTING_IMAGE_BUCKET } from '../utils/storageBuckets';
+import { toNumber, trimOptional } from '../utils/value';
 
 interface RawProfile {
   id: string;
@@ -26,6 +28,7 @@ interface RawListingReference {
   title: string;
   cover_image_path: string | null;
   status: string;
+  deleted_at: string | null;
   sold_at: string | null;
   created_at: string;
 }
@@ -70,6 +73,7 @@ interface RawAcceptedOfferCandidate {
     currency: string;
     cover_image_path: string | null;
     status: string;
+    deleted_at: string | null;
     sold_at: string | null;
     created_at: string;
     sold_to_user_id: string | null;
@@ -85,6 +89,7 @@ interface RawManualSaleCandidate {
   currency: string;
   cover_image_path: string | null;
   status: string;
+  deleted_at: string | null;
   sold_at: string | null;
   created_at: string;
 }
@@ -111,14 +116,14 @@ interface ReceiptInsertRow {
   updated_at: string;
 }
 
-const LISTING_IMAGE_BUCKET =
-  process.env.SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
-  process.env.NEXT_PUBLIC_SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
-  'listing-images';
-const AVATAR_BUCKET =
-  process.env.SUPABASE_AVATARS_BUCKET?.trim() ||
-  process.env.NEXT_PUBLIC_SUPABASE_AVATARS_BUCKET?.trim() ||
-  'avatars';
+interface PostgrestLikeError {
+  code?: string | null;
+  message?: string | null;
+}
+
+let hasWarnedMissingPurchaseReceiptsTable = false;
+const PURCHASE_RECEIPT_BACKFILL_ATTEMPT_TTL_MS = 60 * 60 * 1000;
+const purchaseReceiptBackfillAttemptedUsers = new Map<string, number>();
 
 const RECEIPT_SELECT = `
   id,
@@ -145,6 +150,7 @@ const RECEIPT_SELECT = `
     title,
     cover_image_path,
     status,
+    deleted_at,
     sold_at,
     created_at
   ),
@@ -172,48 +178,35 @@ export class PurchaseServiceError extends Error {
   }
 }
 
-function unwrapRelation<T>(relation: Relation<T>): T | null {
-  if (Array.isArray(relation)) {
-    return relation[0] ?? null;
+export function isPurchaseReceiptsTableMissingError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
   }
 
-  return relation ?? null;
+  const postgrestError = error as PostgrestLikeError;
+  return (
+    postgrestError.code === 'PGRST205' &&
+    /purchase_receipts/i.test(postgrestError.message ?? '')
+  );
 }
 
-function toNumber(value: unknown, fallback = 0): number {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
+function warnMissingPurchaseReceiptsTable(error: unknown): void {
+  if (hasWarnedMissingPurchaseReceiptsTable) {
+    return;
   }
 
-  if (typeof value === 'string' && value.trim()) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-
-  return fallback;
+  hasWarnedMissingPurchaseReceiptsTable = true;
+  console.warn(
+    '[Purchases] purchase_receipts table is missing. Run the SQL migration for purchase receipts to enable this feature.',
+    error
+  );
 }
 
-function trimOptional(value: string | null | undefined, maxLength?: number): string | null {
-  if (typeof value !== 'string') {
-    return null;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  return maxLength ? trimmed.slice(0, maxLength) : trimmed;
-}
-
-function buildDisplayName(profile: RawProfile | null): string {
-  if (!profile) {
-    return 'Marketplace User';
-  }
-
-  return profile.full_name?.trim() || profile.username || 'Marketplace User';
+function buildMissingPurchaseReceiptsTableError(): PurchaseServiceError {
+  return new PurchaseServiceError(
+    'Purchase receipts are not ready yet. Run the purchase_receipts SQL migration first.',
+    503
+  );
 }
 
 function buildReceiptNumber(timestamp = new Date()): string {
@@ -223,6 +216,30 @@ function buildReceiptNumber(timestamp = new Date()): string {
 
 function buildSaleKey(listingId: string, buyerId: string, sellerId: string): string {
   return `${listingId}::${buyerId}::${sellerId}`;
+}
+
+function cleanupExpiredBackfillAttempts(now = Date.now()): void {
+  for (const [userId, expiresAt] of purchaseReceiptBackfillAttemptedUsers.entries()) {
+    if (expiresAt <= now) {
+      purchaseReceiptBackfillAttemptedUsers.delete(userId);
+    }
+  }
+}
+
+function hasRecentBackfillAttempt(userId: string): boolean {
+  const now = Date.now();
+  cleanupExpiredBackfillAttempts(now);
+
+  const expiresAt = purchaseReceiptBackfillAttemptedUsers.get(userId);
+  return typeof expiresAt === 'number' && expiresAt > now;
+}
+
+function markBackfillAttempt(userId: string): void {
+  cleanupExpiredBackfillAttempts();
+  purchaseReceiptBackfillAttemptedUsers.set(
+    userId,
+    Date.now() + PURCHASE_RECEIPT_BACKFILL_ATTEMPT_TTL_MS
+  );
 }
 
 function getSourceLabel(source: PurchaseReceiptSource): string {
@@ -305,13 +322,13 @@ function mapReceiptSummary(row: RawReceiptRow, currentUserId: string): PurchaseR
     },
     buyer: {
       id: row.buyer_id,
-      displayName: buildDisplayName(buyerProfile),
+      displayName: buildDisplayName(buyerProfile, 'Marketplace User'),
       username: buyerProfile?.username ?? null,
       avatarPath: getPublicStorageUrl(AVATAR_BUCKET, buyerProfile?.avatar_path ?? null),
     },
     seller: {
       id: row.seller_id,
-      displayName: buildDisplayName(sellerProfile),
+      displayName: buildDisplayName(sellerProfile, 'Marketplace User'),
       username: sellerProfile?.username ?? null,
       avatarPath: getPublicStorageUrl(AVATAR_BUCKET, sellerProfile?.avatar_path ?? null),
     },
@@ -370,6 +387,11 @@ async function insertReceiptRows(rows: ReceiptInsertRow[]): Promise<void> {
   const { error } = await supabaseAdmin.from('purchase_receipts').insert(rows);
 
   if (error) {
+    if (isPurchaseReceiptsTableMissingError(error)) {
+      warnMissingPurchaseReceiptsTable(error);
+      return;
+    }
+
     console.error('[Purchases] Failed to insert purchase receipts:', error);
     throw new PurchaseServiceError('Unable to create purchase receipts', 500);
   }
@@ -393,6 +415,11 @@ async function loadReceiptRowForUser(
     .maybeSingle();
 
   if (error) {
+    if (isPurchaseReceiptsTableMissingError(error)) {
+      warnMissingPurchaseReceiptsTable(error);
+      throw buildMissingPurchaseReceiptsTableError();
+    }
+
     console.error('[Purchases] Failed to load receipt:', error);
     throw new PurchaseServiceError('Unable to load the selected receipt', 500);
   }
@@ -401,7 +428,14 @@ async function loadReceiptRowForUser(
     throw new PurchaseServiceError('Receipt was not found', 404);
   }
 
-  return data as RawReceiptRow;
+  const receipt = data as RawReceiptRow;
+  const listing = unwrapRelation(receipt.listings);
+
+  if (!listing || listing.deleted_at !== null) {
+    throw new PurchaseServiceError('Receipt was not found', 404);
+  }
+
+  return receipt;
 }
 
 async function backfillAcceptedOfferReceiptsForUser(userId: string): Promise<Set<string>> {
@@ -422,6 +456,7 @@ async function backfillAcceptedOfferReceiptsForUser(userId: string): Promise<Set
         currency,
         cover_image_path,
         status,
+        deleted_at,
         sold_at,
         created_at,
         sold_to_user_id
@@ -440,6 +475,7 @@ async function backfillAcceptedOfferReceiptsForUser(userId: string): Promise<Set
     const listing = unwrapRelation(offer.listings);
     return (
       listing !== null &&
+      listing.deleted_at === null &&
       listing.status === 'sold' &&
       listing.sold_to_user_id === offer.buyer_id
     );
@@ -459,6 +495,11 @@ async function backfillAcceptedOfferReceiptsForUser(userId: string): Promise<Set
     .in('offer_id', offerIds);
 
   if (existingReceiptsError) {
+    if (isPurchaseReceiptsTableMissingError(existingReceiptsError)) {
+      warnMissingPurchaseReceiptsTable(existingReceiptsError);
+      return saleKeySet;
+    }
+
     console.error('[Purchases] Failed to inspect existing offer receipts:', existingReceiptsError);
     throw new PurchaseServiceError('Unable to prepare purchase history', 500);
   }
@@ -511,6 +552,7 @@ async function backfillManualSaleReceiptsForUser(
     `)
     .eq('status', 'sold')
     .not('sold_to_user_id', 'is', null)
+    .is('deleted_at', null)
     .or(`seller_id.eq.${userId},sold_to_user_id.eq.${userId}`);
 
   if (error) {
@@ -532,6 +574,11 @@ async function backfillManualSaleReceiptsForUser(
     .in('listing_id', soldListingIds);
 
   if (existingManualReceiptsError) {
+    if (isPurchaseReceiptsTableMissingError(existingManualReceiptsError)) {
+      warnMissingPurchaseReceiptsTable(existingManualReceiptsError);
+      return;
+    }
+
     console.error('[Purchases] Failed to inspect manual receipts:', existingManualReceiptsError);
     throw new PurchaseServiceError('Unable to prepare sale history', 500);
   }
@@ -575,6 +622,23 @@ export async function backfillPurchaseReceiptsForUser(userId: string): Promise<v
   await backfillManualSaleReceiptsForUser(userId, acceptedSaleKeySet);
 }
 
+async function maybeBackfillPurchaseReceiptsForUser(userId: string): Promise<void> {
+  const normalizedUserId = trimOptional(userId);
+
+  if (!normalizedUserId || hasRecentBackfillAttempt(normalizedUserId)) {
+    return;
+  }
+
+  markBackfillAttempt(normalizedUserId);
+
+  try {
+    await backfillPurchaseReceiptsForUser(normalizedUserId);
+  } catch (error) {
+    purchaseReceiptBackfillAttemptedUsers.delete(normalizedUserId);
+    throw error;
+  }
+}
+
 export async function ensurePurchaseReceiptForAcceptedOffer(offerId: string): Promise<void> {
   const normalizedOfferId = trimOptional(offerId);
 
@@ -589,6 +653,11 @@ export async function ensurePurchaseReceiptForAcceptedOffer(offerId: string): Pr
     .maybeSingle();
 
   if (existingReceiptError) {
+    if (isPurchaseReceiptsTableMissingError(existingReceiptError)) {
+      warnMissingPurchaseReceiptsTable(existingReceiptError);
+      return;
+    }
+
     console.error('[Purchases] Failed to inspect existing accepted-offer receipt:', existingReceiptError);
     throw new PurchaseServiceError('Unable to prepare sale receipt', 500);
   }
@@ -614,6 +683,7 @@ export async function ensurePurchaseReceiptForAcceptedOffer(offerId: string): Pr
         currency,
         cover_image_path,
         status,
+        deleted_at,
         sold_at,
         created_at,
         sold_to_user_id
@@ -634,7 +704,12 @@ export async function ensurePurchaseReceiptForAcceptedOffer(offerId: string): Pr
   const offer = data as RawAcceptedOfferCandidate;
   const listing = unwrapRelation(offer.listings);
 
-  if (!listing || listing.status !== 'sold' || listing.sold_to_user_id !== offer.buyer_id) {
+  if (
+    !listing ||
+    listing.deleted_at !== null ||
+    listing.status !== 'sold' ||
+    listing.sold_to_user_id !== offer.buyer_id
+  ) {
     return;
   }
 
@@ -694,6 +769,11 @@ export async function ensurePurchaseReceiptForManualSale(input: {
     .maybeSingle();
 
   if (existingReceiptError) {
+    if (isPurchaseReceiptsTableMissingError(existingReceiptError)) {
+      warnMissingPurchaseReceiptsTable(existingReceiptError);
+      return;
+    }
+
     console.error('[Purchases] Failed to inspect existing manual receipt:', existingReceiptError);
     throw new PurchaseServiceError('Unable to prepare sale receipt', 500);
   }
@@ -707,6 +787,7 @@ export async function ensurePurchaseReceiptForManualSale(input: {
     .select('id, seller_id, sold_to_user_id, price, currency, sold_at, created_at, status')
     .eq('id', normalizedListingId)
     .eq('seller_id', normalizedSellerId)
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (listingError) {
@@ -738,7 +819,7 @@ export async function ensurePurchaseReceiptForManualSale(input: {
 export async function getPurchaseReceiptsForUser(
   userId: string
 ): Promise<PurchasesDashboardResponse> {
-  await backfillPurchaseReceiptsForUser(userId);
+  await maybeBackfillPurchaseReceiptsForUser(userId);
 
   const { data, error } = await supabaseAdmin
     .from('purchase_receipts')
@@ -747,11 +828,19 @@ export async function getPurchaseReceiptsForUser(
     .order('created_at', { ascending: false });
 
   if (error) {
+    if (isPurchaseReceiptsTableMissingError(error)) {
+      warnMissingPurchaseReceiptsTable(error);
+      throw buildMissingPurchaseReceiptsTableError();
+    }
+
     console.error('[Purchases] Failed to load purchase receipts:', error);
     throw new PurchaseServiceError('Unable to load purchase history', 500);
   }
 
-  const rows = (data ?? []) as RawReceiptRow[];
+  const rows = ((data ?? []) as RawReceiptRow[]).filter((row) => {
+    const listing = unwrapRelation(row.listings);
+    return listing !== null && listing.deleted_at === null;
+  });
   const mapped = rows.map((row) => mapReceiptSummary(row, userId));
   const purchases = mapped.filter((receipt) => receipt.buyer.id === userId);
   const sales = mapped.filter((receipt) => receipt.seller.id === userId);
@@ -776,7 +865,7 @@ export async function getPurchaseReceiptDetailForUser(
   userId: string,
   receiptId: string
 ): Promise<PurchaseReceiptDetailResponse> {
-  await backfillPurchaseReceiptsForUser(userId);
+  await maybeBackfillPurchaseReceiptsForUser(userId);
   const row = await loadReceiptRowForUser(userId, receiptId);
   return mapReceiptDetail(row, userId);
 }
@@ -826,7 +915,7 @@ export async function markPurchaseReceiptPaid(
       userId: receipt.seller_id,
       type: 'system',
       title: 'Buyer marked a receipt as paid',
-      body: `${buildDisplayName(unwrapRelation(receipt.buyer_profile))} marked receipt ${receipt.receipt_number} as paid.`,
+      body: `${buildDisplayName(unwrapRelation(receipt.buyer_profile), 'Marketplace User')} marked receipt ${receipt.receipt_number} as paid.`,
       linkPath: `/dashboard/purchases/${receipt.id}`,
     });
   } catch (notificationError) {
@@ -874,7 +963,7 @@ export async function confirmPurchaseReceiptPayment(
       userId: receipt.buyer_id,
       type: 'system',
       title: 'Seller confirmed your payment',
-      body: `${buildDisplayName(unwrapRelation(receipt.seller_profile))} confirmed receipt ${receipt.receipt_number}.`,
+      body: `${buildDisplayName(unwrapRelation(receipt.seller_profile), 'Marketplace User')} confirmed receipt ${receipt.receipt_number}.`,
       linkPath: `/dashboard/purchases/${receipt.id}`,
     });
   } catch (notificationError) {

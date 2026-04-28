@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import ReportListingModal from '@/src/components/reports/ReportListingModal';
 import { ROUTES } from '@/src/config/routes';
+import { resolveSupabaseUserRole } from '@/src/utils/authHelpers';
 import { useAuth } from '@/src/hooks/useAuth';
 import { getProfile } from '@/src/services/profileService';
 import {
@@ -264,12 +265,11 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
       }
 
       setViewerRole(
-        profileResponse.data?.role ||
-          (typeof user.user_metadata?.role === 'string' ? user.user_metadata.role : null)
+        resolveSupabaseUserRole(user, profileResponse.data?.role ?? null)
       );
     }).catch(() => {
       if (!cancelled) {
-        setViewerRole(typeof user.user_metadata?.role === 'string' ? user.user_metadata.role : null);
+        setViewerRole(resolveSupabaseUserRole(user));
       }
     });
 
@@ -278,8 +278,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
     };
   }, [session?.access_token, user]);
 
-  const resolvedViewerRole =
-    viewerRole || (typeof user?.user_metadata?.role === 'string' ? user.user_metadata.role : null);
+  const resolvedViewerRole = resolveSupabaseUserRole(user, viewerRole);
   const isAdminViewer = resolvedViewerRole === 'admin';
   const memberAccessResolved = !user || resolvedViewerRole !== null;
   const showMemberActions = !user || resolvedViewerRole === 'user';

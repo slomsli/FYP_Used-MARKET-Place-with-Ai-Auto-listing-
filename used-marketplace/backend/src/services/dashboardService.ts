@@ -1,11 +1,9 @@
 import { supabaseAdmin } from '../config/supabase';
+import { type Relation, unwrapRelation } from '../utils/relation';
 import { getPublicStorageUrl } from '../utils/storage';
+import { LISTING_IMAGE_BUCKET } from '../utils/storageBuckets';
 
 const DASHBOARD_TIME_ZONE = 'Asia/Kuala_Lumpur';
-const LISTING_IMAGE_BUCKET =
-  process.env.SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
-  process.env.NEXT_PUBLIC_SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
-  'listing-images';
 
 export interface DashboardSummary {
   stats: {
@@ -62,13 +60,12 @@ export interface DashboardSummary {
   }[];
 }
 
-type Relation<T> = T | T[] | null;
-
 interface RawRelatedListing {
   id: string;
   title: string;
   cover_image_path: string | null;
   currency: string | null;
+  deleted_at?: string | null;
 }
 
 interface RawPendingOffer {
@@ -109,14 +106,6 @@ interface RawListingImage {
   storage_path: string;
   is_cover: boolean;
   sort_order: number;
-}
-
-function unwrapRelation<T>(relation: Relation<T>): T | null {
-  if (Array.isArray(relation)) {
-    return relation[0] ?? null;
-  }
-
-  return relation ?? null;
 }
 
 function logQueryError(scope: string, error: unknown) {
@@ -374,15 +363,83 @@ export async function getDashboardSummary(
   }).format(startDate);
   const weeklyData = buildInsightBuckets(startDate, endDate);
   const availableMonths = buildAvailableMonths();
-  const userListingsResult = await supabaseAdmin
-    .from('listings')
-    .select(
-      'id, title, condition, status, created_at, updated_at, views_count, price, currency, cover_image_path'
-    )
-    .eq('seller_id', userId)
-    .is('deleted_at', null)
-    .order('created_at', { ascending: false });
+  const [
+    userListingsResult,
+    favoritesResult,
+    pendingOffersResult,
+    convosResult,
+    highestOffersResult,
+    recommendedResult,
+  ] = await Promise.all([
+    supabaseAdmin
+      .from('listings')
+      .select(
+        'id, title, condition, status, created_at, updated_at, views_count, price, currency, cover_image_path'
+      )
+      .eq('seller_id', userId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false }),
+    supabaseAdmin
+      .from('favorites')
+      .select(`
+        listing_id,
+        listings (
+          id,
+          deleted_at
+        )
+      `)
+      .eq('user_id', userId),
+    supabaseAdmin
+      .from('offers')
+      .select(`
+        id,
+        listings (
+          deleted_at
+        )
+      `)
+      .eq('seller_id', userId)
+      .eq('status', 'pending'),
+    supabaseAdmin
+      .from('conversations')
+      .select(`
+        id,
+        listings (
+          deleted_at
+        )
+      `)
+      .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`),
+    supabaseAdmin
+      .from('offers')
+      .select(`
+        id,
+        offer_price,
+        listings (
+          id,
+          title,
+          cover_image_path,
+          currency,
+          deleted_at
+        )
+      `)
+      .eq('seller_id', userId)
+      .eq('status', 'pending')
+      .order('offer_price', { ascending: false })
+      .limit(20),
+    supabaseAdmin
+      .from('listings')
+      .select('id, title, price, currency, cover_image_path')
+      .neq('seller_id', userId)
+      .eq('status', 'active')
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(1),
+  ]);
   logQueryError('user listings', userListingsResult.error);
+  logQueryError('favorites', favoritesResult.error);
+  logQueryError('pending offers', pendingOffersResult.error);
+  logQueryError('conversations', convosResult.error);
+  logQueryError('highest pending offer', highestOffersResult.error);
+  logQueryError('recommended listing', recommendedResult.error);
 
   const userListings = (userListingsResult.data ?? []) as RawUserListing[];
   const listingIds = userListings.map((listing) => listing.id);
@@ -393,40 +450,19 @@ export async function getDashboardSummary(
   const scopedListings = selectedListing ? [selectedListing] : userListings;
   const scopedListingIds = scopedListings.map((listing) => listing.id);
 
-  const favoritesResult = await supabaseAdmin
-    .from('favorites')
-    .select(`
-      listing_id,
-      listings (
-        id,
-        deleted_at
-      )
-    `)
-    .eq('user_id', userId);
-  logQueryError('favorites', favoritesResult.error);
-
-  const pendingOffersResult = await supabaseAdmin
-    .from('offers')
-    .select('*', { count: 'exact', head: true })
-    .eq('seller_id', userId)
-    .eq('status', 'pending');
-  logQueryError('pending offers', pendingOffersResult.error);
-
-  const convosResult = await supabaseAdmin
-    .from('conversations')
-    .select('id')
-    .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`);
-  logQueryError('conversations', convosResult.error);
+  const visibleConversationIds = ((convosResult.data ?? []) as Array<{
+    id: string;
+    listings: Relation<{ deleted_at: string | null }>;
+  }>)
+    .filter((conversation) => unwrapRelation(conversation.listings)?.deleted_at === null)
+    .map((conversation) => conversation.id);
 
   let unreadMessages = 0;
-  if (convosResult.data && convosResult.data.length > 0) {
+  if (visibleConversationIds.length > 0) {
     const unreadMessagesResult = await supabaseAdmin
       .from('messages')
       .select('*', { count: 'exact', head: true })
-      .in(
-        'conversation_id',
-        convosResult.data.map((convo) => convo.id)
-      )
+      .in('conversation_id', visibleConversationIds)
       .neq('sender_id', userId)
       .eq('is_read', false);
 
@@ -434,36 +470,12 @@ export async function getDashboardSummary(
     unreadMessages = unreadMessagesResult.count || 0;
   }
 
-  const highestOffersResult = await supabaseAdmin
-    .from('offers')
-    .select(`
-      id,
-      offer_price,
-      listings (
-        id,
-        title,
-        cover_image_path,
-        currency
-      )
-    `)
-    .eq('seller_id', userId)
-    .eq('status', 'pending')
-    .order('offer_price', { ascending: false })
-    .limit(1);
-  logQueryError('highest pending offer', highestOffersResult.error);
-
-  const recommendedResult = await supabaseAdmin
-    .from('listings')
-    .select('id, title, price, currency, cover_image_path')
-    .neq('seller_id', userId)
-    .eq('status', 'active')
-    .is('deleted_at', null)
-    .order('created_at', { ascending: false })
-    .limit(1);
-  logQueryError('recommended listing', recommendedResult.error);
-
-  const highlightedListing = highestOffersResult.data && highestOffersResult.data.length > 0
-    ? unwrapRelation((highestOffersResult.data[0] as RawPendingOffer).listings)
+  const highlightedOfferCandidate =
+    ((highestOffersResult.data ?? []) as RawPendingOffer[]).find(
+      (offer) => unwrapRelation(offer.listings)?.deleted_at === null
+    ) ?? null;
+  const highlightedListing = highlightedOfferCandidate
+    ? unwrapRelation(highlightedOfferCandidate.listings)
     : null;
   const recommendedListing = recommendedResult.data && recommendedResult.data.length > 0
     ? (recommendedResult.data[0] as RawListingCard)
@@ -481,11 +493,33 @@ export async function getDashboardSummary(
     imageLookupIds.add(listing.id);
   }
 
-  const imageMap = await getListingImageMap([...imageLookupIds]);
+  const imageMapPromise = getListingImageMap([...imageLookupIds]);
+  const offersResultPromise =
+    listingIds.length > 0
+      ? supabaseAdmin
+          .from('offers')
+          .select('listing_id, created_at')
+          .in('listing_id', listingIds)
+      : Promise.resolve({ data: [], error: null });
+  const dailyViewsResultPromise =
+    scopedListingIds.length > 0
+      ? supabaseAdmin
+          .from('listing_daily_views')
+          .select('listing_id, view_date, views_count')
+          .in('listing_id', scopedListingIds)
+          .gte('view_date', selectedMonthValue + '-01')
+          .lt('view_date', nextMonthStart.toISOString().split('T')[0])
+      : Promise.resolve({ data: [], error: null });
+
+  const [imageMap, offersResult, dailyViewsResult] = await Promise.all([
+    imageMapPromise,
+    offersResultPromise,
+    dailyViewsResultPromise,
+  ]);
 
   let highlightedOffer = null;
-  if (highestOffersResult.data && highestOffersResult.data.length > 0) {
-    const offer = highestOffersResult.data[0] as RawPendingOffer;
+  if (highlightedOfferCandidate) {
+    const offer = highlightedOfferCandidate;
     const relatedListing = unwrapRelation(offer.listings);
 
     if (relatedListing) {
@@ -539,32 +573,26 @@ export async function getDashboardSummary(
 
   const offersByListingId = new Map<string, number>();
 
-  if (listingIds.length > 0) {
-    const offersResult = await supabaseAdmin
-      .from('offers')
-      .select('listing_id, created_at')
-      .in('listing_id', listingIds);
-    logQueryError('listing offers', offersResult.error);
+  logQueryError('listing offers', offersResult.error);
 
-    for (const offer of (offersResult.data ?? []) as RawOfferMetric[]) {
-      offersByListingId.set(
-        offer.listing_id,
-        (offersByListingId.get(offer.listing_id) ?? 0) + 1
-      );
+  for (const offer of (offersResult.data ?? []) as RawOfferMetric[]) {
+    offersByListingId.set(
+      offer.listing_id,
+      (offersByListingId.get(offer.listing_id) ?? 0) + 1
+    );
 
-      if (!scopedListingIds.includes(offer.listing_id)) {
-        continue;
-      }
+    if (!scopedListingIds.includes(offer.listing_id)) {
+      continue;
+    }
 
-      const bucketIndex = getBucketIndexForTimestamp(
-        offer.created_at,
-        selectedMonthValue,
-        weeklyData.length
-      );
+    const bucketIndex = getBucketIndexForTimestamp(
+      offer.created_at,
+      selectedMonthValue,
+      weeklyData.length
+    );
 
-      if (bucketIndex >= 0) {
-        weeklyData[bucketIndex].offers += 1;
-      }
+    if (bucketIndex >= 0) {
+      weeklyData[bucketIndex].offers += 1;
     }
   }
 
@@ -577,15 +605,9 @@ export async function getDashboardSummary(
     offers: offersByListingId.get(listing.id) ?? 0,
   }));
 
-  if (scopedListingIds.length > 0) {
-    const dailyViewsResult = await supabaseAdmin
-      .from('listing_daily_views')
-      .select('listing_id, view_date, views_count')
-      .in('listing_id', scopedListingIds)
-      .gte('view_date', selectedMonthValue + '-01')
-      .lt('view_date', nextMonthStart.toISOString().split('T')[0]);
-    logQueryError('daily views', dailyViewsResult.error);
+  logQueryError('daily views', dailyViewsResult.error);
 
+  if (scopedListingIds.length > 0) {
     const listingsWithDailyViews = new Set<string>();
     for (const view of (dailyViewsResult.data ?? []) as RawDailyView[]) {
       const bucketIndex = getBucketIndexForDateOnly(
@@ -633,7 +655,10 @@ export async function getDashboardSummary(
         const listing = unwrapRelation(favorite.listings);
         return listing !== null && listing.deleted_at === null;
       }).length,
-      pendingOffers: pendingOffersResult.count || 0,
+      pendingOffers: ((pendingOffersResult.data ?? []) as Array<{
+        id: string;
+        listings: Relation<{ deleted_at: string | null }>;
+      }>).filter((offer) => unwrapRelation(offer.listings)?.deleted_at === null).length,
     },
     insights: {
       selectedMonth: selectedMonthValue,

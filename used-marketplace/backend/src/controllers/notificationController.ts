@@ -5,6 +5,7 @@ import {
   getNotificationsForUser,
   markAllNotificationsAsRead,
   markNotificationAsRead,
+  NotificationServiceError,
 } from '../services/notificationService';
 
 function ensureAuthenticatedUser(req: AuthenticatedRequest, res: Response): string | null {
@@ -51,6 +52,11 @@ export async function getNotificationsHandler(
       return;
     }
 
+    if (error instanceof NotificationServiceError) {
+      sendError(res, error.message, error.status);
+      return;
+    }
+
     console.error('Error fetching notifications:', error);
     sendError(res, 'Internal server error while fetching notifications', 500);
   }
@@ -69,13 +75,8 @@ export async function markNotificationReadHandler(
     const notification = await markNotificationAsRead(userId, req.params.notificationId);
     sendSuccess(res, notification);
   } catch (error) {
-    if (error instanceof Error && error.message === 'Notification not found') {
-      sendError(res, error.message, 404);
-      return;
-    }
-
-    if (error instanceof Error && error.message === 'notificationId is required') {
-      sendError(res, error.message, 422);
+    if (error instanceof NotificationServiceError) {
+      sendError(res, error.message, error.status);
       return;
     }
 
@@ -97,6 +98,11 @@ export async function markAllNotificationsReadHandler(
     const result = await markAllNotificationsAsRead(userId);
     sendSuccess(res, result);
   } catch (error) {
+    if (error instanceof NotificationServiceError) {
+      sendError(res, error.message, error.status);
+      return;
+    }
+
     console.error('Error marking all notifications as read:', error);
     sendError(res, 'Internal server error while marking notifications as read', 500);
   }

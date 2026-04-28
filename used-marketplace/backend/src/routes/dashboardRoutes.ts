@@ -184,10 +184,10 @@ router.patch('/listings/:listingId/mark-sold', markSellerListingSold);
 // PATCH /api/dashboard/listings/:listingId/mark-active
 router.patch('/listings/:listingId/mark-active', markSellerListingActive);
 
-// PATCH /api/dashboard/listings/:listingId/activate
+// Legacy aliases kept for older frontend clients that still fall back to these paths.
+// New code should use /mark-active as the canonical route.
 router.patch('/listings/:listingId/activate', markSellerListingActive);
 
-// PATCH /api/dashboard/listings/:listingId/restore
 router.patch('/listings/:listingId/restore', markSellerListingActive);
 
 // DELETE /api/dashboard/listings/:listingId

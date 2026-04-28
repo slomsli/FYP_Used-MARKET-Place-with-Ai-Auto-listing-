@@ -1,5 +1,7 @@
 import { randomUUID } from 'crypto';
 import { supabaseAdmin } from '../config/supabase';
+import { type Relation, unwrapRelation } from '../utils/relation';
+import { sanitizeStorageFileName } from '../utils/storageFile';
 import { sendReply } from './messageService';
 import { ensurePurchaseReceiptForManualSale } from './purchaseService';
 import {
@@ -9,6 +11,8 @@ import {
   normalizeStoragePathsForDatabase,
   removeStorageObjects,
 } from '../utils/storage';
+import { AVATAR_BUCKET, LISTING_IMAGE_BUCKET } from '../utils/storageBuckets';
+import { toNumber, trimOptional } from '../utils/value';
 import { MODERATION_LISTING_BRAND } from '../utils/moderationThread';
 import {
   buildListingModerationMessage,
@@ -41,8 +45,6 @@ import {
   type UploadedListingImage,
   type UploadListingImageBody,
 } from '../types/listing';
-
-type Relation<T> = T | T[] | null;
 
 interface RawCategory {
   id: number;
@@ -105,6 +107,13 @@ interface RawDailyView {
   views_count: number;
 }
 
+interface RawListingEngagementCountRow {
+  listing_id: string;
+  favorite_count: unknown;
+  total_offer_count: unknown;
+  pending_offer_count: unknown;
+}
+
 interface RawPublicLookupListing {
   category_id: number;
   state_id: number | null;
@@ -112,6 +121,26 @@ interface RawPublicLookupListing {
   price: unknown;
   categories: Relation<RawCategory>;
   states: Relation<RawState>;
+}
+
+interface RawPublicLookupsRpcPayload {
+  categories?: Array<{
+    id: number;
+    name: string;
+    slug: string;
+    count: unknown;
+  }>;
+  states?: Array<{
+    id: number;
+    name: string;
+    slug: string;
+    count: unknown;
+  }>;
+  conditions?: Partial<Record<ListingCondition, unknown>>;
+  priceRange?: {
+    min?: unknown;
+    max?: unknown;
+  };
 }
 
 interface RawListingImage {
@@ -198,44 +227,12 @@ const STATUS_LABELS: Record<CreateableListingStatus, string> = {
   active: 'Active',
 };
 
-const LISTING_IMAGE_BUCKET =
-  process.env.SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
-  process.env.NEXT_PUBLIC_SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
-  'listing-images';
-const AVATAR_BUCKET =
-  process.env.SUPABASE_AVATARS_BUCKET?.trim() ||
-  process.env.NEXT_PUBLIC_SUPABASE_AVATARS_BUCKET?.trim() ||
-  'avatars';
-
 const MAX_LISTING_IMAGE_SIZE_BYTES = 8 * 1024 * 1024;
 const LISTING_IMAGE_MIME_TYPES = ['image/*'];
 const PUBLIC_BROWSE_LISTING_STATUS = 'active';
 const PUBLIC_DETAIL_VISIBLE_STATUSES = ['active', 'reserved', 'sold'] as const;
 
 let listingImageBucketPromise: Promise<void> | null = null;
-
-function unwrapRelation<T>(relation: Relation<T>): T | null {
-  if (Array.isArray(relation)) {
-    return relation[0] ?? null;
-  }
-
-  return relation ?? null;
-}
-
-function toNumber(value: unknown, fallback = 0): number {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === 'string' && value.trim()) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-
-  return fallback;
-}
 
 function toInteger(value: number | string): number {
   const parsed = typeof value === 'number' ? value : Number(value);
@@ -246,17 +243,24 @@ function toInteger(value: number | string): number {
   return parsed;
 }
 
-function trimOptional(value: string | undefined | null): string | null {
-  if (typeof value !== 'string') {
-    return null;
-  }
-
-  const trimmed = value.trim();
-  return trimmed ? trimmed : null;
-}
-
 function normalizeCurrency(currency: string | undefined): string {
   return currency?.trim() || 'MYR';
+}
+
+function normalizeRequiredTitle(value: string | null | undefined): string {
+  const title = trimOptional(value);
+  if (!title) {
+    throw new ListingServiceError('Title is required', 422);
+  }
+
+  return title;
+}
+
+function isMissingRpcFunction(error: { code?: string | null; message?: string | null } | null | undefined) {
+  const errorCode = typeof error?.code === 'string' ? error.code : '';
+  const errorMessage = typeof error?.message === 'string' ? error.message.toLowerCase() : '';
+
+  return errorCode === 'PGRST202' || errorMessage.includes('could not find the function');
 }
 
 function humanizeStatus(status: string): string {
@@ -272,16 +276,6 @@ function humanizeStatus(status: string): string {
     .split('_')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
-}
-
-function sanitizeStorageFileName(fileName: string): string {
-  const trimmed = fileName.trim().toLowerCase();
-  const sanitized = trimmed
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-
-  return sanitized || `listing-image-${randomUUID()}.jpg`;
 }
 
 async function ensureListingImageBucket(): Promise<void> {
@@ -1108,6 +1102,31 @@ async function getListingEngagementMaps(listingIds: string[]) {
     };
   }
 
+  const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc(
+    'get_listing_engagement_counts',
+    {
+      p_listing_ids: listingIds,
+    }
+  );
+
+  if (!rpcError && Array.isArray(rpcData)) {
+    for (const row of rpcData as RawListingEngagementCountRow[]) {
+      favoriteCountMap.set(row.listing_id, toNumber(row.favorite_count));
+      totalOfferCountMap.set(row.listing_id, toNumber(row.total_offer_count));
+      pendingOfferCountMap.set(row.listing_id, toNumber(row.pending_offer_count));
+    }
+
+    return {
+      favoriteCountMap,
+      totalOfferCountMap,
+      pendingOfferCountMap,
+    };
+  }
+
+  if (rpcError && !isMissingRpcFunction(rpcError)) {
+    console.error('[Listings] Failed to load engagement counts via RPC, falling back to row scans:', rpcError);
+  }
+
   const [favoritesResult, offersResult] = await Promise.all([
     supabaseAdmin.from('favorites').select('listing_id').in('listing_id', listingIds),
     supabaseAdmin.from('offers').select('listing_id, status').in('listing_id', listingIds),
@@ -1145,6 +1164,43 @@ async function getPublicListingLookups(): Promise<{
   lookups: PublicListingsResponse['lookups'];
   priceRange: PublicListingsResponse['summary']['priceRange'];
 }> {
+  const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc('get_public_listing_lookups');
+
+  if (!rpcError && rpcData) {
+    const payload = (Array.isArray(rpcData) ? rpcData[0] : rpcData) as RawPublicLookupsRpcPayload;
+    const conditionCounts = payload.conditions ?? {};
+
+    return {
+      lookups: {
+        categories: (payload.categories ?? []).map((category) => ({
+          id: category.id,
+          name: category.name,
+          slug: category.slug,
+          count: toNumber(category.count),
+        })),
+        states: (payload.states ?? []).map((state) => ({
+          id: state.id,
+          name: state.name,
+          slug: state.slug,
+          count: toNumber(state.count),
+        })),
+        conditions: Object.entries(CONDITION_LABELS).map(([value, label]) => ({
+          value: value as ListingCondition,
+          label,
+          count: toNumber(conditionCounts[value as ListingCondition]),
+        })),
+      },
+      priceRange: {
+        min: toNumber(payload.priceRange?.min),
+        max: toNumber(payload.priceRange?.max),
+      },
+    };
+  }
+
+  if (rpcError && !isMissingRpcFunction(rpcError)) {
+    console.error('[Listings] Failed to load browse lookups via RPC, falling back to row scans:', rpcError);
+  }
+
   const { data, error } = await supabaseAdmin
     .from('listings')
     .select(`
@@ -1238,18 +1294,19 @@ async function getPublicListingLookups(): Promise<{
 async function getPublicSellerSummary(
   sellerId: string
 ): Promise<PublicSellerSummary> {
-  const [profileResult, reviewsResult, listingsResult, sellerStatesResult, sellerAreasResult] =
-    await Promise.all([
-      supabaseAdmin
-        .from('profiles')
-        .select('id, username, full_name, avatar_path, created_at, state_id, area_id')
-        .eq('id', sellerId)
-        .maybeSingle(),
-      supabaseAdmin.from('reviews').select('rating').eq('seller_id', sellerId),
-      supabaseAdmin.from('listings').select('status').eq('seller_id', sellerId),
-      supabaseAdmin.from('states').select('id, name, slug'),
-      supabaseAdmin.from('areas').select('id, name, slug, state_id'),
-    ]);
+  const [profileResult, reviewsResult, listingsResult] = await Promise.all([
+    supabaseAdmin
+      .from('profiles')
+      .select('id, username, full_name, avatar_path, created_at, state_id, area_id')
+      .eq('id', sellerId)
+      .maybeSingle(),
+    supabaseAdmin.from('reviews').select('rating').eq('seller_id', sellerId),
+    supabaseAdmin
+      .from('listings')
+      .select('status')
+      .eq('seller_id', sellerId)
+      .is('deleted_at', null),
+  ]);
 
   if (profileResult.error) {
     console.error('[Listings] Failed to fetch seller profile:', profileResult.error);
@@ -1264,16 +1321,6 @@ async function getPublicSellerSummary(
   if (listingsResult.error) {
     console.error('[Listings] Failed to fetch seller listing stats:', listingsResult.error);
     throw new ListingServiceError('Unable to load seller listing statistics', 500);
-  }
-
-  if (sellerStatesResult.error) {
-    console.error('[Listings] Failed to fetch states for seller location:', sellerStatesResult.error);
-    throw new ListingServiceError('Unable to load seller location', 500);
-  }
-
-  if (sellerAreasResult.error) {
-    console.error('[Listings] Failed to fetch areas for seller location:', sellerAreasResult.error);
-    throw new ListingServiceError('Unable to load seller location', 500);
   }
 
   const ratings = (reviewsResult.data ?? []) as RawRating[];
@@ -1292,6 +1339,33 @@ async function getPublicSellerSummary(
   let activeListings = 0;
   const profile = profileResult.data as RawProfile | null;
 
+  const [sellerStateResult, sellerAreaResult] = await Promise.all([
+    profile?.state_id
+      ? supabaseAdmin
+          .from('states')
+          .select('id, name, slug')
+          .eq('id', profile.state_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    profile?.area_id
+      ? supabaseAdmin
+          .from('areas')
+          .select('id, name, slug, state_id')
+          .eq('id', profile.area_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+
+  if (sellerStateResult.error) {
+    console.error('[Listings] Failed to fetch seller state:', sellerStateResult.error);
+    throw new ListingServiceError('Unable to load seller location', 500);
+  }
+
+  if (sellerAreaResult.error) {
+    console.error('[Listings] Failed to fetch seller area:', sellerAreaResult.error);
+    throw new ListingServiceError('Unable to load seller location', 500);
+  }
+
   for (const listing of (listingsResult.data ?? []) as RawSellerStatsListing[]) {
     if (listing.status === 'sold') {
       totalSales += 1;
@@ -1302,18 +1376,8 @@ async function getPublicSellerSummary(
     }
   }
 
-  const sellerState =
-    profile
-      ? ((sellerStatesResult.data ?? []) as RawState[]).find(
-          (state: RawState) => state.id === profile.state_id
-        ) ?? null
-      : null;
-  const sellerArea =
-    profile
-      ? ((sellerAreasResult.data ?? []) as RawArea[]).find(
-          (area: RawArea) => area.id === profile.area_id
-        ) ?? null
-      : null;
+  const sellerState = (sellerStateResult.data as RawState | null) ?? null;
+  const sellerArea = (sellerAreaResult.data as RawArea | null) ?? null;
 
   if (!profile) {
     const shortSellerId = sellerId.replace(/-/g, '').slice(0, 6) || 'member';
@@ -1521,7 +1585,10 @@ export async function uploadListingImage(
 
   await ensureListingImageBucket();
 
-  const storagePath = `listings/${sellerId}/${new Date().toISOString().slice(0, 10)}/${randomUUID()}-${sanitizeStorageFileName(fileName)}`;
+  const storagePath = `listings/${sellerId}/${new Date().toISOString().slice(0, 10)}/${randomUUID()}-${sanitizeStorageFileName(
+    fileName,
+    'listing-image'
+  )}`;
   const { error: uploadError } = await supabaseAdmin.storage
     .from(LISTING_IMAGE_BUCKET)
     .upload(storagePath, fileBuffer, {
@@ -1562,7 +1629,7 @@ export async function createListing(
   const price = isDraft && payload.price === undefined ? null : toNumber(payload.price, Number.NaN);
   const stateId = payload.stateId == null ? null : toInteger(payload.stateId);
   const areaId = payload.areaId == null ? null : toInteger(payload.areaId);
-  const title = payload.title.trim();
+  const title = normalizeRequiredTitle(payload.title);
   const description = trimOptional(payload.description);
   const brand = trimOptional(payload.brand);
   const currency = normalizeCurrency(payload.currency);
@@ -1661,7 +1728,7 @@ export async function updateListing(
   const stateId = payload.stateId == null ? null : toInteger(payload.stateId);
   const areaId = payload.areaId == null ? null : toInteger(payload.areaId);
   
-  const title = payload.title.trim();
+  const title = normalizeRequiredTitle(payload.title);
   const description = trimOptional(payload.description);
   const brand = trimOptional(payload.brand);
   const currency = normalizeCurrency(payload.currency);
@@ -1805,7 +1872,8 @@ export async function markListingAsSold(
       updated_at: new Date().toISOString(),
     })
     .eq('id', listingId)
-    .eq('seller_id', sellerId);
+    .eq('seller_id', sellerId)
+    .is('deleted_at', null);
 
   if (error) {
     console.error('[Listings] Failed to mark listing as sold:', error);
@@ -1851,7 +1919,8 @@ export async function markListingAsActive(
       updated_at: new Date().toISOString(),
     })
     .eq('id', listingId)
-    .eq('seller_id', sellerId);
+    .eq('seller_id', sellerId)
+    .is('deleted_at', null);
 
   if (error) {
     console.error('[Listings] Failed to mark listing as active again:', error);
@@ -1865,8 +1934,7 @@ export async function deleteListing(
   sellerId: string,
   listingId: string
 ): Promise<DeleteListingResult> {
-  const existingListing = await getOwnedListingForSeller(listingId, sellerId);
-  const storedImagePaths = await getStoredListingImagePaths(listingId);
+  await getOwnedListingForSeller(listingId, sellerId);
 
   const [offersResult, conversationsResult, reviewsResult, reportsResult] = await Promise.all([
     supabaseAdmin
@@ -1915,38 +1983,21 @@ export async function deleteListing(
     );
   }
 
-  const cleanupOperations = [
-    supabaseAdmin.from('favorites').delete().eq('listing_id', listingId),
-    supabaseAdmin.from('listing_images').delete().eq('listing_id', listingId),
-    supabaseAdmin.from('listing_daily_views').delete().eq('listing_id', listingId),
-  ];
-
-  const cleanupResults = await Promise.all(cleanupOperations);
-  for (const cleanupResult of cleanupResults) {
-    if (cleanupResult.error) {
-      console.error('[Listings] Failed during listing cleanup:', cleanupResult.error);
-      throw new ListingServiceError('Failed to clean up listing data before deletion', 500);
-    }
-  }
+  const deletedAt = new Date().toISOString();
 
   const { error: deleteError } = await supabaseAdmin
     .from('listings')
-    .delete()
+    .update({
+      deleted_at: deletedAt,
+      updated_at: deletedAt,
+    })
     .eq('id', listingId)
-    .eq('seller_id', sellerId);
+    .eq('seller_id', sellerId)
+    .is('deleted_at', null);
 
   if (deleteError) {
     console.error('[Listings] Failed to delete listing:', deleteError);
     throw new ListingServiceError('Failed to delete listing', 500);
-  }
-
-  try {
-    await removeStorageObjects(LISTING_IMAGE_BUCKET, [
-      existingListing.cover_image_path,
-      ...storedImagePaths,
-    ]);
-  } catch (storageError) {
-    console.error('[Listings] Failed to remove listing storage objects after delete:', storageError);
   }
 
   return {
@@ -2437,16 +2488,12 @@ export async function getPublicListingById(
 }
 
 async function tryIncrementListingViewAtomically(listingId: string): Promise<number | null> {
-  const { data, error } = await supabaseAdmin.rpc('increment_listing_view_atomic', {
+  const { data, error } = await supabaseAdmin.rpc('increment_listing_view_counters_atomic', {
     p_listing_id: listingId,
   });
 
   if (error) {
-    const errorCode = typeof error.code === 'string' ? error.code : '';
-    const errorMessage =
-      typeof error.message === 'string' ? error.message.toLowerCase() : '';
-
-    if (errorCode === 'PGRST202' || errorMessage.includes('could not find the function')) {
+    if (isMissingRpcFunction(error)) {
       return null;
     }
 
@@ -2483,73 +2530,15 @@ export async function incrementPublicListingView(
   }
 
   const atomicViewsCount = await tryIncrementListingViewAtomically(listingId);
-  if (atomicViewsCount !== null) {
-    return {
-      id: listingId,
-      viewsCount: atomicViewsCount,
-    };
-  }
-
-  const nextViewsCount = toNumber(data.views_count) + 1;
-  const today = new Date().toISOString().slice(0, 10);
-
-  const [listingUpdateResult, dailyViewResult] = await Promise.all([
-    supabaseAdmin
-      .from('listings')
-      .update({
-        views_count: nextViewsCount,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', listingId),
-    supabaseAdmin
-      .from('listing_daily_views')
-      .select('id, views_count')
-      .eq('listing_id', listingId)
-      .eq('view_date', today)
-      .maybeSingle(),
-  ]);
-
-  if (listingUpdateResult.error) {
-    console.error('[Listings] Failed to increment listing views:', listingUpdateResult.error);
-    throw new ListingServiceError('Unable to record listing view', 500);
-  }
-
-  if (dailyViewResult.error) {
-    console.error('[Listings] Failed to inspect daily listing views:', dailyViewResult.error);
-    throw new ListingServiceError('Unable to record listing view', 500);
-  }
-
-  if (dailyViewResult.data) {
-    const currentDailyView = dailyViewResult.data as RawDailyView;
-    const { error: updateDailyError } = await supabaseAdmin
-      .from('listing_daily_views')
-      .update({
-        views_count: currentDailyView.views_count + 1,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', currentDailyView.id);
-
-    if (updateDailyError) {
-      console.error('[Listings] Failed to update daily listing views:', updateDailyError);
-      throw new ListingServiceError('Unable to record listing view', 500);
-    }
-  } else {
-    const { error: insertDailyError } = await supabaseAdmin
-      .from('listing_daily_views')
-      .insert({
-        listing_id: listingId,
-        view_date: today,
-        views_count: 1,
-      });
-
-    if (insertDailyError) {
-      console.error('[Listings] Failed to create daily listing view record:', insertDailyError);
-      throw new ListingServiceError('Unable to record listing view', 500);
-    }
+  if (atomicViewsCount === null) {
+    throw new ListingServiceError(
+      'Listing view tracking is not configured. Deploy the atomic listing view SQL helper before recording views.',
+      503
+    );
   }
 
   return {
     id: listingId,
-    viewsCount: nextViewsCount,
+    viewsCount: atomicViewsCount,
   };
 }

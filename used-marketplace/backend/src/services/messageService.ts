@@ -1,6 +1,15 @@
 import { randomUUID } from 'crypto';
 import { supabaseAdmin } from '../config/supabase';
+import { buildDisplayName } from '../utils/profile';
+import { unwrapRelation } from '../utils/relation';
+import { sanitizeStorageFileName } from '../utils/storageFile';
 import { getPublicStorageUrl, removeStorageObjects } from '../utils/storage';
+import {
+  AVATAR_BUCKET,
+  LISTING_IMAGE_BUCKET,
+  MESSAGE_ATTACHMENT_BUCKET,
+} from '../utils/storageBuckets';
+import { trimOptional } from '../utils/value';
 import {
   buildModerationListingTargetKey,
   isModerationListing,
@@ -109,6 +118,7 @@ interface RawListing {
   brand: string | null;
   status?: string | null;
   description?: string | null;
+  deleted_at?: string | null;
 }
 
 interface MessagingActor {
@@ -162,18 +172,6 @@ interface RawConversationNotificationContext {
 
 const MESSAGE_SELECT = 'id, conversation_id, sender_id, body, is_read, created_at';
 const MESSAGE_ENVELOPE_PREFIX = '__remarket_message_v1__';
-const LISTING_IMAGE_BUCKET =
-  process.env.SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
-  process.env.NEXT_PUBLIC_SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
-  'listing-images';
-const AVATAR_BUCKET =
-  process.env.SUPABASE_AVATARS_BUCKET?.trim() ||
-  process.env.NEXT_PUBLIC_SUPABASE_AVATARS_BUCKET?.trim() ||
-  'avatars';
-const MESSAGE_ATTACHMENT_BUCKET =
-  process.env.SUPABASE_MESSAGE_ATTACHMENTS_BUCKET?.trim() ||
-  process.env.NEXT_PUBLIC_SUPABASE_MESSAGE_ATTACHMENTS_BUCKET?.trim() ||
-  'message-attachments';
 const SUPPORT_LISTING_TITLE_PREFIX = 'Support request:';
 const MAX_MESSAGE_ATTACHMENT_SIZE_BYTES = 4 * 1024 * 1024;
 const MAX_MESSAGE_ATTACHMENTS = 3;
@@ -196,26 +194,14 @@ interface StoredMessageEnvelope {
 
 let messageAttachmentBucketPromise: Promise<void> | null = null;
 
-function unwrapRelation<T>(relation: T | T[] | null | undefined): T | null {
-  if (Array.isArray(relation)) {
-    return relation[0] ?? null;
+export class MessageServiceError extends Error {
+  status: number;
+
+  constructor(message: string, status = 400) {
+    super(message);
+    this.name = 'MessageServiceError';
+    this.status = status;
   }
-
-  return relation ?? null;
-}
-
-function buildDisplayName(profile: RawProfile | null): string {
-  const fullName = profile?.full_name?.trim();
-  if (fullName) {
-    return fullName;
-  }
-
-  const username = profile?.username?.trim();
-  if (username) {
-    return username;
-  }
-
-  return 'Marketplace User';
 }
 
 function buildSupportListingTitle(subject: string, targetDisplayName: string): string {
@@ -228,25 +214,6 @@ function buildSupportListingTitle(subject: string, targetDisplayName: string): s
   return name ? `${SUPPORT_LISTING_TITLE_PREFIX} ${name}` : `${SUPPORT_LISTING_TITLE_PREFIX} Marketplace user`;
 }
 
-function trimOptional(value: string | undefined | null): string | null {
-  if (typeof value !== 'string') {
-    return null;
-  }
-
-  const trimmed = value.trim();
-  return trimmed ? trimmed : null;
-}
-
-function sanitizeStorageFileName(fileName: string): string {
-  const trimmed = fileName.trim().toLowerCase();
-  const sanitized = trimmed
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-
-  return sanitized || `message-image-${randomUUID()}.jpg`;
-}
-
 function isSupportListing(listing: Pick<RawListing, 'brand' | 'title'> | null | undefined): boolean {
   return Boolean(
     listing?.brand === MODERATION_LISTING_BRAND &&
@@ -254,6 +221,8 @@ function isSupportListing(listing: Pick<RawListing, 'brand' | 'title'> | null | 
   );
 }
 
+// Support tickets still use listing rows for backward compatibility, so we keep a single
+// translation layer between the support-status language and the legacy listing statuses.
 function getSupportTicketStatusFromListingStatus(status: string | null | undefined): SupportTicketStatus {
   if (status === 'archived') {
     return 'closed';
@@ -292,15 +261,18 @@ function getSupportStatusLabel(status: SupportTicketStatus): string {
 
 function assertValidMessagePayload(content: string, attachments: MessageAttachmentInput[] = []): void {
   if (!content.trim() && attachments.length === 0) {
-    throw new Error('Message text or an image is required');
+    throw new MessageServiceError('Message text or an image is required', 422);
   }
 
   if (content.trim().length > 2000) {
-    throw new Error('Message must be 2000 characters or fewer');
+    throw new MessageServiceError('Message must be 2000 characters or fewer', 422);
   }
 
   if (attachments.length > MAX_MESSAGE_ATTACHMENTS) {
-    throw new Error(`You can upload up to ${MAX_MESSAGE_ATTACHMENTS} images per message`);
+    throw new MessageServiceError(
+      `You can upload up to ${MAX_MESSAGE_ATTACHMENTS} images per message`,
+      422
+    );
   }
 }
 
@@ -321,7 +293,7 @@ async function ensureMessageAttachmentBucket(): Promise<void> {
 
         if (updateError) {
           console.error('[Messages] Failed to update message attachment bucket:', updateError);
-          throw new Error('Unable to prepare message image storage');
+          throw new MessageServiceError('Unable to prepare message image storage', 500);
         }
 
         return;
@@ -331,7 +303,7 @@ async function ensureMessageAttachmentBucket(): Promise<void> {
       const isMissingBucketError = /not found|does not exist|404/i.test(bucketErrorMessage);
       if (bucketResult.error && !isMissingBucketError) {
         console.error('[Messages] Failed to inspect message attachment bucket:', bucketResult.error);
-        throw new Error('Unable to prepare message image storage');
+        throw new MessageServiceError('Unable to prepare message image storage', 500);
       }
 
       const { error: createError } = await supabaseAdmin.storage.createBucket(
@@ -345,7 +317,7 @@ async function ensureMessageAttachmentBucket(): Promise<void> {
 
       if (createError && !/already exists/i.test(createError.message)) {
         console.error('[Messages] Failed to create message attachment bucket:', createError);
-        throw new Error('Unable to prepare message image storage');
+        throw new MessageServiceError('Unable to prepare message image storage', 500);
       }
 
       if (createError) {
@@ -360,7 +332,7 @@ async function ensureMessageAttachmentBucket(): Promise<void> {
 
         if (updateError) {
           console.error('[Messages] Failed to sync message attachment bucket settings:', updateError);
-          throw new Error('Unable to prepare message image storage');
+          throw new MessageServiceError('Unable to prepare message image storage', 500);
         }
       }
     })().catch((error) => {
@@ -381,11 +353,14 @@ async function getFallbackCategoryId(): Promise<number> {
     .maybeSingle();
 
   if (error) {
-    throw new Error('Unable to prepare a support conversation');
+    throw new MessageServiceError('Unable to prepare a support conversation', 500);
   }
 
   if (typeof data?.id !== 'number') {
-    throw new Error('Create at least one category before support conversations can be created');
+    throw new MessageServiceError(
+      'Create at least one category before support conversations can be created',
+      422
+    );
   }
 
   return data.id;
@@ -399,7 +374,7 @@ async function getSupportAdmins(): Promise<RawAdminProfile[]> {
     .order('created_at', { ascending: true });
 
   if (error) {
-    throw new Error('Unable to load support admins');
+    throw new MessageServiceError('Unable to load support admins', 500);
   }
 
   return ((data ?? []) as RawAdminProfile[]).filter((admin) => admin.id);
@@ -409,7 +384,7 @@ async function chooseLeastLoadedSupportAdmin(requesterId: string): Promise<RawAd
   const admins = (await getSupportAdmins()).filter((admin) => admin.id !== requesterId);
 
   if (admins.length === 0) {
-    throw new Error('No support admins are available right now');
+    throw new MessageServiceError('No support admins are available right now', 422);
   }
 
   const loadByAdminId = new Map(admins.map((admin) => [admin.id, 0]));
@@ -427,7 +402,7 @@ async function chooseLeastLoadedSupportAdmin(requesterId: string): Promise<RawAd
     .in('seller_id', admins.map((admin) => admin.id));
 
   if (error) {
-    throw new Error('Unable to inspect admin support workload');
+    throw new MessageServiceError('Unable to inspect admin support workload', 500);
   }
 
   for (const conversation of ((data ?? []) as RawSupportConversation[])) {
@@ -480,7 +455,7 @@ async function createSupportListing(
     .single();
 
   if (createListingError || !createdListing) {
-    throw new Error('Unable to create a support conversation');
+    throw new MessageServiceError('Unable to create a support conversation', 500);
   }
 
   return {
@@ -508,29 +483,35 @@ async function uploadMessageAttachments(
       const base64Data = trimOptional(attachment.base64Data)?.replace(/\s/g, '');
 
       if (!fileName || !contentType || !base64Data) {
-        throw new Error('Image fileName, contentType, and base64Data are required');
+        throw new MessageServiceError(
+          'Image fileName, contentType, and base64Data are required',
+          422
+        );
       }
 
       if (!contentType.startsWith('image/')) {
-        throw new Error('Only image attachments are supported');
+        throw new MessageServiceError('Only image attachments are supported', 422);
       }
 
       let fileBuffer: Buffer;
       try {
         fileBuffer = Buffer.from(base64Data, 'base64');
       } catch {
-        throw new Error('Image data is not valid base64');
+        throw new MessageServiceError('Image data is not valid base64', 422);
       }
 
       if (fileBuffer.byteLength === 0) {
-        throw new Error('Image data is empty');
+        throw new MessageServiceError('Image data is empty', 422);
       }
 
       if (fileBuffer.byteLength > MAX_MESSAGE_ATTACHMENT_SIZE_BYTES) {
-        throw new Error('Each message image must be 4 MB or smaller');
+        throw new MessageServiceError('Each message image must be 4 MB or smaller', 422);
       }
 
-      const storagePath = `messages/${senderId}/${new Date().toISOString().slice(0, 10)}/${randomUUID()}-${sanitizeStorageFileName(fileName)}`;
+      const storagePath = `messages/${senderId}/${new Date().toISOString().slice(0, 10)}/${randomUUID()}-${sanitizeStorageFileName(
+        fileName,
+        'message-image'
+      )}`;
       const { error: uploadError } = await supabaseAdmin.storage
         .from(MESSAGE_ATTACHMENT_BUCKET)
         .upload(storagePath, fileBuffer, {
@@ -541,7 +522,7 @@ async function uploadMessageAttachments(
 
       if (uploadError) {
         console.error('[Messages] Failed to upload message image:', uploadError);
-        throw new Error('Unable to upload one of the message images');
+        throw new MessageServiceError('Unable to upload one of the message images', 500);
       }
 
       uploadedAttachments.push({
@@ -842,7 +823,7 @@ async function assertMessagingAllowed(
     .maybeSingle();
 
   if (error) {
-    throw new Error('Unable to verify messaging access');
+    throw new MessageServiceError('Unable to verify messaging access', 500);
   }
 
   if (data?.role === 'admin') {
@@ -853,8 +834,9 @@ async function assertMessagingAllowed(
     return;
   }
 
-  throw new Error(
-    'Your account is suspended. You can still browse the marketplace, but new offers, listings, and messages are disabled until an admin reactivates your account.'
+  throw new MessageServiceError(
+    'Your account is suspended. You can still browse the marketplace, but new offers, listings, and messages are disabled until an admin reactivates your account.',
+    403
   );
 }
 
@@ -870,33 +852,49 @@ function assertModerationThreadAccess(
   const targetUserId = parseModerationListingTargetKey(listing.description);
 
   if (!targetUserId) {
-    throw new Error('This moderation thread is misconfigured');
+    throw new MessageServiceError('This moderation thread is misconfigured', 500);
   }
 
   const isSeller = senderId === listing.seller_id;
 
   if (isSeller) {
     if (!recipientId || recipientId !== targetUserId) {
-      throw new Error('This moderation thread can only contact its assigned user');
+      throw new MessageServiceError(
+        'This moderation thread can only contact its assigned user',
+        403
+      );
     }
     return;
   }
 
   if (senderId !== targetUserId) {
-    throw new Error('This moderation thread is not available for your account');
+    throw new MessageServiceError('This moderation thread is not available for your account', 403);
   }
 }
 
 async function assertConversationAccess(userId: string, conversationId: string): Promise<void> {
   const { data: conversation, error } = await supabaseAdmin
     .from('conversations')
-    .select('id')
+    .select(`
+      id,
+      listings (
+        deleted_at
+      )
+    `)
     .eq('id', conversationId)
     .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
     .maybeSingle();
 
   if (error || !conversation) {
-    throw new Error('Conversation not found or access denied');
+    throw new MessageServiceError('Conversation not found or access denied', 403);
+  }
+
+  const listing = unwrapRelation(
+    (conversation as { listings: { deleted_at: string | null }[] | { deleted_at: string | null } | null })
+      .listings
+  );
+  if (!listing || listing.deleted_at !== null) {
+    throw new MessageServiceError('Conversation not found or access denied', 403);
   }
 }
 
@@ -913,7 +911,8 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
         title,
         cover_image_path,
         brand,
-        status
+        status,
+        deleted_at
       ),
       buyer_profile:profiles!conversations_buyer_id_fkey (
         id,
@@ -932,37 +931,78 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
     .order('created_at', { ascending: false });
 
   if (convosError) {
-    throw new Error(`Failed to fetch conversations: ${convosError.message}`);
+    throw new MessageServiceError('Unable to load conversations', 500);
+  }
+
+  const visibleConversations = ((convos ?? []) as RawConversation[]).filter(
+    (convo) => unwrapRelation(convo.listings)?.deleted_at === null
+  );
+  const conversationIds = visibleConversations.map((convo) => convo.id);
+
+  const [latestMessagesResult, unreadMessagesResult] = await Promise.all([
+    conversationIds.length === 0
+      ? Promise.resolve({ data: [], error: null })
+      : supabaseAdmin
+        .from('messages')
+        .select('conversation_id, body, created_at, sender_id, is_read')
+        .in('conversation_id', conversationIds)
+        .order('created_at', { ascending: false }),
+    conversationIds.length === 0
+      ? Promise.resolve({ data: [], error: null })
+      : supabaseAdmin
+        .from('messages')
+        .select('conversation_id')
+        .in('conversation_id', conversationIds)
+        .neq('sender_id', userId)
+        .eq('is_read', false),
+  ]);
+
+  if (latestMessagesResult.error) {
+    throw new MessageServiceError('Unable to load conversations', 500);
+  }
+
+  if (unreadMessagesResult.error) {
+    throw new MessageServiceError('Unable to load conversations', 500);
+  }
+
+  const latestMessageMap = new Map<
+    string,
+    {
+      body: string;
+      created_at: string;
+      sender_id: string;
+      is_read: boolean;
+    }
+  >();
+
+  for (const message of (latestMessagesResult.data ?? []) as Array<{
+    conversation_id: string;
+    body: string;
+    created_at: string;
+    sender_id: string;
+    is_read: boolean;
+  }>) {
+    if (!latestMessageMap.has(message.conversation_id)) {
+      latestMessageMap.set(message.conversation_id, message);
+    }
+  }
+
+  const unreadCountMap = new Map<string, number>();
+  for (const message of (unreadMessagesResult.data ?? []) as Array<{ conversation_id: string }>) {
+    unreadCountMap.set(
+      message.conversation_id,
+      (unreadCountMap.get(message.conversation_id) ?? 0) + 1
+    );
   }
 
   const detailedConvos: ConversationDetail[] = [];
 
-  for (const convo of ((convos ?? []) as RawConversation[])) {
+  for (const convo of visibleConversations) {
     const otherProfile = convo.buyer_id === userId
       ? unwrapRelation(convo.seller_profile)
       : unwrapRelation(convo.buyer_profile);
-
-    const { data: latestMsgData, error: latestMsgError } = await supabaseAdmin
-      .from('messages')
-      .select('body, created_at, sender_id, is_read')
-      .eq('conversation_id', convo.id)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (latestMsgError) {
-      throw new Error(`Failed to fetch the latest message: ${latestMsgError.message}`);
-    }
-
-    let unreadCount = 0;
-    const { count: unreadRespCount } = await supabaseAdmin
-      .from('messages')
-      .select('*', { count: 'exact', head: true })
-      .eq('conversation_id', convo.id)
-      .neq('sender_id', userId)
-      .eq('is_read', false);
-
-    unreadCount = unreadRespCount || 0;
+    const latestMsgData = latestMessageMap.get(convo.id) ?? null;
+    const unreadCount = unreadCountMap.get(convo.id) ?? 0;
 
     let listingDetails = null;
     const listingData = unwrapRelation(convo.listings);
@@ -989,7 +1029,7 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
       other_user: otherProfile
         ? {
             id: otherProfile.id,
-            display_name: buildDisplayName(otherProfile),
+            display_name: buildDisplayName(otherProfile, 'Marketplace User'),
             username: otherProfile.username ?? null,
             avatar_path: getPublicStorageUrl(AVATAR_BUCKET, otherProfile.avatar_path ?? null),
           }
@@ -1019,7 +1059,7 @@ export async function getArchivedConversationIds(userId: string): Promise<string
     .eq('user_id', userId);
 
   if (error) {
-    throw new Error(`Failed to fetch archived conversations: ${error.message}`);
+    throw new MessageServiceError('Unable to load archived conversations', 500);
   }
 
   const archivedConversationIds = Array.from(
@@ -1036,18 +1076,26 @@ export async function getArchivedConversationIds(userId: string): Promise<string
 
   const { data: accessibleConversations, error: accessError } = await supabaseAdmin
     .from('conversations')
-    .select('id')
+    .select(`
+      id,
+      listings (
+        deleted_at
+      )
+    `)
     .in('id', archivedConversationIds)
     .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`);
 
   if (accessError) {
-    throw new Error(`Failed to validate archived conversations: ${accessError.message}`);
+    throw new MessageServiceError('Unable to load archived conversations', 500);
   }
 
   const accessibleConversationIds = new Set(
-    ((accessibleConversations ?? []) as Array<{ id: string }>).map(
-      (conversation) => conversation.id
-    )
+    ((accessibleConversations ?? []) as Array<{
+      id: string;
+      listings: RawListing | RawListing[] | null;
+    }>)
+      .filter((conversation) => unwrapRelation(conversation.listings)?.deleted_at === null)
+      .map((conversation) => conversation.id)
   );
 
   const validArchivedConversationIds = archivedConversationIds.filter((conversationId) =>
@@ -1086,7 +1134,7 @@ export async function archiveConversation(userId: string, conversationId: string
     );
 
   if (error) {
-    throw new Error(`Failed to archive conversation: ${error.message}`);
+    throw new MessageServiceError('Unable to archive this conversation', 500);
   }
 }
 
@@ -1100,7 +1148,7 @@ export async function unarchiveConversation(userId: string, conversationId: stri
     .eq('conversation_id', conversationId);
 
   if (error) {
-    throw new Error(`Failed to restore conversation archive state: ${error.message}`);
+    throw new MessageServiceError('Unable to restore this conversation', 500);
   }
 }
 
@@ -1113,7 +1161,9 @@ export async function getConversationMessages(conversationId: string, userId: st
     .eq('conversation_id', conversationId)
     .order('created_at', { ascending: true });
 
-  if (error) throw new Error(`Failed to fetch messages: ${error.message}`);
+  if (error) {
+    throw new MessageServiceError('Unable to load messages', 500);
+  }
   return ((messages ?? []) as RawMessageRow[]).map(mapMessageRow);
 }
 
@@ -1124,7 +1174,7 @@ async function touchConversation(conversationId: string): Promise<void> {
     .eq('id', conversationId);
 
   if (error) {
-    throw new Error(`Failed to update conversation activity: ${error.message}`);
+    throw new MessageServiceError('Unable to update conversation activity', 500);
   }
 }
 
@@ -1171,7 +1221,7 @@ async function createConversationMessage(
       }
     }
 
-    throw new Error('Failed to insert message');
+    throw new MessageServiceError('Unable to send this message', 500);
   }
 
   await touchConversation(conversationId);
@@ -1210,11 +1260,11 @@ export async function createSupportConversation(
   ]);
 
   if (requesterProfileResult.error) {
-    throw new Error('Unable to load your profile for support');
+    throw new MessageServiceError('Unable to load your profile for support', 500);
   }
 
   const requesterProfile = requesterProfileResult.data as RawProfile | null;
-  const requesterName = buildDisplayName(requesterProfile);
+  const requesterName = buildDisplayName(requesterProfile, 'Marketplace User');
   const supportListing = await createSupportListing(assignedAdmin.id, sender.id, requesterName, subject);
   const { data: createdConversation, error: createConversationError } = await supabaseAdmin
     .from('conversations')
@@ -1227,13 +1277,13 @@ export async function createSupportConversation(
     .single();
 
   if (createConversationError || !createdConversation) {
-    throw new Error('Unable to create a support conversation');
+    throw new MessageServiceError('Unable to create a support conversation', 500);
   }
 
   const conversationId = createdConversation.id as string | undefined;
 
   if (!conversationId) {
-    throw new Error('Unable to prepare a support conversation');
+    throw new MessageServiceError('Unable to prepare a support conversation', 500);
   }
 
   const message = await createConversationMessage(sender.id, conversationId, {
@@ -1246,7 +1296,7 @@ export async function createSupportConversation(
     listing_id: supportListing.id,
     listing_title: supportListing.title,
     admin_id: assignedAdmin.id,
-    admin_name: buildDisplayName(assignedAdmin),
+    admin_name: buildDisplayName(assignedAdmin, 'Marketplace User'),
     message,
   };
 }
@@ -1271,7 +1321,7 @@ export async function sendMessage(
     .single();
 
   if (listingError || !listing) {
-    throw new Error('Listing not found');
+    throw new MessageServiceError('Listing not found', 404);
   }
 
   await assertMessagingAllowed(sender, listing as RawListing);
@@ -1284,11 +1334,14 @@ export async function sendMessage(
      const recipientId = payload.recipient_id?.trim();
 
      if (!recipientId) {
-       throw new Error('recipient_id is required when the seller starts a conversation');
+       throw new MessageServiceError(
+         'recipient_id is required when the seller starts a conversation',
+         422
+       );
      }
 
      if (recipientId === sender.id) {
-       throw new Error('You cannot start a conversation with yourself');
+       throw new MessageServiceError('You cannot start a conversation with yourself', 422);
      }
 
      const { data: existingConvo, error: existingConvoError } = await supabaseAdmin
@@ -1300,7 +1353,7 @@ export async function sendMessage(
        .maybeSingle();
 
      if (existingConvoError) {
-       throw new Error('Failed to check for an existing conversation');
+       throw new MessageServiceError('Unable to prepare this conversation', 500);
      }
 
      if (existingConvo) {
@@ -1317,7 +1370,7 @@ export async function sendMessage(
          .single();
 
        if (createError || !newConvo) {
-          throw new Error('Failed to create conversation');
+          throw new MessageServiceError('Unable to prepare this conversation', 500);
        }
 
        conversationId = newConvo.id;
@@ -1332,7 +1385,7 @@ export async function sendMessage(
        .maybeSingle();
 
      if (existingConvoError) {
-       throw new Error('Failed to check for an existing conversation');
+       throw new MessageServiceError('Unable to prepare this conversation', 500);
      }
 
      if (existingConvo) {
@@ -1348,7 +1401,7 @@ export async function sendMessage(
          .select()
          .single();
        if (createError || !newConvo) {
-          throw new Error('Failed to create conversation');
+          throw new MessageServiceError('Unable to prepare this conversation', 500);
        }
        conversationId = newConvo.id;
      }
@@ -1379,7 +1432,8 @@ export async function sendReply(
         title,
         brand,
         status,
-        description
+        description,
+        deleted_at
       )
     `)
     .eq('id', conversationId)
@@ -1387,13 +1441,13 @@ export async function sendReply(
     .single();
 
   if (verifyError || !convo) {
-    throw new Error('Conversation not found or access denied');
+    throw new MessageServiceError('Conversation not found or access denied', 403);
   }
 
   const listing = unwrapRelation(convo.listings);
 
-  if (!listing) {
-    throw new Error('Conversation listing was not found');
+  if (!listing || listing.deleted_at !== null) {
+    throw new MessageServiceError('Conversation not found or access denied', 403);
   }
 
   await assertMessagingAllowed(sender, listing);
@@ -1402,7 +1456,7 @@ export async function sendReply(
     const supportStatus = getSupportTicketStatusFromListingStatus(listing.status);
 
     if (supportStatus === 'closed') {
-      throw new Error('This support ticket is closed. Reopen it before replying.');
+      throw new MessageServiceError('This support ticket is closed. Reopen it before replying.', 403);
     }
 
     if (supportStatus === 'resolved') {
@@ -1413,7 +1467,7 @@ export async function sendReply(
 
       if (reopenError) {
         console.error('[Messages] Failed to reopen support ticket before reply:', reopenError);
-        throw new Error('Unable to reopen this support ticket');
+        throw new MessageServiceError('Unable to reopen this support ticket', 500);
       }
     }
   }
@@ -1430,7 +1484,7 @@ export async function updateSupportTicketStatus(
   status: SupportTicketStatus
 ): Promise<SupportTicketStatusResult> {
   if (!['open', 'resolved', 'closed'].includes(status)) {
-    throw new Error('Unsupported support ticket status');
+    throw new MessageServiceError('Unsupported support ticket status', 422);
   }
 
   const { data: conversation, error: conversationError } = await supabaseAdmin
@@ -1444,7 +1498,8 @@ export async function updateSupportTicketStatus(
         title,
         brand,
         status,
-        description
+        description,
+        deleted_at
       )
     `)
     .eq('id', conversationId)
@@ -1452,13 +1507,17 @@ export async function updateSupportTicketStatus(
     .maybeSingle();
 
   if (conversationError || !conversation) {
-    throw new Error('Conversation not found or access denied');
+    throw new MessageServiceError('Conversation not found or access denied', 403);
   }
 
   const listing = unwrapRelation(conversation.listings);
 
-  if (!listing || !isSupportListing(listing)) {
-    throw new Error('This action is only available for support tickets');
+  if (!listing || listing.deleted_at !== null) {
+    throw new MessageServiceError('Conversation not found or access denied', 403);
+  }
+
+  if (!isSupportListing(listing)) {
+    throw new MessageServiceError('This action is only available for support tickets', 403);
   }
 
   const { error: updateError } = await supabaseAdmin
@@ -1468,7 +1527,7 @@ export async function updateSupportTicketStatus(
 
   if (updateError) {
     console.error('[Messages] Failed to update support ticket status:', updateError);
-    throw new Error('Unable to update support ticket status');
+    throw new MessageServiceError('Unable to update support ticket status', 500);
   }
 
   const message = await createConversationMessage(sender.id, conversationId, {
@@ -1498,7 +1557,7 @@ export async function markConversationAsRead(senderId: string, conversationId: s
     .eq('is_read', false);
 
   if (error) {
-    throw new Error(`Failed to mark messages as read: ${error.message}`);
+    throw new MessageServiceError('Unable to mark these messages as read', 500);
   }
   
   return true;

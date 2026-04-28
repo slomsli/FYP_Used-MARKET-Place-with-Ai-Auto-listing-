@@ -45,6 +45,16 @@ interface RawNotificationRow {
   created_at: string;
 }
 
+export class NotificationServiceError extends Error {
+  status: number;
+
+  constructor(message: string, status = 400) {
+    super(message);
+    this.name = 'NotificationServiceError';
+    this.status = status;
+  }
+}
+
 function trimOptional(value: string | null | undefined): string | null {
   if (typeof value !== 'string') {
     return null;
@@ -102,7 +112,7 @@ export async function createNotifications(inputs: CreateNotificationInput[]): Pr
   const { error } = await supabaseAdmin.from('notifications').insert(rows);
 
   if (error) {
-    throw new Error(`Failed to create notifications: ${error.message}`);
+    throw new NotificationServiceError(`Failed to create notifications: ${error.message}`, 500);
   }
 }
 
@@ -130,11 +140,17 @@ export async function getNotificationsForUser(
   ]);
 
   if (notificationsResult.error) {
-    throw new Error(`Failed to fetch notifications: ${notificationsResult.error.message}`);
+    throw new NotificationServiceError(
+      `Failed to fetch notifications: ${notificationsResult.error.message}`,
+      500
+    );
   }
 
   if (unreadResult.error) {
-    throw new Error(`Failed to count unread notifications: ${unreadResult.error.message}`);
+    throw new NotificationServiceError(
+      `Failed to count unread notifications: ${unreadResult.error.message}`,
+      500
+    );
   }
 
   return {
@@ -150,7 +166,7 @@ export async function markNotificationAsRead(
   const normalizedNotificationId = trimOptional(notificationId);
 
   if (!normalizedNotificationId) {
-    throw new Error('notificationId is required');
+    throw new NotificationServiceError('notificationId is required', 422);
   }
 
   const { data: existingNotification, error: existingError } = await supabaseAdmin
@@ -161,11 +177,14 @@ export async function markNotificationAsRead(
     .maybeSingle();
 
   if (existingError) {
-    throw new Error(`Failed to inspect notification: ${existingError.message}`);
+    throw new NotificationServiceError(
+      `Failed to inspect notification: ${existingError.message}`,
+      500
+    );
   }
 
   if (!existingNotification) {
-    throw new Error('Notification not found');
+    throw new NotificationServiceError('Notification not found', 404);
   }
 
   if (existingNotification.is_read) {
@@ -184,7 +203,7 @@ export async function markNotificationAsRead(
     .single();
 
   if (updateError || !updatedNotification) {
-    throw new Error('Failed to mark notification as read');
+    throw new NotificationServiceError('Failed to mark notification as read', 500);
   }
 
   return mapNotificationRow(updatedNotification as RawNotificationRow);
@@ -202,7 +221,10 @@ export async function markAllNotificationsAsRead(userId: string): Promise<{ upda
     .select('id');
 
   if (error) {
-    throw new Error(`Failed to mark all notifications as read: ${error.message}`);
+    throw new NotificationServiceError(
+      `Failed to mark all notifications as read: ${error.message}`,
+      500
+    );
   }
 
   return {

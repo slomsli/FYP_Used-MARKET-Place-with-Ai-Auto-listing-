@@ -50,8 +50,16 @@ export async function generateListingFromImageHandler(req: AuthenticatedRequest,
     const generatedData = await generateListingData(images);
 
     sendSuccess(res, generatedData);
-  } catch (error: any) {
+  } catch (error) {
     console.error('[AI Controller] Error generating listing from image:', error);
-    sendError(res, error.message || 'Internal server error while using AI to generate listing metadata', 500);
+    const fallbackMessage = 'Unable to generate listing metadata right now';
+    const safeMessage =
+      process.env.NODE_ENV === 'production'
+        ? fallbackMessage
+        : error instanceof Error && error.message
+          ? error.message
+          : fallbackMessage;
+
+    sendError(res, safeMessage, 500);
   }
 }
