@@ -11,6 +11,7 @@ import {
   markPurchaseReceiptPaid,
 } from '@/src/services/purchaseService';
 import type { PurchaseReceiptDetail } from '@/src/types/purchase';
+import ImageLightbox from '@/src/components/ui/ImageLightbox';
 import styles from './page.module.css';
 
 function formatCurrency(amount: number, currency = 'MYR') {
@@ -81,6 +82,7 @@ export default function PurchaseReceiptDetailPage() {
   const [paymentMethod, setPaymentMethod] = useState('');
   const [paymentReference, setPaymentReference] = useState('');
   const [buyerNote, setBuyerNote] = useState('');
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user || !token || !normalizedReceiptId) {
@@ -327,6 +329,9 @@ export default function PurchaseReceiptDetailPage() {
                   src={receipt.listing.coverImagePath}
                   alt={receipt.listing.title}
                   className={styles.productImage}
+                  style={{ cursor: 'zoom-in' }}
+                  onClick={() => setLightboxSrc(receipt.listing.coverImagePath!)}
+                  title="Click to enlarge"
                 />
               ) : (
                 <div className={styles.productFallback}>
@@ -474,6 +479,12 @@ export default function PurchaseReceiptDetailPage() {
           )}
         </aside>
       </div>
+
+      <ImageLightbox
+        src={lightboxSrc}
+        onClose={() => setLightboxSrc(null)}
+        alt={receipt?.listing.title}
+      />
     </div>
   );
 }

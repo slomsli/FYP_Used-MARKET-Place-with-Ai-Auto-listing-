@@ -29,6 +29,7 @@ import type {
   SellerListingSubmissionStatus,
 } from '@/src/types/listing';
 import styles from './page.module.css';
+import ImageLightbox from '@/src/components/ui/ImageLightbox';
 
 const MAX_LISTING_IMAGES = 6;
 const MAX_LISTING_IMAGE_SIZE_BYTES = 8 * 1024 * 1024;
@@ -204,6 +205,7 @@ export default function AddListingPage() {
     visible: false,
   });
   const [submittingStatus, setSubmittingStatus] = useState<SellerListingSubmissionStatus | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -916,7 +918,13 @@ export default function AddListingPage() {
               <div className={styles.imagePreviews}>
                 {images.map((image, index) => (
                   <div key={image.preview} className={styles.imagePreview}>
-                    <img src={image.preview} alt={`Upload ${index + 1}`} />
+                    <img
+                      src={image.preview}
+                      alt={`Upload ${index + 1}`}
+                      className={styles.imageThumb}
+                      onClick={() => setLightboxImage(image.preview)}
+                      title="Click to preview"
+                    />
                     <button
                       className={styles.imageRemove}
                       onClick={() => removeImage(index)}
@@ -927,6 +935,15 @@ export default function AddListingPage() {
                     </button>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {isGeneratingAI && (
+              <div className={styles.aiAnalyzingBanner}>
+                <span className={styles.aiAnalyzingDot} />
+                <span className={styles.aiAnalyzingText}>
+                  ✦ AI is analyzing your photos — this may take a few seconds…
+                </span>
               </div>
             )}
           </div>
@@ -1233,6 +1250,14 @@ export default function AddListingPage() {
       <div className={`${styles.toast} ${toast.visible ? styles.toastVisible : ''}`} role="status">
         {toast.message}
       </div>
+
+      <ImageLightbox
+        src={lightboxImage}
+        alt="Uploaded photo preview"
+        gallery={images.map((img) => img.preview)}
+        onClose={() => setLightboxImage(null)}
+        onNavigate={(index) => setLightboxImage(images[index]?.preview ?? null)}
+      />
     </div>
   );
 }

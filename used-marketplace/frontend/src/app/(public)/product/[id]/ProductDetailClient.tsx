@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import ReportListingModal from '@/src/components/reports/ReportListingModal';
+import ImageLightbox from '@/src/components/ui/ImageLightbox';
 import { ROUTES } from '@/src/config/routes';
 import { resolveSupabaseUserRole } from '@/src/utils/authHelpers';
 import { useAuth } from '@/src/hooks/useAuth';
@@ -181,6 +182,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
   const [offerMessage, setOfferMessage] = useState('');
   const [offerSubmitting, setOfferSubmitting] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const recordedViewIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -565,7 +567,14 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
 
               <div className={styles.heroGlow} />
               {activeImage ? (
-                <img src={activeImage} alt={listing.title} className={styles.heroImage} />
+                <img
+                  src={activeImage}
+                  alt={listing.title}
+                  className={styles.heroImage}
+                  style={{ cursor: 'zoom-in' }}
+                  onClick={() => setLightboxSrc(activeImage)}
+                  title="Click to enlarge"
+                />
               ) : (
                 <div className={styles.heroPlaceholder}>
                   <span className={styles.heroPlaceholderGlyph}>{getPlaceholderLabel(listing)}</span>
@@ -985,6 +994,17 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
           )}
         </div>
       )}
+
+      <ImageLightbox
+        src={lightboxSrc}
+        alt={listing?.title}
+        gallery={gallery}
+        onClose={() => setLightboxSrc(null)}
+        onNavigate={(index) => {
+          setActiveIndex(index);
+          setLightboxSrc(gallery[index] ?? null);
+        }}
+      />
     </div>
   );
 }

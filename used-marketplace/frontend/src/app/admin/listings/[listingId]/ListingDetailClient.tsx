@@ -8,6 +8,7 @@ import { ROUTES } from '@/src/config/routes';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import { getAdminListingDetails } from '@/src/services/adminService';
 import type { AdminListingDetailResponse } from '@/src/types/admin';
+import ImageLightbox from '@/src/components/ui/ImageLightbox';
 import styles from './page.module.css';
 
 interface ListingDetailClientProps {
@@ -163,6 +164,7 @@ export default function ListingDetailClient({ listingId }: ListingDetailClientPr
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) {
@@ -313,7 +315,14 @@ export default function ListingDetailClient({ listingId }: ListingDetailClientPr
 
           <div className={styles.heroMedia}>
             {activeImage ? (
-              <img src={activeImage} alt={listing.title} className={styles.heroImage} />
+              <img
+                src={activeImage}
+                alt={listing.title}
+                className={styles.heroImage}
+                style={{ cursor: 'zoom-in' }}
+                onClick={() => setLightboxSrc(activeImage)}
+                title="Click to enlarge"
+              />
             ) : (
               <div className={styles.heroPlaceholder}>
                 <PhotoIcon />
@@ -335,7 +344,14 @@ export default function ListingDetailClient({ listingId }: ListingDetailClientPr
                     className={`${styles.thumbnailButton} ${isActive ? styles.thumbnailButtonActive : ''}`}
                     onClick={() => setActiveIndex(index)}
                   >
-                    <img src={imageUrl} alt={`${listing.title} view ${index + 1}`} className={styles.thumbnailImage} />
+                    <img
+                      src={imageUrl}
+                      alt={`${listing.title} view ${index + 1}`}
+                      className={styles.thumbnailImage}
+                      style={{ cursor: 'zoom-in' }}
+                      onDoubleClick={(e) => { e.stopPropagation(); setLightboxSrc(imageUrl); }}
+                      title="Double-click to enlarge"
+                    />
                     <span>Photo {index + 1}</span>
                   </button>
                 );
@@ -497,6 +513,17 @@ export default function ListingDetailClient({ listingId }: ListingDetailClientPr
           )}
         </article>
       </section>
+
+      <ImageLightbox
+        src={lightboxSrc}
+        alt={detail?.listing.title}
+        gallery={gallery}
+        onClose={() => setLightboxSrc(null)}
+        onNavigate={(index) => {
+          setActiveIndex(index);
+          setLightboxSrc(gallery[index] ?? null);
+        }}
+      />
     </div>
   );
 }
