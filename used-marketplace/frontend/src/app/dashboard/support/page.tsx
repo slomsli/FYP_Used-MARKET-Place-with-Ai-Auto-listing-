@@ -20,6 +20,7 @@ import {
   type PendingMessageAttachment,
   type SupportTicketStatus,
 } from '@/src/services/messageService';
+import ImageLightbox from '@/src/components/ui/ImageLightbox';
 import styles from './support.module.css';
 
 const SUPPORT_TICKET_TITLE_PREFIX = 'Support request:';
@@ -92,6 +93,7 @@ export default function SupportTicketsPage() {
   const replyFileInputRef = useRef<HTMLInputElement>(null);
   const newTicketAttachmentsRef = useRef<PendingMessageAttachment[]>([]);
   const replyAttachmentsRef = useRef<PendingMessageAttachment[]>([]);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   async function loadTickets(preferredTicketId?: string) {
     if (!token) {
@@ -209,6 +211,40 @@ export default function SupportTicketsPage() {
       setError(null);
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : 'Unable to attach this image.');
+    }
+  }
+
+  async function handlePasteForAttachments(
+    event: React.ClipboardEvent<HTMLTextAreaElement | HTMLInputElement>,
+    currentAttachments: PendingMessageAttachment[],
+    setAttachments: React.Dispatch<React.SetStateAction<PendingMessageAttachment[]>>
+  ) {
+    const items = event.clipboardData?.items;
+    if (!items) return;
+
+    const availableSlots = MAX_MESSAGE_ATTACHMENTS - currentAttachments.length;
+    if (availableSlots <= 0) return;
+
+    const imageFiles: File[] = [];
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) imageFiles.push(file);
+      }
+    }
+
+    if (imageFiles.length === 0) return;
+
+    event.preventDefault();
+
+    try {
+      const nextAttachments = await Promise.all(
+        imageFiles.slice(0, availableSlots).map((file) => readImageFileForMessage(file))
+      );
+      setAttachments((current) => [...current, ...nextAttachments]);
+      setError(null);
+    } catch {
+      setError('Unable to paste this image.');
     }
   }
 
@@ -452,7 +488,8 @@ export default function SupportTicketsPage() {
               className={styles.textarea}
               value={details}
               onChange={(event) => setDetails(event.target.value)}
-              placeholder="Tell admin what you tried, what failed, and any error you saw..."
+              onPaste={(event) => void handlePasteForAttachments(event, newTicketAttachments, setNewTicketAttachments)}
+              placeholder="Tell admin what you tried, what failed, and any error you saw... (Ctrl+V to paste image)"
               rows={5}
               maxLength={2000}
             />
@@ -570,14 +607,16 @@ export default function SupportTicketsPage() {
                       {message.attachments?.length > 0 && (
                         <div className={styles.messageAttachments}>
                           {message.attachments.map((attachment) => (
-                            <a
+                            /* eslint-disable-next-line @next/next/no-img-element */
+                            <button
                               key={attachment.id || attachment.url}
-                              href={attachment.url}
-                              target="_blank"
-                              rel="noreferrer"
+                              type="button"
+                              className={styles.attachmentThumb}
+                              onClick={() => setLightboxSrc(attachment.url)}
+                              aria-label="View image"
                             >
                               <img src={attachment.url} alt={attachment.file_name || 'Ticket image'} />
-                            </a>
+                            </button>
                           ))}
                         </div>
                       )}
@@ -623,7 +662,8 @@ export default function SupportTicketsPage() {
                   className={styles.replyTextarea}
                   value={replyText}
                   onChange={(event) => setReplyText(event.target.value)}
-                  placeholder="Add more information for admin..."
+                  onPaste={(event) => void handlePasteForAttachments(event, replyAttachments, setReplyAttachments)}
+                  placeholder="Add more information for admin... (Ctrl+V to paste image)"
                   rows={3}
                   maxLength={2000}
                   disabled={activeStatus === 'closed'}
@@ -650,6 +690,12 @@ export default function SupportTicketsPage() {
           </div>
         </section>
       </div>
+
+      <ImageLightbox
+        src={lightboxSrc}
+        alt="Ticket image"
+        onClose={() => setLightboxSrc(null)}
+      />
     </div>
   );
 }

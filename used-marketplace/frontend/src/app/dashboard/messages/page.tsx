@@ -8,6 +8,7 @@ import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import { getPublicListingById } from '@/src/services/listingService';
 import * as messageService from '@/src/services/messageService';
 import type { ChatMessage, ConversationDetail } from '@/src/services/messageService';
+import ImageLightbox from '@/src/components/ui/ImageLightbox';
 import styles from './page.module.css';
 
 const SearchIcon = () => (
@@ -219,6 +220,7 @@ export default function MessagesPage() {
   const [isSending, setIsSending] = useState(false);
   const [archivedConversationIds, setArchivedConversationIds] = useState<string[]>([]);
   const [pageError, setPageError] = useState<string | null>(null);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -985,6 +987,36 @@ export default function MessagesPage() {
     }
   };
 
+  const handlePaste = async (event: React.ClipboardEvent<HTMLInputElement>) => {
+    const items = event.clipboardData?.items;
+    if (!items) return;
+
+    const availableSlots = messageService.MAX_MESSAGE_ATTACHMENTS - pendingAttachments.length;
+    if (availableSlots <= 0) return;
+
+    const imageFiles: File[] = [];
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) imageFiles.push(file);
+      }
+    }
+
+    if (imageFiles.length === 0) return;
+
+    event.preventDefault();
+
+    try {
+      const nextAttachments = await Promise.all(
+        imageFiles.slice(0, availableSlots).map((file) => messageService.readImageFileForMessage(file))
+      );
+      setPendingAttachments((current) => [...current, ...nextAttachments]);
+      setPageError(null);
+    } catch {
+      setPageError('Unable to paste this image.');
+    }
+  };
+
   const handleConversationSelect = (conversationId: string) => {
     setSelectedConversation(conversationId);
     setMobileChatOpen(true);
@@ -1286,15 +1318,16 @@ export default function MessagesPage() {
                           {message.attachments?.length > 0 && (
                             <div className={styles.messageAttachments}>
                               {message.attachments.map((attachment) => (
-                                <a
+                                /* eslint-disable-next-line @next/next/no-img-element */
+                                <button
                                   key={attachment.id || attachment.url}
-                                  href={attachment.url}
-                                  target="_blank"
-                                  rel="noreferrer"
+                                  type="button"
                                   className={styles.messageAttachmentLink}
+                                  onClick={() => setLightboxSrc(attachment.url)}
+                                  aria-label="View image"
                                 >
                                   <img src={attachment.url} alt={attachment.file_name || 'Message attachment'} />
-                                </a>
+                                </button>
                               ))}
                             </div>
                           )}
@@ -1361,12 +1394,13 @@ export default function MessagesPage() {
                   placeholder={
                     draftTarget
                       ? `Message ${draftTarget.otherUserName}...`
-                      : 'Write a message...'
+                      : 'Write a message... (Ctrl+V to paste image)'
                   }
                   className={styles.chatInput}
                   value={messageInput}
                   onChange={(event) => setMessageInput(event.target.value)}
                   onKeyDown={handleKeyDown}
+                  onPaste={(event) => void handlePaste(event)}
                   id="message-input"
                   disabled={isSending}
                 />
@@ -1423,6 +1457,12 @@ export default function MessagesPage() {
           </div>
         )}
       </div>
+
+      <ImageLightbox
+        src={lightboxSrc}
+        alt="Message image"
+        onClose={() => setLightboxSrc(null)}
+      />
     </div>
   );
 }

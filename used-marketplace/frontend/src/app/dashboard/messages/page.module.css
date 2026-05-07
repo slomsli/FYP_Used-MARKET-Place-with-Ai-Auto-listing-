@@ -593,6 +593,14 @@
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.14);
   border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 0;
+  cursor: zoom-in;
+  transition: transform 0.18s ease, opacity 0.18s ease;
+}
+
+.messageAttachmentLink:hover {
+  transform: scale(1.025);
+  opacity: 0.9;
 }
 
 .messageBubbleReceived .messageAttachmentLink {
