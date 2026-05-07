@@ -299,33 +299,6 @@ export default function AdminReportsPage() {
         </div>
 
         <div className={styles.heroActions}>
-          <label className={styles.selectField}>
-            <AlertIcon />
-            <select
-              value={requestedStatusFilter}
-              onChange={(event) => {
-                const nextStatus = event.target.value as AdminReportStatusFilter;
-                const nextParams = new URLSearchParams(searchParams.toString());
-                setLoading(true);
-                setPage(1);
-
-                if (nextStatus === 'all') {
-                  nextParams.delete('status');
-                } else {
-                  nextParams.set('status', nextStatus);
-                }
-
-                const nextQuery = nextParams.toString();
-                router.replace(`${ROUTES.ADMIN_REPORTS}${nextQuery ? `?${nextQuery}` : ''}`);
-              }}
-            >
-              <option value="all">All Statuses</option>
-              <option value="pending">Pending Review</option>
-              <option value="reviewed">In Review</option>
-              <option value="resolved">Resolved</option>
-              <option value="rejected">Dismissed</option>
-            </select>
-          </label>
 
           <button
             type="button"
@@ -395,6 +368,54 @@ export default function AdminReportsPage() {
           </article>
         </section>
       )}
+
+      {/* ── Status Tab Bar ── */}
+      <div className={styles.tabBar} role="tablist" aria-label="Filter reports by status">
+        {(
+          [
+            { value: 'all',      label: 'All Reports',     count: data?.stats.totalReports },
+            { value: 'pending',  label: 'Immediate Look',  count: data?.stats.pendingReports },
+            { value: 'reviewed', label: 'In Review',       count: data?.stats.inReviewReports },
+            { value: 'resolved', label: 'Resolved',        count: null },
+            { value: 'rejected', label: 'Dismissed',       count: null },
+          ] as { value: AdminReportStatusFilter | 'all'; label: string; count: number | null | undefined }[]
+        ).map((tab) => (
+          <button
+            key={tab.value}
+            role="tab"
+            aria-selected={requestedStatusFilter === tab.value}
+            type="button"
+            className={`${styles.tabItem} ${
+              requestedStatusFilter === tab.value ? styles.tabItemActive : ''
+            } ${
+              tab.value === 'pending' && (data?.stats.pendingReports ?? 0) > 0
+                ? styles.tabItemUrgent
+                : ''
+            }`}
+            onClick={() => {
+              const nextParams = new URLSearchParams(searchParams.toString());
+              setLoading(true);
+              setPage(1);
+              if (tab.value === 'all') {
+                nextParams.delete('status');
+              } else {
+                nextParams.set('status', tab.value);
+              }
+              const nextQuery = nextParams.toString();
+              router.replace(`${ROUTES.ADMIN_REPORTS}${nextQuery ? `?${nextQuery}` : ''}`);
+            }}
+          >
+            <span className={styles.tabLabel}>{tab.label}</span>
+            {tab.count != null && (
+              <span className={`${styles.tabBadge} ${
+                tab.value === 'pending' && tab.count > 0 ? styles.tabBadgeUrgent : ''
+              }`}>
+                {tab.count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
 
       <section className={styles.queue}>
         {loading ? (

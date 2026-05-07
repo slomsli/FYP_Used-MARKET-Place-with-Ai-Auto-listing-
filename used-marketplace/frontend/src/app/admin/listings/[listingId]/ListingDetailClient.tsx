@@ -200,7 +200,6 @@ export default function ListingDetailClient({ listingId }: ListingDetailClientPr
   const backLabel = source === 'reports' ? 'Back to Reports' : 'Back to Listings';
 
   const gallery = useMemo(() => (detail ? buildGallery(detail.listing) : []), [detail]);
-  const activeImage = gallery[activeIndex] ?? null;
 
   if (authLoading || loading) {
     return (
@@ -313,49 +312,36 @@ export default function ListingDetailClient({ listingId }: ListingDetailClientPr
             <p className={styles.galleryNote}>Updated {formatDateTime(listing.updatedAt)}</p>
           </div>
 
-          <div className={styles.heroMedia}>
-            {activeImage ? (
-              <img
-                src={activeImage}
-                alt={listing.title}
-                className={styles.heroImage}
-                style={{ cursor: 'zoom-in' }}
-                onClick={() => setLightboxSrc(activeImage)}
-                title="Click to enlarge"
-              />
-            ) : (
-              <div className={styles.heroPlaceholder}>
-                <PhotoIcon />
-                <strong>{getInitials(listing.title)}</strong>
-                <p>No seller photos were uploaded for this listing.</p>
-              </div>
-            )}
-          </div>
+          {gallery.length === 0 && (
+            <div className={styles.heroPlaceholder}>
+              <PhotoIcon />
+              <strong>{getInitials(listing.title)}</strong>
+              <p>No seller photos were uploaded for this listing.</p>
+            </div>
+          )}
 
           {gallery.length > 0 && (
             <div className={styles.galleryRail}>
-              {gallery.map((imageUrl, index) => {
-                const isActive = index === activeIndex;
-
-                return (
-                  <button
-                    key={imageUrl}
-                    type="button"
-                    className={`${styles.thumbnailButton} ${isActive ? styles.thumbnailButtonActive : ''}`}
-                    onClick={() => setActiveIndex(index)}
-                  >
-                    <img
-                      src={imageUrl}
-                      alt={`${listing.title} view ${index + 1}`}
-                      className={styles.thumbnailImage}
-                      style={{ cursor: 'zoom-in' }}
-                      onDoubleClick={(e) => { e.stopPropagation(); setLightboxSrc(imageUrl); }}
-                      title="Double-click to enlarge"
-                    />
-                    <span>Photo {index + 1}</span>
-                  </button>
-                );
-              })}
+              {gallery.map((imageUrl, index) => (
+                <button
+                  key={imageUrl}
+                  type="button"
+                  className={styles.thumbnailButton}
+                  onClick={() => {
+                    setActiveIndex(index);
+                    setLightboxSrc(imageUrl);
+                  }}
+                  title="Click to enlarge"
+                >
+                  <img
+                    src={imageUrl}
+                    alt={`${listing.title} view ${index + 1}`}
+                    className={styles.thumbnailImage}
+                    style={{ cursor: 'zoom-in' }}
+                  />
+                  <span>Photo {index + 1}</span>
+                </button>
+              ))}
             </div>
           )}
         </article>

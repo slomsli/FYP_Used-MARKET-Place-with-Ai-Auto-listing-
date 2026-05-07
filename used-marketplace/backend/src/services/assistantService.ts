@@ -1716,7 +1716,7 @@ function toAssistantProviderError(error: unknown): AssistantServiceError {
 async function generateAssistantContent(params: {
   model: string;
   fallbackModel?: string | null;
-  contents: string;
+  contents: string | object;
   systemInstruction: string;
   tools: FunctionDeclaration[];
 }): Promise<{
@@ -1736,7 +1736,7 @@ async function generateAssistantContent(params: {
       try {
   const response = await geminiClient.models.generateContent({
           model: candidateModel,
-          contents: params.contents,
+          contents: params.contents as any,
           config: {
             systemInstruction: params.systemInstruction,
             tools: [{ functionDeclarations: params.tools }],
@@ -1787,13 +1787,13 @@ function buildPrompt(
     | 'history'
     | 'hasExplicitReportConfirmation'
   >
-): string {
+): string | object {
   const recentHistory = context.history.slice(-6).map((entry) => ({
     role: entry.role,
     message: entry.message,
   }));
 
-  return JSON.stringify(
+  const textPayload = JSON.stringify(
     {
       userMessage: input.message,
       requestedRole: input.userRole,
@@ -1811,6 +1811,26 @@ function buildPrompt(
     null,
     2
   );
+
+  // When an image is attached, send it as a real multimodal content block.
+  if (input.imageBase64 && input.imageMimeType) {
+    return [
+      {
+        role: 'user',
+        parts: [
+          { text: textPayload },
+          {
+            inlineData: {
+              mimeType: input.imageMimeType,
+              data: input.imageBase64,
+            },
+          },
+        ],
+      },
+    ];
+  }
+
+  return textPayload;
 }
 
 function buildPlannerSystemInstruction(actualRole: AssistantRole): string {
@@ -1825,6 +1845,11 @@ Core rules:
 - Prefer a single best tool call. Only call a second tool when the first tool cannot finish the task.
 - If no tool is needed, answer directly in concise plain text.
 - Keep the wording clear and helpful.
+
+Image analysis:
+- You CAN see images attached by the user. Analyse them fully and respond with specific, helpful details.
+- If the user sends a screenshot of a listing, report, or marketplace page, extract visible information (title, price, status, seller, reporter, dates, etc.) and present it clearly.
+- Never say you cannot access or see images — you have full vision capability.
 
 Safety:
 - If a user says they were scammed or suspects fraud, do not accuse anyone or declare wrongdoing as fact.
@@ -4208,6 +4233,8 @@ export async function chatWithAssistant(input: {
       currentPageContext,
       selectedEntityContext,
       history,
+      imageBase64: input.body.imageBase64,
+      imageMimeType: input.body.imageMimeType,
     },
     context
   );

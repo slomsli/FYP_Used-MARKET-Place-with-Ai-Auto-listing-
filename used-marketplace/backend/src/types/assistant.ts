@@ -213,6 +213,10 @@ export interface AssistantChatRequestBody {
   currentPageContext?: AssistantCurrentPageContext;
   selectedEntityContext?: AssistantSelectedEntityContext;
   history?: AssistantHistoryEntry[];
+  /** Base-64 encoded image (without data-URI prefix) */
+  imageBase64?: string;
+  /** MIME type e.g. 'image/jpeg' */
+  imageMimeType?: string;
 }
 
 export interface CreateAssistantThreadRequestBody {
@@ -225,6 +229,10 @@ export interface AssistantSendPersistedMessageRequestBody {
   roleContext?: AssistantRoleContext;
   currentPageContext?: AssistantCurrentPageContext;
   selectedEntityContext?: AssistantSelectedEntityContext;
+  /** Base-64 encoded image (without data-URI prefix) */
+  imageBase64?: string;
+  /** MIME type e.g. 'image/jpeg' */
+  imageMimeType?: string;
 }
 
 export interface AssistantThreadSummary {

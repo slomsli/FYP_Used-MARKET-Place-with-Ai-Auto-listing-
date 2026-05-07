@@ -182,6 +182,8 @@ export async function sendAssistantMessageHandler(
       roleContext: body.roleContext,
       currentPageContext: body.currentPageContext,
       selectedEntityContext: body.selectedEntityContext,
+      imageBase64: typeof body.imageBase64 === 'string' ? body.imageBase64 : undefined,
+      imageMimeType: typeof body.imageMimeType === 'string' ? body.imageMimeType : undefined,
     });
 
     sendSuccess(res, result);
