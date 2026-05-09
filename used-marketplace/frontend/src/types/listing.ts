@@ -61,6 +61,8 @@ export interface CreateListingPayload {
   status?: SellerListingSubmissionStatus;
   stateId?: number | null;
   areaId?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
   imageStoragePaths?: string[];
   coverImageStoragePath?: string | null;
   imagePaths?: string[];
@@ -94,6 +96,8 @@ export interface ListingLocationSummary {
   stateName: string | null;
   areaId: number | null;
   areaName: string | null;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export interface ListingBuyerSummary {

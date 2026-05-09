@@ -43,6 +43,8 @@ export interface CreateListingBody {
   status?: SellerListingSubmissionStatus;
   stateId?: number | string | null;
   areaId?: number | string | null;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
   imageStoragePaths?: string[];
   coverImageStoragePath?: string | null;
   imagePaths?: string[];
@@ -95,6 +97,8 @@ export interface ListingLocationSummary {
   stateName: string | null;
   areaId: number | null;
   areaName: string | null;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export interface ListingBuyerSummary {

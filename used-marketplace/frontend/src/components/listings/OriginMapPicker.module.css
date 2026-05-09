@@ -1,0 +1,156 @@
+.mapShell {
+  position: relative;
+  height: 240px;
+  overflow: hidden;
+  border: 1.5px solid var(--border, rgba(24, 34, 74, 0.08));
+  border-radius: var(--radius-card, 20px);
+  background: #e8ecf4;
+  box-shadow: var(--shadow-sm, 0 2px 8px rgba(17, 24, 39, 0.04));
+}
+
+.mapCanvas {
+  position: absolute;
+  inset: 0;
+  min-height: 240px;
+  z-index: 0;
+}
+
+.mapControls {
+  position: absolute;
+  top: 0.85rem;
+  left: 0.85rem;
+  right: 0.85rem;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  pointer-events: none;
+}
+
+.locationButton,
+.coordinateBadge,
+.mapMessage {
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 24px rgba(15, 23, 48, 0.12);
+}
+
+.locationButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--navy-950, #0f1730), var(--navy-800, #24356a));
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  white-space: nowrap;
+}
+
+.locationButton:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(24, 34, 74, 0.22);
+}
+
+.locationButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+  transform: none;
+}
+
+.coordinateBadge {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 220px;
+  min-height: 34px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgba(24, 34, 74, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text-soft, #61697f);
+  font-size: 0.74rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mapMessage {
+  position: absolute;
+  left: 0.85rem;
+  right: 0.85rem;
+  bottom: 0.85rem;
+  z-index: 500;
+  padding: 0.62rem 0.8rem;
+  border: 1px solid rgba(24, 34, 74, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--text-soft, #61697f);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.markerIcon {
+  position: relative;
+  width: 30px !important;
+  height: 38px !important;
+  border: 0;
+  background: transparent;
+}
+
+.markerIcon::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 1px;
+  width: 24px;
+  height: 24px;
+  border: 3px solid #ffffff;
+  border-radius: 50% 50% 50% 0;
+  background: linear-gradient(135deg, var(--navy-950, #0f1730), var(--navy-700, #334d85));
+  box-shadow: 0 12px 22px rgba(15, 23, 48, 0.28);
+  transform: translateX(-50%) rotate(-45deg);
+}
+
+.markerIcon::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 9px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ffffff;
+  transform: translateX(-50%);
+}
+
+@media (max-width: 768px) {
+  .mapShell {
+    height: 280px;
+  }
+
+  .mapCanvas {
+    min-height: 280px;
+  }
+
+  .mapControls {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .locationButton {
+    width: 100%;
+  }
+
+  .coordinateBadge {
+    max-width: 100%;
+  }
+}

@@ -82,6 +82,8 @@ interface RawListing {
   published_at: string | null;
   views_count: unknown;
   sold_to_user_id: string | null;
+  latitude: unknown;
+  longitude: unknown;
   categories: Relation<RawCategory>;
   states: Relation<RawState>;
   areas: Relation<RawArea>;
@@ -256,6 +258,33 @@ function normalizeRequiredTitle(value: string | null | undefined): string {
   return title;
 }
 
+function normalizeOptionalCoordinate(
+  value: number | string | null | undefined,
+  label: 'latitude' | 'longitude',
+  min: number,
+  max: number
+): number | null {
+  if (value === undefined || value === null || (typeof value === 'string' && value.trim() === '')) {
+    return null;
+  }
+
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+    throw new ListingServiceError(`${label} must be a valid number between ${min} and ${max}`, 422);
+  }
+
+  return Number(parsed.toFixed(6));
+}
+
+function toNullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function isMissingRpcFunction(error: { code?: string | null; message?: string | null } | null | undefined) {
   const errorCode = typeof error?.code === 'string' ? error.code : '';
   const errorMessage = typeof error?.message === 'string' ? error.message.toLowerCase() : '';
@@ -346,7 +375,11 @@ async function ensureListingImageBucket(): Promise<void> {
   return listingImageBucketPromise;
 }
 
-function buildLocationSummary(rawState: Relation<RawState>, rawArea: Relation<RawArea>): ListingLocationSummary {
+function buildLocationSummary(
+  rawState: Relation<RawState>,
+  rawArea: Relation<RawArea>,
+  coordinates?: Pick<RawListing, 'latitude' | 'longitude'>
+): ListingLocationSummary {
   const state = unwrapRelation(rawState);
   const area = unwrapRelation(rawArea);
 
@@ -355,6 +388,8 @@ function buildLocationSummary(rawState: Relation<RawState>, rawArea: Relation<Ra
     stateName: state?.name ?? null,
     areaId: area?.id ?? null,
     areaName: area?.name ?? null,
+    latitude: toNullableNumber(coordinates?.latitude),
+    longitude: toNullableNumber(coordinates?.longitude),
   };
 }
 
@@ -412,7 +447,7 @@ function buildListingSummary(
     totalOffersCount: totalOfferCountMap.get(listing.id) ?? 0,
     pendingOffersCount: pendingOfferCountMap.get(listing.id) ?? 0,
     category: buildCategorySummary(listing.categories),
-    location: buildLocationSummary(listing.states, listing.areas),
+    location: buildLocationSummary(listing.states, listing.areas, listing),
     soldTo: listing.sold_to_user_id
       ? {
           id: listing.sold_to_user_id,
@@ -976,6 +1011,8 @@ async function getListingByIdForSeller(listingId: string, sellerId: string): Pro
       published_at,
       views_count,
       sold_to_user_id,
+      latitude,
+      longitude,
       categories!listings_category_id_fkey (
         id,
         name,
@@ -1397,6 +1434,8 @@ async function getPublicSellerSummary(
         stateName: null,
         areaId: null,
         areaName: null,
+        latitude: null,
+        longitude: null,
       },
     };
   }
@@ -1416,6 +1455,8 @@ async function getPublicSellerSummary(
       stateName: sellerState?.name ?? null,
       areaId: sellerArea?.id ?? null,
       areaName: sellerArea?.name ?? null,
+      latitude: null,
+      longitude: null,
     },
   };
 }
@@ -1629,6 +1670,8 @@ export async function createListing(
   const price = isDraft && payload.price === undefined ? null : toNumber(payload.price, Number.NaN);
   const stateId = payload.stateId == null ? null : toInteger(payload.stateId);
   const areaId = payload.areaId == null ? null : toInteger(payload.areaId);
+  const latitude = normalizeOptionalCoordinate(payload.latitude, 'latitude', -90, 90);
+  const longitude = normalizeOptionalCoordinate(payload.longitude, 'longitude', -180, 180);
   const title = normalizeRequiredTitle(payload.title);
   const description = trimOptional(payload.description);
   const brand = trimOptional(payload.brand);
@@ -1651,6 +1694,10 @@ export async function createListing(
 
   if (areaId !== null && stateId === null) {
     throw new ListingServiceError('stateId is required when areaId is provided', 422);
+  }
+
+  if ((latitude === null) !== (longitude === null)) {
+    throw new ListingServiceError('Latitude and longitude must be provided together', 422);
   }
 
   if (categoryId !== null) {
@@ -1684,6 +1731,8 @@ export async function createListing(
       published_at: publishedAt,
       state_id: stateId,
       area_id: areaId,
+      latitude,
+      longitude,
     })
     .select('id')
     .single();
@@ -1727,6 +1776,8 @@ export async function updateListing(
   const price = isDraft && payload.price === undefined ? null : toNumber(payload.price, Number.NaN);
   const stateId = payload.stateId == null ? null : toInteger(payload.stateId);
   const areaId = payload.areaId == null ? null : toInteger(payload.areaId);
+  const latitude = normalizeOptionalCoordinate(payload.latitude, 'latitude', -90, 90);
+  const longitude = normalizeOptionalCoordinate(payload.longitude, 'longitude', -180, 180);
   
   const title = normalizeRequiredTitle(payload.title);
   const description = trimOptional(payload.description);
@@ -1760,6 +1811,10 @@ export async function updateListing(
 
   if (areaId !== null && stateId === null) {
     throw new ListingServiceError('stateId is required when areaId is provided', 422);
+  }
+
+  if ((latitude === null) !== (longitude === null)) {
+    throw new ListingServiceError('Latitude and longitude must be provided together', 422);
   }
 
   if (categoryId !== null) {
@@ -1799,6 +1854,8 @@ export async function updateListing(
       published_at: publishedAt,
       state_id: stateId,
       area_id: areaId,
+      latitude,
+      longitude,
       sold_at: restoringSoldListing ? null : undefined,
       sold_to_user_id: restoringSoldListing ? null : undefined,
       updated_at: updatedAt,
@@ -2031,6 +2088,8 @@ export async function getMyListings(
       published_at,
       views_count,
       sold_to_user_id,
+      latitude,
+      longitude,
       categories!listings_category_id_fkey (
         id,
         name,
@@ -2220,6 +2279,8 @@ export async function getPublicListings(
       updated_at,
       published_at,
       views_count,
+      latitude,
+      longitude,
       categories!listings_category_id_fkey (
         id,
         name,
@@ -2357,6 +2418,8 @@ export async function getPublicListingById(
       updated_at,
       published_at,
       views_count,
+      latitude,
+      longitude,
       categories!listings_category_id_fkey (
         id,
         name,
@@ -2407,6 +2470,8 @@ export async function getPublicListingById(
       updated_at,
       published_at,
       views_count,
+      latitude,
+      longitude,
       categories!listings_category_id_fkey (
         id,
         name,

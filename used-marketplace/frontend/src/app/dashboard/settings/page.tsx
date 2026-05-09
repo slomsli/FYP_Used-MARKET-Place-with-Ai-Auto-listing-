@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import { syncDashboardProfile } from '@/src/lib/profileSync';
@@ -17,16 +17,17 @@ import {
   type AreaLookup,
 } from '@/src/services/profileService';
 import { ROUTES } from '@/src/config/routes';
+import OriginMapPicker, {
+  type ListingCoordinates,
+} from '@/src/components/listings/OriginMapPicker';
+import {
+  collectLocationCandidates,
+  matchLocationOption,
+  reverseGeocodeCoordinates,
+} from '@/src/utils/locationMatching';
 import styles from './settings.module.css';
 
 /* ── SVG Icons ─────────────────────────────────────────── */
-
-const CameraIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z" />
-    <circle cx="12" cy="13" r="3" />
-  </svg>
-);
 
 const MailIcon = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -59,6 +60,7 @@ export default function SettingsPage() {
   const router = useRouter();
   const { user, token } = useRequireAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const locationLookupRequestRef = useRef(0);
 
   // Profile data
   const [profile, setProfile] = useState<ProfileData | null>(null);
@@ -72,6 +74,8 @@ export default function SettingsPage() {
   const [phone, setPhone] = useState('');
   const [stateId, setStateId] = useState<number | null>(null);
   const [areaId, setAreaId] = useState<number | null>(null);
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   // Lookups
@@ -110,6 +114,8 @@ export default function SettingsPage() {
         setPhone(res.data.phone || '');
         setStateId(res.data.stateId);
         setAreaId(res.data.areaId);
+        setLatitude(res.data.latitude);
+        setLongitude(res.data.longitude);
         setAvatarUrl(res.data.avatarPath);
         setOriginalValues({
           fullName: res.data.fullName || '',
@@ -117,6 +123,8 @@ export default function SettingsPage() {
           phone: res.data.phone || '',
           stateId: res.data.stateId,
           areaId: res.data.areaId,
+          latitude: res.data.latitude,
+          longitude: res.data.longitude,
         });
       }
       setLoading(false);
@@ -134,7 +142,6 @@ export default function SettingsPage() {
   // Load areas when stateId changes
   useEffect(() => {
     if (!token || !stateId) {
-      setAreas([]);
       return;
     }
     getAreasByState(token, stateId).then((res) => {
@@ -147,7 +154,95 @@ export default function SettingsPage() {
     username !== originalValues.username ||
     phone !== originalValues.phone ||
     stateId !== originalValues.stateId ||
-    areaId !== originalValues.areaId;
+    areaId !== originalValues.areaId ||
+    latitude !== originalValues.latitude ||
+    longitude !== originalValues.longitude;
+
+  const selectedMapCoordinates = useMemo<ListingCoordinates | null>(() => {
+    if (latitude === null || longitude === null) {
+      return null;
+    }
+
+    return { latitude, longitude };
+  }, [latitude, longitude]);
+
+  const autoFillLocationFromCoordinates = useCallback(async (coordinates: ListingCoordinates) => {
+    if (!token || states.length === 0) {
+      return;
+    }
+
+    const requestId = locationLookupRequestRef.current + 1;
+    locationLookupRequestRef.current = requestId;
+
+    try {
+      const result = await reverseGeocodeCoordinates(coordinates);
+      if (locationLookupRequestRef.current !== requestId) {
+        return;
+      }
+
+      const address = result.address ?? {};
+      const stateCandidates = collectLocationCandidates([
+        address.state,
+        address.state_district,
+        address.city,
+        result.display_name,
+      ]);
+      const matchedState = matchLocationOption(states, stateCandidates);
+
+      if (!matchedState) {
+        showToast('error', 'Map pin saved. Please choose State and Area manually.');
+        return;
+      }
+
+      const areaResponse = await getAreasByState(token, matchedState.id);
+      if (locationLookupRequestRef.current !== requestId) {
+        return;
+      }
+
+      if (!areaResponse.data) {
+        setStateId(matchedState.id);
+        setAreaId(null);
+        showToast('success', 'State filled from the map. Please choose the closest area manually.');
+        return;
+      }
+
+      const matchedAreas = areaResponse.data;
+      const areaCandidates = collectLocationCandidates([
+        address.suburb,
+        address.neighbourhood,
+        address.quarter,
+        address.city_district,
+        address.village,
+        address.town,
+        address.city,
+        address.municipality,
+        address.county,
+        address.state_district,
+        result.display_name,
+      ]);
+      const matchedArea = matchLocationOption(matchedAreas, areaCandidates);
+
+      setStateId(matchedState.id);
+      setAreas(matchedAreas);
+      setAreaId(matchedArea?.id ?? null);
+      showToast(
+        'success',
+        matchedArea
+          ? `Location filled as ${matchedArea.name}, ${matchedState.name}.`
+          : `State filled as ${matchedState.name}. Please choose the closest area manually.`
+      );
+    } catch {
+      if (locationLookupRequestRef.current === requestId) {
+        showToast('error', 'Map pin saved, but automatic State/Area matching is unavailable right now.');
+      }
+    }
+  }, [showToast, states, token]);
+
+  const handleMapCoordinatesChange = useCallback((coordinates: ListingCoordinates) => {
+    setLatitude(coordinates.latitude);
+    setLongitude(coordinates.longitude);
+    void autoFillLocationFromCoordinates(coordinates);
+  }, [autoFillLocationFromCoordinates]);
 
   const handleDiscard = () => {
     setFullName(originalValues.fullName as string || '');
@@ -155,6 +250,8 @@ export default function SettingsPage() {
     setPhone(originalValues.phone as string || '');
     setStateId(originalValues.stateId as number | null);
     setAreaId(originalValues.areaId as number | null);
+    setLatitude(originalValues.latitude as number | null);
+    setLongitude(originalValues.longitude as number | null);
   };
 
   const handleSave = async () => {
@@ -166,6 +263,8 @@ export default function SettingsPage() {
       phone,
       stateId,
       areaId,
+      latitude,
+      longitude,
     });
     setSaving(false);
 
@@ -176,6 +275,8 @@ export default function SettingsPage() {
       setPhone(res.data.phone || '');
       setStateId(res.data.stateId);
       setAreaId(res.data.areaId);
+      setLatitude(res.data.latitude);
+      setLongitude(res.data.longitude);
       setAvatarUrl(res.data.avatarPath);
       setOriginalValues({
         fullName: res.data.fullName || '',
@@ -183,6 +284,8 @@ export default function SettingsPage() {
         phone: res.data.phone || '',
         stateId: res.data.stateId,
         areaId: res.data.areaId,
+        latitude: res.data.latitude,
+        longitude: res.data.longitude,
       });
       syncLiveProfile(res.data);
       showToast('success', 'Profile updated successfully!');
@@ -286,6 +389,7 @@ export default function SettingsPage() {
   };
 
   const handleStateChange = (newStateId: string) => {
+    locationLookupRequestRef.current += 1;
     const id = newStateId ? Number(newStateId) : null;
     setStateId(id);
     setAreaId(null);
@@ -306,6 +410,7 @@ export default function SettingsPage() {
   const joinDate = profile.createdAt
     ? new Date(profile.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
     : '';
+  const displayedAreas = stateId ? areas : [];
 
   return (
     <div className={styles.container}>
@@ -441,6 +546,18 @@ export default function SettingsPage() {
               />
             </div>
 
+            <div className={styles.fieldGroupFull}>
+              <label className={styles.fieldLabel}>Profile Location Pin</label>
+              <OriginMapPicker
+                value={selectedMapCoordinates}
+                onChange={handleMapCoordinatesChange}
+                disabled={saving}
+              />
+              <p className={styles.locationHint}>
+                Use your current location to fill your profile pin, State, and Area when a match is found.
+              </p>
+            </div>
+
             {/* State */}
             <div className={styles.fieldGroup}>
               <label className={styles.fieldLabel} htmlFor="state">State</label>
@@ -464,11 +581,14 @@ export default function SettingsPage() {
                 id="area"
                 className={styles.fieldSelect}
                 value={areaId ?? ''}
-                onChange={(e) => setAreaId(e.target.value ? Number(e.target.value) : null)}
+                onChange={(e) => {
+                  locationLookupRequestRef.current += 1;
+                  setAreaId(e.target.value ? Number(e.target.value) : null);
+                }}
                 disabled={!stateId}
               >
                 <option value="">{stateId ? 'Select area' : 'Select a state first'}</option>
-                {areas.map((a) => (
+                {displayedAreas.map((a) => (
                   <option key={a.id} value={a.id}>{a.name}</option>
                 ))}
               </select>

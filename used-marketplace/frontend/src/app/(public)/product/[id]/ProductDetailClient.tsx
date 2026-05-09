@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import ReportListingModal from '@/src/components/reports/ReportListingModal';
+import ListingLocationMap from '@/src/components/listings/ListingLocationMap';
 import ImageLightbox from '@/src/components/ui/ImageLightbox';
 import { ROUTES } from '@/src/config/routes';
 import { resolveSupabaseUserRole } from '@/src/utils/authHelpers';
@@ -449,6 +450,13 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
   const sellerLocationLabel = getSellerLocationLabel(seller);
   const isSoldOut = listing.status === 'sold';
   const availabilityLabel = isSoldOut ? 'Sold Out' : listing.statusLabel;
+  const listingCoordinates =
+    listing.location.latitude !== null && listing.location.longitude !== null
+      ? {
+          latitude: listing.location.latitude,
+          longitude: listing.location.longitude,
+        }
+      : null;
   const breadcrumb = ['Marketplace', listing.category?.name ?? 'Listings', listing.locationLabel];
   const detailRows = [
     { label: 'Condition', value: listing.conditionLabel },
@@ -646,10 +654,23 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
               ))}
             </div>
 
+            <ListingLocationMap
+              coordinates={listingCoordinates}
+              locationLabel={listing.locationLabel}
+            />
+
             <div className={styles.sellerCard}>
               <div className={styles.sellerTop}>
                 <div className={styles.sellerAvatar}>
-                  {seller.displayName.slice(0, 2).toUpperCase()}
+                  {seller.avatarPath ? (
+                    <img
+                      src={seller.avatarPath}
+                      alt={`${seller.displayName} profile photo`}
+                      className={styles.sellerAvatarImage}
+                    />
+                  ) : (
+                    seller.displayName.slice(0, 2).toUpperCase()
+                  )}
                 </div>
                 <div className={styles.sellerMeta}>
                   <div className={styles.sellerNameRow}>

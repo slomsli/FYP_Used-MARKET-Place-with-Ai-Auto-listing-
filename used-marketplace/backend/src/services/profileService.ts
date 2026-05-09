@@ -16,6 +16,8 @@ export interface ProfileData {
   updatedAt: string;
   stateId: number | null;
   areaId: number | null;
+  latitude: number | null;
+  longitude: number | null;
   stateName: string | null;
   areaName: string | null;
   accountStatus: 'active' | 'pending_verification' | 'suspended';
@@ -28,6 +30,8 @@ export interface UpdateProfileInput {
   phone?: string;
   stateId?: number | null;
   areaId?: number | null;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
 }
 
 export interface StateLookup {
@@ -92,6 +96,24 @@ function deriveProfileAccountStatus(
   }
 
   return 'active';
+}
+
+function normalizeOptionalCoordinate(
+  value: number | string | null | undefined,
+  label: 'latitude' | 'longitude',
+  min: number,
+  max: number
+): number | null {
+  if (value === undefined || value === null || (typeof value === 'string' && value.trim() === '')) {
+    return null;
+  }
+
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+    throw new ProfileServiceError(`${label} must be a valid number between ${min} and ${max}`, 422);
+  }
+
+  return Number(parsed.toFixed(6));
 }
 
 async function ensureAvatarBucket(): Promise<void> {
@@ -208,7 +230,7 @@ export async function getProfile(userId: string): Promise<ProfileData> {
     .from('profiles')
     .select(`
       id, username, full_name, phone, avatar_path, role,
-      created_at, updated_at, state_id, area_id,
+      created_at, updated_at, state_id, area_id, latitude, longitude,
       states!profiles_state_id_fkey ( id, name ),
       areas!profiles_area_id_fkey ( id, name )
     `)
@@ -240,6 +262,8 @@ export async function getProfile(userId: string): Promise<ProfileData> {
     updatedAt: data.updated_at,
     stateId: data.state_id,
     areaId: data.area_id,
+    latitude: typeof data.latitude === 'number' ? data.latitude : data.latitude === null ? null : Number(data.latitude),
+    longitude: typeof data.longitude === 'number' ? data.longitude : data.longitude === null ? null : Number(data.longitude),
     stateName: state?.name ?? null,
     areaName: area?.name ?? null,
     accountStatus,
@@ -296,6 +320,32 @@ export async function updateProfile(
 
   if (input.areaId !== undefined) {
     updates.area_id = input.areaId;
+  }
+
+  const hasLatitudeInput = input.latitude !== undefined;
+  const hasLongitudeInput = input.longitude !== undefined;
+
+  if (hasLatitudeInput !== hasLongitudeInput) {
+    throw new ProfileServiceError('Latitude and longitude must be provided together', 422);
+  }
+
+  const latitude = hasLatitudeInput
+    ? normalizeOptionalCoordinate(input.latitude, 'latitude', -90, 90)
+    : undefined;
+  const longitude = hasLongitudeInput
+    ? normalizeOptionalCoordinate(input.longitude, 'longitude', -180, 180)
+    : undefined;
+
+  if ((latitude === null) !== (longitude === null)) {
+    throw new ProfileServiceError('Latitude and longitude must be provided together', 422);
+  }
+
+  if (latitude !== undefined) {
+    updates.latitude = latitude;
+  }
+
+  if (longitude !== undefined) {
+    updates.longitude = longitude;
   }
 
   const metadataPatch: Record<string, unknown> = {};
