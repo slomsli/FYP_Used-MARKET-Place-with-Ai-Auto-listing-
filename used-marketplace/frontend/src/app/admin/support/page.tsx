@@ -20,6 +20,7 @@ import {
   type PendingMessageAttachment,
   type SupportTicketStatus,
 } from '@/src/services/messageService';
+import ImageLightbox from '@/src/components/ui/ImageLightbox';
 import styles from './page.module.css';
 
 const SUPPORT_TICKET_TITLE_PREFIX = 'Support request:';
@@ -205,6 +206,14 @@ function ImageIcon() {
       <rect x="3" y="5" width="18" height="14" rx="2" />
       <circle cx="8.5" cy="10.5" r="1.5" />
       <path d="m21 15-5-5L5 21" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M18 6 6 18M6 6l12 12" />
     </svg>
   );
 }
@@ -400,6 +409,7 @@ export default function AdminSupportPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingAttachmentsRef = useRef<PendingMessageAttachment[]>([]);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   const loadTickets = useCallback(
     async (preferredTicketId?: string, showLoader = false) => {
@@ -510,17 +520,11 @@ export default function AdminSupportPage() {
 
   useEffect(() => {
     setSelectedTicketId((currentTicketId) => {
-      if (visibleTickets.length === 0) {
-        return currentTicketId && ticketViews.some((ticket) => ticket.id === currentTicketId)
-          ? currentTicketId
-          : null;
-      }
-
       return currentTicketId && visibleTickets.some((ticket) => ticket.id === currentTicketId)
         ? currentTicketId
-        : visibleTickets[0].id;
+        : null;
     });
-  }, [ticketViews, visibleTickets]);
+  }, [visibleTickets]);
 
   useEffect(() => {
     const authToken = token;
@@ -599,6 +603,38 @@ export default function AdminSupportPage() {
 
   function handleQuickReply(text: string) {
     setReplyText((current) => (current.trim() ? `${current.trim()}\n\n${text}` : text));
+  }
+
+  async function handlePasteForAttachments(
+    event: React.ClipboardEvent<HTMLTextAreaElement | HTMLInputElement>
+  ) {
+    const items = event.clipboardData?.items;
+    if (!items) return;
+
+    const availableSlots = MAX_MESSAGE_ATTACHMENTS - pendingAttachments.length;
+    if (availableSlots <= 0) return;
+
+    const imageFiles: File[] = [];
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) imageFiles.push(file);
+      }
+    }
+
+    if (imageFiles.length === 0) return;
+
+    event.preventDefault();
+
+    try {
+      const nextAttachments = await Promise.all(
+        imageFiles.slice(0, availableSlots).map((file) => readImageFileForMessage(file))
+      );
+      setPendingAttachments((current) => [...current, ...nextAttachments]);
+      setPageError(null);
+    } catch {
+      setPageError('Unable to paste this image.');
+    }
   }
 
   async function handleAttachmentSelect(event: React.ChangeEvent<HTMLInputElement>) {
@@ -819,100 +855,102 @@ export default function AdminSupportPage() {
       </section>
 
       <section className={styles.workspace}>
-        <aside className={styles.triageRail}>
-          <div className={styles.railHeader}>
-            <p className={styles.sectionEyebrow}>Triage lanes</p>
-            <button
-              type="button"
-              className={styles.refreshButton}
-              onClick={() => void loadTickets(selectedTicketId ?? undefined, true)}
-            >
-              <RefreshIcon />
-              Refresh
-            </button>
-          </div>
-
-          <div className={styles.filterList}>
-            {FILTER_OPTIONS.map((filter) => (
+        <div className={`${styles.queueColumn} ${selectedTicketId ? styles.queueColumnHidden : ''}`}>
+          <aside className={styles.triageRail}>
+            <div className={styles.railHeader}>
+              <p className={styles.sectionEyebrow}>Triage lanes</p>
               <button
-                key={filter.key}
                 type="button"
-                className={`${styles.filterButton} ${activeFilter === filter.key ? styles.filterButtonActive : ''}`}
-                onClick={() => setActiveFilter(filter.key)}
+                className={styles.refreshButton}
+                onClick={() => void loadTickets(selectedTicketId ?? undefined, true)}
               >
-                <span>
-                  <strong>{filter.label}</strong>
-                  <small>{filter.description}</small>
-                </span>
-                <em>{filterCounts[filter.key].toLocaleString()}</em>
+                <RefreshIcon />
+                Refresh
               </button>
-            ))}
-          </div>
-        </aside>
-
-        <section className={styles.ticketStack}>
-          <div className={styles.stackHeader}>
-            <div>
-              <p className={styles.sectionEyebrow}>Ticket queue</p>
-              <h2>{visibleTickets.length.toLocaleString()} visible ticket(s)</h2>
             </div>
-            <span>{loadingTickets ? 'Syncing...' : 'Live'}</span>
-          </div>
 
-          <label className={styles.searchBox}>
-            <SearchIcon />
-            <input
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search user, subject, issue, or category..."
-            />
-          </label>
+            <div className={styles.filterList}>
+              {FILTER_OPTIONS.map((filter) => (
+                <button
+                  key={filter.key}
+                  type="button"
+                  className={`${styles.filterButton} ${activeFilter === filter.key ? styles.filterButtonActive : ''}`}
+                  onClick={() => setActiveFilter(filter.key)}
+                >
+                  <span>
+                    <strong>{filter.label}</strong>
+                    <small>{filter.description}</small>
+                  </span>
+                  <em>{filterCounts[filter.key].toLocaleString()}</em>
+                </button>
+              ))}
+            </div>
+          </aside>
 
-          <div className={styles.ticketList}>
-            {loadingTickets && ticketViews.length === 0 ? (
-              <div className={styles.emptyState}>Loading support tickets...</div>
-            ) : visibleTickets.length === 0 ? (
-              <div className={styles.emptyState}>
-                No support tickets match this lane yet. Try all tickets or clear the search.
+          <section className={styles.ticketStack}>
+            <div className={styles.stackHeader}>
+              <div>
+                <p className={styles.sectionEyebrow}>Ticket queue</p>
+                <h2>{visibleTickets.length.toLocaleString()} visible ticket(s)</h2>
               </div>
-            ) : (
-              visibleTickets.map((ticket) => {
-                const category = getCategoryMeta(ticket.category);
-                const isSelected = ticket.id === activeTicket?.id;
+              <span>{loadingTickets ? 'Syncing...' : 'Live'}</span>
+            </div>
 
-                return (
-                  <button
-                    key={ticket.id}
-                    type="button"
-                    className={`${styles.ticketCard} ${isSelected ? styles.ticketCardActive : ''}`}
-                    onClick={() => setSelectedTicketId(ticket.id)}
-                  >
-                    <span className={`${styles.cardStripe} ${categoryToneClass[ticket.category]}`} />
-                    <span className={styles.ticketCardTop}>
-                      <span className={`${styles.categoryPill} ${categoryToneClass[ticket.category]}`}>
-                        {category.shortLabel}
-                      </span>
-                      <span className={`${styles.priorityPill} ${priorityToneClass[ticket.priority]}`}>
-                        {ticket.priority === 'urgent' ? 'Urgent' : 'Normal'}
-                      </span>
-                    </span>
-                    <strong className={styles.ticketTitle}>{ticket.title}</strong>
-                    <span className={styles.ticketPreview}>{ticket.preview}</span>
-                    <span className={styles.ticketFooter}>
-                      <span>{ticket.requesterName}</span>
-                      <span className={`${styles.statePill} ${stateToneClass[ticket.stateTone]}`}>
-                        {ticket.stateLabel}
-                      </span>
-                    </span>
-                    <time>{formatRelativeAge(ticket.lastActivityAt)}</time>
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </section>
+            <label className={styles.searchBox}>
+              <SearchIcon />
+              <input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search user, subject, issue, or category..."
+              />
+            </label>
 
-        <section className={styles.detailPanel}>
+            <div className={styles.ticketList}>
+              {loadingTickets && ticketViews.length === 0 ? (
+                <div className={styles.emptyState}>Loading support tickets...</div>
+              ) : visibleTickets.length === 0 ? (
+                <div className={styles.emptyState}>
+                  No support tickets match this lane yet. Try all tickets or clear the search.
+                </div>
+              ) : (
+                visibleTickets.map((ticket) => {
+                  const category = getCategoryMeta(ticket.category);
+                  const isSelected = ticket.id === activeTicket?.id;
+
+                  return (
+                    <button
+                      key={ticket.id}
+                      type="button"
+                      className={`${styles.ticketCard} ${isSelected ? styles.ticketCardActive : ''}`}
+                      onClick={() => setSelectedTicketId(ticket.id)}
+                    >
+                      <span className={`${styles.cardStripe} ${categoryToneClass[ticket.category]}`} />
+                      <span className={styles.ticketCardTop}>
+                        <span className={`${styles.categoryPill} ${categoryToneClass[ticket.category]}`}>
+                          {category.shortLabel}
+                        </span>
+                        <span className={`${styles.priorityPill} ${priorityToneClass[ticket.priority]}`}>
+                          {ticket.priority === 'urgent' ? 'Urgent' : 'Normal'}
+                        </span>
+                      </span>
+                      <strong className={styles.ticketTitle}>{ticket.title}</strong>
+                      <span className={styles.ticketPreview}>{ticket.preview}</span>
+                      <span className={styles.ticketFooter}>
+                        <span>{ticket.requesterName}</span>
+                        <span className={`${styles.statePill} ${stateToneClass[ticket.stateTone]}`}>
+                          {ticket.stateLabel}
+                        </span>
+                        <time className={styles.ticketTime}>{formatRelativeAge(ticket.lastActivityAt)}</time>
+                      </span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </section>
+        </div>
+
+        <section className={`${styles.detailPanel} ${!selectedTicketId ? styles.detailPanelHidden : ''}`}>
           {!activeTicket ? (
             <div className={styles.detailEmpty}>
               <TicketIcon />
@@ -923,6 +961,14 @@ export default function AdminSupportPage() {
             <>
               <div className={styles.detailHeader}>
                 <div className={styles.requesterBlock}>
+                  <button
+                    type="button"
+                    className={styles.closePanelButton}
+                    onClick={() => setSelectedTicketId(null)}
+                    aria-label="Close ticket view"
+                  >
+                    <CloseIcon />
+                  </button>
                   <div className={styles.requesterAvatar}>{getInitials(activeTicket.requesterName)}</div>
                   <div>
                     <p className={styles.sectionEyebrow}>Ticket owner</p>
@@ -1032,14 +1078,15 @@ export default function AdminSupportPage() {
                         {message.attachments?.length > 0 && (
                           <div className={styles.messageAttachments}>
                             {message.attachments.map((attachment) => (
-                              <a
+                              <button
                                 key={attachment.id || attachment.url}
-                                href={attachment.url}
-                                target="_blank"
-                                rel="noreferrer"
+                                type="button"
+                                className={styles.attachmentThumb}
+                                onClick={() => setLightboxSrc(attachment.url)}
+                                aria-label="View image"
                               >
                                 <img src={attachment.url} alt={attachment.file_name || 'Ticket image'} />
-                              </a>
+                              </button>
                             ))}
                           </div>
                         )}
@@ -1084,8 +1131,9 @@ export default function AdminSupportPage() {
                           type="button"
                           onClick={() => removePendingAttachment(attachment.id)}
                           aria-label={`Remove ${attachment.fileName}`}
+                          title="Remove image"
                         >
-                          Remove
+                          ✕
                         </button>
                       </div>
                     ))}
@@ -1102,7 +1150,8 @@ export default function AdminSupportPage() {
                 <textarea
                   value={replyText}
                   onChange={(event) => setReplyText(event.target.value)}
-                  placeholder="Write the admin response here..."
+                  onPaste={(event) => void handlePasteForAttachments(event)}
+                  placeholder="Write the admin response here... (Ctrl+V to paste image)"
                   maxLength={2000}
                   rows={4}
                   disabled={activeTicket.supportStatus === 'closed'}
@@ -1138,6 +1187,12 @@ export default function AdminSupportPage() {
           )}
         </section>
       </section>
+
+      <ImageLightbox
+        src={lightboxSrc}
+        alt="Ticket image"
+        onClose={() => setLightboxSrc(null)}
+      />
     </div>
   );
 }

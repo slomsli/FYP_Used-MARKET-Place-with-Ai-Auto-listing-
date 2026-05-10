@@ -501,8 +501,10 @@ export default function SupportTicketsPage() {
                     <button
                       type="button"
                       onClick={() => removePendingAttachment(attachment.id, setNewTicketAttachments)}
+                      aria-label={`Remove ${attachment.fileName}`}
+                      title="Remove image"
                     >
-                      Remove
+                      ✕
                     </button>
                   </div>
                 ))}
@@ -643,8 +645,10 @@ export default function SupportTicketsPage() {
                         <button
                           type="button"
                           onClick={() => removePendingAttachment(attachment.id, setReplyAttachments)}
+                          aria-label={`Remove ${attachment.fileName}`}
+                          title="Remove image"
                         >
-                          Remove
+                          ✕
                         </button>
                       </div>
                     ))}
