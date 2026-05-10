@@ -12,13 +12,16 @@ import {
   buildActorLabel,
   buildMonthKey,
   buildRecentMonthBuckets,
+  buildYearMonthBuckets,
   formatRecentStatusLabel,
   listAllAuthUsers,
   normalizeId,
   unwrapRelation,
 } from './shared';
 
-export async function getAdminOverview(): Promise<AdminOverviewResponse> {
+export async function getAdminOverview(
+  input: { year?: number } = {}
+): Promise<AdminOverviewResponse> {
   const [
     { data: profiles, error: profileError },
     authUsers,
@@ -97,7 +100,46 @@ export async function getAdminOverview(): Promise<AdminOverviewResponse> {
   const stateRows = (states ?? []) as RawState[];
 
   const authUserMap = new Map(authUsers.map((user) => [user.id, user]));
-  const monthBuckets = buildRecentMonthBuckets();
+  const selectedYear = input.year;
+  const availableYearSet = new Set<number>([new Date().getUTCFullYear()]);
+  const addAvailableYear = (value: string | null | undefined) => {
+    const monthKey = buildMonthKey(value);
+
+    if (!monthKey) {
+      return;
+    }
+
+    const year = Number(monthKey.slice(0, 4));
+
+    if (Number.isInteger(year)) {
+      availableYearSet.add(year);
+    }
+  };
+
+  for (const profile of profileRows) {
+    addAvailableYear(profile.created_at);
+  }
+
+  for (const listing of listingRows) {
+    addAvailableYear(listing.created_at);
+
+    if (listing.status === 'sold') {
+      addAvailableYear(listing.sold_at ?? listing.created_at);
+    }
+  }
+
+  for (const report of reportRows) {
+    addAvailableYear(report.created_at);
+  }
+
+  if (selectedYear) {
+    availableYearSet.add(selectedYear);
+  }
+
+  const availableYears = [...availableYearSet].sort((left, right) => right - left);
+  const monthBuckets = selectedYear
+    ? buildYearMonthBuckets(selectedYear)
+    : buildRecentMonthBuckets();
   const monthBucketMap = new Map(monthBuckets.map((bucket) => [bucket.value, bucket]));
   const pendingVerificationUsers = profileRows.filter(
     (profile) => !authUserMap.get(profile.id)?.email_confirmed_at
@@ -166,9 +208,9 @@ export async function getAdminOverview(): Promise<AdminOverviewResponse> {
   )[0];
   const busiestState = busiestStateEntry
     ? {
-        name: stateNameMap.get(busiestStateEntry[0]) ?? 'Unknown region',
-        listingCount: busiestStateEntry[1],
-      }
+      name: stateNameMap.get(busiestStateEntry[0]) ?? 'Unknown region',
+      listingCount: busiestStateEntry[1],
+    }
     : null;
 
   const reportCountsByListing = new Map<string, { title: string; reportCount: number }>();
@@ -193,10 +235,10 @@ export async function getAdminOverview(): Promise<AdminOverviewResponse> {
   )[0];
   const mostReportedListing = mostReportedListingEntry
     ? {
-        id: mostReportedListingEntry[0],
-        title: mostReportedListingEntry[1].title,
-        reportCount: mostReportedListingEntry[1].reportCount,
-      }
+      id: mostReportedListingEntry[0],
+      title: mostReportedListingEntry[1].title,
+      reportCount: mostReportedListingEntry[1].reportCount,
+    }
     : null;
 
   const recentActivity = [
@@ -251,6 +293,8 @@ export async function getAdminOverview(): Promise<AdminOverviewResponse> {
       moderationThreads,
     },
     activity: {
+      availableYears,
+      selectedYear: selectedYear ?? null,
       months: monthBuckets,
     },
     spotlight: {

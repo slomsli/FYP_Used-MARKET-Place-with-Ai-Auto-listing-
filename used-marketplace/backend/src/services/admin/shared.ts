@@ -709,6 +709,8 @@ export interface AdminOverviewResponse {
     moderationThreads: number;
   };
   activity: {
+    availableYears: number[];
+    selectedYear: number | null;
     months: Array<{
       value: string;
       label: string;
@@ -965,6 +967,29 @@ export function buildRecentMonthBuckets(
     const monthDate = new Date(
       Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (monthCount - 1 - index), 1)
     );
+    const value = `${monthDate.getUTCFullYear()}-${String(monthDate.getUTCMonth() + 1).padStart(
+      2,
+      '0'
+    )}`;
+
+    return {
+      value,
+      label: new Intl.DateTimeFormat('en-MY', {
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'UTC',
+      }).format(monthDate),
+      users: 0,
+      listings: 0,
+      soldItems: 0,
+      reports: 0,
+    };
+  });
+}
+
+export function buildYearMonthBuckets(year: number): AdminOverviewResponse['activity']['months'] {
+  return Array.from({ length: 12 }, (_, index) => {
+    const monthDate = new Date(Date.UTC(year, index, 1));
     const value = `${monthDate.getUTCFullYear()}-${String(monthDate.getUTCMonth() + 1).padStart(
       2,
       '0'

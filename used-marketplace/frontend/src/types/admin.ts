@@ -414,6 +414,8 @@ export interface AdminOverviewResponse {
     moderationThreads: number;
   };
   activity: {
+    availableYears: number[];
+    selectedYear: number | null;
     months: Array<{
       value: string;
       label: string;

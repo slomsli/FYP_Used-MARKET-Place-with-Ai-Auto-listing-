@@ -247,6 +247,7 @@ export default function BrowsePage() {
   const isAdminViewer = resolvedViewerRole === 'admin';
   const showMemberActions = !user || resolvedViewerRole === 'user';
   const accountHubRoute = isAdminViewer ? ROUTES.ADMIN : ROUTES.DASHBOARD;
+  const notificationRoute = isAdminViewer ? ROUTES.ADMIN_NOTIFICATIONS : ROUTES.NOTIFICATIONS;
   const inboxRoute = isAdminViewer ? ROUTES.ADMIN_MESSAGES : ROUTES.MESSAGES;
 
   // Check favorite status when listings load and user is authenticated
@@ -503,7 +504,11 @@ export default function BrowsePage() {
             />
           </label>
 
-          <Link href={accountHubRoute} className={styles.iconButton} aria-label="Dashboard alerts">
+          <Link
+            href={notificationRoute}
+            className={styles.iconButton}
+            aria-label={isAdminViewer ? 'Admin notifications' : 'Notifications'}
+          >
             <BellIcon />
           </Link>
           <Link href={inboxRoute} className={styles.iconButton} aria-label="Messages">

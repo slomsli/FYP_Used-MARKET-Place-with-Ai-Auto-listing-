@@ -34,9 +34,28 @@ function handleAdminError(res: Response, error: unknown, fallbackMessage: string
   sendError(res, fallbackMessage, 500);
 }
 
+function parseOverviewYear(value: unknown): number | undefined {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+
+  if (typeof rawValue !== 'string' || !rawValue.trim()) {
+    return undefined;
+  }
+
+  const parsedYear = Number(rawValue);
+  const maxYear = new Date().getUTCFullYear() + 1;
+
+  if (!Number.isInteger(parsedYear) || parsedYear < 2000 || parsedYear > maxYear) {
+    throw new AdminServiceError('year must be a valid calendar year', 422);
+  }
+
+  return parsedYear;
+}
+
 export async function getAdminOverviewHandler(req: Request, res: Response): Promise<void> {
   try {
-    const data = await getAdminOverview();
+    const data = await getAdminOverview({
+      year: parseOverviewYear(req.query.year),
+    });
     sendSuccess(res, data);
   } catch (error) {
     handleAdminError(res, error, 'Internal server error while fetching the admin overview');

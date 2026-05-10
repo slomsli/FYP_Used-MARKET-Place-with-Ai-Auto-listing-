@@ -286,6 +286,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
   const memberAccessResolved = !user || resolvedViewerRole !== null;
   const showMemberActions = !user || resolvedViewerRole === 'user';
   const accountHubRoute = isAdminViewer ? ROUTES.ADMIN : ROUTES.DASHBOARD;
+  const notificationRoute = isAdminViewer ? ROUTES.ADMIN_NOTIFICATIONS : ROUTES.NOTIFICATIONS;
   const inboxRoute = isAdminViewer ? ROUTES.ADMIN_MESSAGES : ROUTES.MESSAGES;
 
   // Check favorite status when user is authenticated
@@ -527,7 +528,11 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
             />
           </form>
 
-          <Link href={accountHubRoute} className={styles.iconButton} aria-label="Dashboard alerts">
+          <Link
+            href={notificationRoute}
+            className={styles.iconButton}
+            aria-label={isAdminViewer ? 'Admin notifications' : 'Notifications'}
+          >
             <BellIcon />
           </Link>
           {showMemberActions && (

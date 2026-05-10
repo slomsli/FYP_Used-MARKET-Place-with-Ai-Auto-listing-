@@ -18,6 +18,7 @@ export const ROUTES = {
   ADMIN_SUPPORT: '/admin/support',
   ADMIN_USERS: '/admin/users',
   ADMIN_STRUCTURE: '/admin/structure',
+  ADMIN_NOTIFICATIONS: '/admin/notifications',
   MY_LISTINGS: '/dashboard/my-listings',
   FAVORITES: '/dashboard/favorites',
   MESSAGES: '/dashboard/messages',
