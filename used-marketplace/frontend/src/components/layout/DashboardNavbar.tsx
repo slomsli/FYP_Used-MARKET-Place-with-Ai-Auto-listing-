@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { FormEvent, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { ROUTES } from '@/src/config/routes';
 import { subscribeToDashboardNotificationUpdates } from '@/src/lib/notificationSync';
 import { getNotifications } from '@/src/services/notificationService';
@@ -41,15 +41,33 @@ export default function DashboardNavbar({
   authToken,
 }: DashboardNavbarProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const [searchQuery, setSearchQuery] = useState('');
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const navItems = [
+    {
+      href: ROUTES.DASHBOARD,
+      label: 'Dashboard',
+      isActive: pathname === ROUTES.DASHBOARD,
+    },
+    {
+      href: ROUTES.BROWSE,
+      label: 'Browse',
+      isActive: pathname === ROUTES.BROWSE,
+    },
+    {
+      href: ROUTES.ADD_LISTING,
+      label: 'Sell',
+      isActive: pathname.startsWith(ROUTES.ADD_LISTING),
+    },
+  ];
   const initials = userName
     ? userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     : 'U';
+  const displayedUnreadNotificationCount = authToken ? unreadNotificationCount : 0;
 
   useEffect(() => {
     if (!authToken) {
-      setUnreadNotificationCount(0);
       return;
     }
 
@@ -110,9 +128,16 @@ export default function DashboardNavbar({
         </Link>
 
         <div className={styles.navLinks}>
-          <Link href={ROUTES.DASHBOARD} className={styles.navLinkActive}>Dashboard</Link>
-          <Link href={ROUTES.BROWSE} className={styles.navLink}>Browse</Link>
-          <Link href={ROUTES.SELLERS} className={styles.navLink}>Sellers</Link>
+          {navItems.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={item.isActive ? styles.navLinkActive : styles.navLink}
+              aria-current={item.isActive ? 'page' : undefined}
+            >
+              {item.label}
+            </Link>
+          ))}
         </div>
       </div>
 
@@ -133,18 +158,18 @@ export default function DashboardNavbar({
         <div className={styles.iconGroup}>
           <Link
             href={ROUTES.NOTIFICATIONS}
-            className={`${styles.iconBtn} ${unreadNotificationCount > 0 ? styles.iconBtnAlert : ''}`}
+            className={`${styles.iconBtn} ${displayedUnreadNotificationCount > 0 ? styles.iconBtnAlert : ''}`}
             aria-label={
-              unreadNotificationCount > 0
-                ? `Notifications (${unreadNotificationCount} unread)`
+              displayedUnreadNotificationCount > 0
+                ? `Notifications (${displayedUnreadNotificationCount} unread)`
                 : 'Notifications'
             }
             id="notifications-btn"
           >
             <BellIcon />
-            {unreadNotificationCount > 0 && (
+            {displayedUnreadNotificationCount > 0 && (
               <span className={styles.iconBadge}>
-                {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                {displayedUnreadNotificationCount > 9 ? '9+' : displayedUnreadNotificationCount}
               </span>
             )}
           </Link>

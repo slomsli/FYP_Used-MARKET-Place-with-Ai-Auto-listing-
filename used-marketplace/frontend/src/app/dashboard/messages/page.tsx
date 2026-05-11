@@ -945,6 +945,10 @@ export default function MessagesPage() {
       } else {
         messageService.revokePendingAttachmentPreviews(attachmentsToSend);
         setMessages((current) => current.map((item) => (item.id === tempMessage.id ? data : item)));
+        window.setTimeout(() => {
+          void loadMessages(selectedConversation);
+          void loadConversations();
+        }, 1200);
       }
 
       setIsSending(false);
@@ -977,6 +981,10 @@ export default function MessagesPage() {
     setDraftTarget(null);
     setMobileChatOpen(true);
     await loadConversations();
+    window.setTimeout(() => {
+      void loadMessages(data.conversation_id);
+      void loadConversations();
+    }, 1200);
     setIsSending(false);
   };
 

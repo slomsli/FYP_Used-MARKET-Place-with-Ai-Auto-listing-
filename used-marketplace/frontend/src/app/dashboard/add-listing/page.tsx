@@ -204,6 +204,8 @@ export default function AddListingPage() {
   const [condition, setCondition] = useState<ListingCondition | ''>('');
   const [price, setPrice] = useState('');
   const [openToOffers, setOpenToOffers] = useState(true);
+  const [autoNegotiateEnabled, setAutoNegotiateEnabled] = useState(false);
+  const [autoNegotiationFloorPrice, setAutoNegotiationFloorPrice] = useState('');
   const [stateId, setStateId] = useState('');
   const [areaId, setAreaId] = useState('');
   const [latitude, setLatitude] = useState<number | null>(null);
@@ -344,6 +346,12 @@ export default function AddListingPage() {
       setCondition(listing.condition);
       setPrice(String(listing.price));
       setOpenToOffers(listing.negotiable);
+      setAutoNegotiateEnabled(Boolean(listing.negotiable && listing.autoNegotiationEnabled));
+      setAutoNegotiationFloorPrice(
+        listing.autoNegotiationFloorPrice !== undefined && listing.autoNegotiationFloorPrice !== null
+          ? String(listing.autoNegotiationFloorPrice)
+          : ''
+      );
       setStateId(listing.location.stateId ? String(listing.location.stateId) : '');
       setAreaId(listing.location.areaId ? String(listing.location.areaId) : '');
       setLatitude(listing.location.latitude);
@@ -739,6 +747,31 @@ export default function AddListingPage() {
       return 'Please add a title for your listing';
     }
 
+    if (autoNegotiateEnabled) {
+      const parsedPrice = Number(price);
+      const parsedFloorPrice = Number(autoNegotiationFloorPrice);
+
+      if (!openToOffers) {
+        return 'Turn on Open to Offers before enabling Auto-Negotiate';
+      }
+
+      if (!price.trim() || Number.isNaN(parsedPrice) || parsedPrice <= 0) {
+        return 'Please enter a listing price before enabling Auto-Negotiate';
+      }
+
+      if (
+        !autoNegotiationFloorPrice.trim() ||
+        Number.isNaN(parsedFloorPrice) ||
+        parsedFloorPrice <= 0
+      ) {
+        return 'Please enter a hidden floor price for Auto-Negotiate';
+      }
+
+      if (parsedFloorPrice > parsedPrice) {
+        return 'Auto-Negotiate floor price cannot be higher than the listing price';
+      }
+    }
+
     if (status === 'draft') {
       return null;
     }
@@ -764,7 +797,17 @@ export default function AddListingPage() {
     }
 
     return null;
-  }, [areaId, categoryId, condition, price, stateId, title]);
+  }, [
+    areaId,
+    autoNegotiateEnabled,
+    autoNegotiationFloorPrice,
+    categoryId,
+    condition,
+    openToOffers,
+    price,
+    stateId,
+    title,
+  ]);
 
   const submitListing = useCallback(async (status: SellerListingSubmissionStatus) => {
     if (isSuspended) {
@@ -801,6 +844,11 @@ export default function AddListingPage() {
       price: price ? Number(price) : null,
       currency: metadata?.currencies[0] || 'MYR',
       negotiable: openToOffers,
+      autoNegotiationEnabled: openToOffers && autoNegotiateEnabled,
+      autoNegotiationFloorPrice:
+        openToOffers && autoNegotiateEnabled && autoNegotiationFloorPrice
+          ? Number(autoNegotiationFloorPrice)
+          : null,
       status,
       stateId: stateId ? Number(stateId) : null,
       areaId: areaId ? Number(areaId) : null,
@@ -887,6 +935,8 @@ export default function AddListingPage() {
     }, 700);
   }, [
     areaId,
+    autoNegotiateEnabled,
+    autoNegotiationFloorPrice,
     brand,
     categoryId,
     condition,
@@ -1193,7 +1243,16 @@ export default function AddListingPage() {
                   <button
                     type="button"
                     className={`${styles.toggle} ${openToOffers ? styles.toggleActive : ''}`}
-                    onClick={() => setOpenToOffers((current) => !current)}
+                    onClick={() =>
+                      setOpenToOffers((current) => {
+                        const nextValue = !current;
+                        if (!nextValue) {
+                          setAutoNegotiateEnabled(false);
+                        }
+
+                        return nextValue;
+                      })
+                    }
                     role="switch"
                     aria-checked={openToOffers}
                     id="open-to-offers-toggle"
@@ -1201,6 +1260,65 @@ export default function AddListingPage() {
                   />
                 </div>
               </div>
+            </div>
+
+            <div
+              className={`${styles.autoNegotiationBox} ${
+                autoNegotiateEnabled ? styles.autoNegotiationBoxActive : ''
+              }`}
+            >
+              <div className={styles.autoNegotiationMain}>
+                <div>
+                  <div className={styles.autoNegotiationTitle}>
+                    <SparklesIcon />
+                    <span>Auto-Negotiate</span>
+                  </div>
+                  <div className={styles.autoNegotiationSub}>
+                    Hidden floor for chat counters
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={`${styles.toggle} ${
+                    autoNegotiateEnabled ? styles.toggleActive : ''
+                  }`}
+                  onClick={() => {
+                    if (!openToOffers) {
+                      return;
+                    }
+
+                    setAutoNegotiateEnabled((current) => !current);
+                  }}
+                  role="switch"
+                  aria-checked={autoNegotiateEnabled}
+                  id="auto-negotiate-toggle"
+                  disabled={disabled || !openToOffers}
+                />
+              </div>
+
+              {autoNegotiateEnabled && openToOffers && (
+                <div className={styles.autoNegotiationFloorRow}>
+                  <div className={styles.formGroup}>
+                    <label className={styles.label} htmlFor="auto-negotiation-floor">
+                      Floor price (hidden)
+                    </label>
+                    <div className={styles.priceInputWrapper}>
+                      <span className={styles.currencyBadge}>RM</span>
+                      <input
+                        type="number"
+                        id="auto-negotiation-floor"
+                        className={`${styles.input} ${styles.priceInput}`}
+                        placeholder="0.00"
+                        min="0"
+                        step="0.01"
+                        value={autoNegotiationFloorPrice}
+                        onChange={(event) => setAutoNegotiationFloorPrice(event.target.value)}
+                        disabled={disabled}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

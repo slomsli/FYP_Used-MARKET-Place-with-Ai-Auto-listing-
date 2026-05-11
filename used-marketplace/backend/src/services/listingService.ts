@@ -75,6 +75,8 @@ interface RawListing {
   price: unknown;
   currency: string;
   negotiable: boolean;
+  auto_negotiate_enabled?: boolean | null;
+  auto_negotiate_floor_price?: unknown;
   status: string;
   cover_image_path: string | null;
   created_at: string;
@@ -206,6 +208,10 @@ interface ListingModerationSnapshot {
   adminUserId: string | null;
 }
 
+interface BuildListingSummaryOptions {
+  includeAutoNegotiationSettings?: boolean;
+}
+
 export class ListingServiceError extends Error {
   status: number;
 
@@ -283,6 +289,74 @@ function toNullableNumber(value: unknown): number | null {
 
   const parsed = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeOptionalMoney(
+  value: number | string | null | undefined,
+  fieldLabel: string
+): number | null {
+  if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) {
+    return null;
+  }
+
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new ListingServiceError(`${fieldLabel} must be a valid non-negative number`, 422);
+  }
+
+  return Number(parsed.toFixed(2));
+}
+
+function resolveAutoNegotiationSettings(
+  payload: CreateListingBody,
+  listingPrice: number | null,
+  negotiable: boolean
+): { enabled: boolean; floorPrice: number | null } {
+  const enabled = payload.autoNegotiationEnabled === true;
+  const floorPrice = normalizeOptionalMoney(
+    payload.autoNegotiationFloorPrice,
+    'Auto-negotiation floor price'
+  );
+
+  if (!enabled) {
+    return {
+      enabled: false,
+      floorPrice: null,
+    };
+  }
+
+  if (!negotiable) {
+    throw new ListingServiceError(
+      'Auto-negotiation requires the listing to be open to offers',
+      422
+    );
+  }
+
+  if (floorPrice === null || floorPrice <= 0) {
+    throw new ListingServiceError(
+      'Set a hidden floor price greater than 0 to use auto-negotiation',
+      422
+    );
+  }
+
+  if (listingPrice === null || !Number.isFinite(listingPrice) || listingPrice <= 0) {
+    throw new ListingServiceError(
+      'Auto-negotiation requires a listing price greater than 0',
+      422
+    );
+  }
+
+  if (floorPrice > listingPrice) {
+    throw new ListingServiceError(
+      'Auto-negotiation floor price cannot be higher than the listing price',
+      422
+    );
+  }
+
+  return {
+    enabled,
+    floorPrice,
+  };
 }
 
 function isMissingRpcFunction(error: { code?: string | null; message?: string | null } | null | undefined) {
@@ -413,7 +487,8 @@ function buildListingSummary(
   favoriteCountMap: Map<string, number>,
   totalOfferCountMap: Map<string, number>,
   pendingOfferCountMap: Map<string, number>,
-  moderationSnapshotMap: Map<string, ListingModerationSnapshot> = new Map()
+  moderationSnapshotMap: Map<string, ListingModerationSnapshot> = new Map(),
+  options: BuildListingSummaryOptions = {}
 ): ListingSummary {
   const imageStoragePaths = imageMap.get(listing.id) ?? [];
   const coverImageStoragePath = listing.cover_image_path || imageStoragePaths[0] || null;
@@ -423,7 +498,7 @@ function buildListingSummary(
   const soldToProfile = unwrapRelation(listing.sold_to_profile);
   const moderationSnapshot = moderationSnapshotMap.get(listing.id);
 
-  return {
+  const summary: ListingSummary = {
     id: listing.id,
     title: listing.title,
     description: listing.description,
@@ -458,6 +533,13 @@ function buildListingSummary(
     moderationReason: moderationSnapshot?.reason ?? null,
     moderationReasonUpdatedAt: moderationSnapshot?.createdAt ?? null,
   };
+
+  if (options.includeAutoNegotiationSettings) {
+    summary.autoNegotiationEnabled = listing.auto_negotiate_enabled === true;
+    summary.autoNegotiationFloorPrice = toNullableNumber(listing.auto_negotiate_floor_price);
+  }
+
+  return summary;
 }
 
 function buildLocationLabel(location: ListingLocationSummary): string {
@@ -1004,6 +1086,8 @@ async function getListingByIdForSeller(listingId: string, sellerId: string): Pro
       price,
       currency,
       negotiable,
+      auto_negotiate_enabled,
+      auto_negotiate_floor_price,
       status,
       cover_image_path,
       created_at,
@@ -1061,7 +1145,8 @@ async function getListingByIdForSeller(listingId: string, sellerId: string): Pro
     new Map<string, number>(),
     new Map<string, number>(),
     new Map<string, number>(),
-    moderationSnapshots
+    moderationSnapshots,
+    { includeAutoNegotiationSettings: true }
   );
 }
 
@@ -1676,6 +1761,8 @@ export async function createListing(
   const description = trimOptional(payload.description);
   const brand = trimOptional(payload.brand);
   const currency = normalizeCurrency(payload.currency);
+  const negotiable = payload.negotiable ?? true;
+  const autoNegotiation = resolveAutoNegotiationSettings(payload, price, negotiable);
   const normalizedImageStoragePaths = normalizeStoragePathsForDatabase(LISTING_IMAGE_BUCKET, [
     ...(payload.imageStoragePaths ?? []),
     ...(payload.imagePaths ?? []),
@@ -1725,7 +1812,9 @@ export async function createListing(
       condition: isDraft ? (payload.condition || null) : payload.condition,
       price,
       currency,
-      negotiable: payload.negotiable ?? true,
+      negotiable,
+      auto_negotiate_enabled: autoNegotiation.enabled,
+      auto_negotiate_floor_price: autoNegotiation.floorPrice,
       status,
       cover_image_path: coverImageStoragePath,
       published_at: publishedAt,
@@ -1783,6 +1872,8 @@ export async function updateListing(
   const description = trimOptional(payload.description);
   const brand = trimOptional(payload.brand);
   const currency = normalizeCurrency(payload.currency);
+  const negotiable = payload.negotiable ?? true;
+  const autoNegotiation = resolveAutoNegotiationSettings(payload, price, negotiable);
   const normalizedImageStoragePaths = normalizeStoragePathsForDatabase(LISTING_IMAGE_BUCKET, [
     ...(payload.imageStoragePaths ?? []),
     ...(payload.imagePaths ?? []),
@@ -1848,7 +1939,9 @@ export async function updateListing(
       condition: isDraft ? (payload.condition || null) : payload.condition,
       price,
       currency,
-      negotiable: payload.negotiable ?? true,
+      negotiable,
+      auto_negotiate_enabled: autoNegotiation.enabled,
+      auto_negotiate_floor_price: autoNegotiation.floorPrice,
       status,
       cover_image_path: coverImageStoragePath,
       published_at: publishedAt,
@@ -2081,6 +2174,8 @@ export async function getMyListings(
       price,
       currency,
       negotiable,
+      auto_negotiate_enabled,
+      auto_negotiate_floor_price,
       status,
       cover_image_path,
       created_at,
@@ -2251,7 +2346,8 @@ export async function getMyListings(
         favoriteCountMap,
         totalOfferCountMap,
         pendingOfferCountMap,
-        moderationSnapshots
+        moderationSnapshots,
+        { includeAutoNegotiationSettings: true }
       )
     ),
   };

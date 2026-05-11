@@ -9,7 +9,7 @@ import {
   LISTING_IMAGE_BUCKET,
   MESSAGE_ATTACHMENT_BUCKET,
 } from '../utils/storageBuckets';
-import { trimOptional } from '../utils/value';
+import { toNumber, trimOptional } from '../utils/value';
 import {
   buildModerationListingTargetKey,
   isModerationListing,
@@ -21,6 +21,7 @@ import {
   parseListingModerationMessage,
   toListingModerationDisplayText,
 } from '../utils/listingModeration';
+import { evaluateAutoNegotiationReply } from './autoNegotiationService';
 import { createNotification } from './notificationService';
 
 export interface ChatMessage {
@@ -116,6 +117,11 @@ interface RawListing {
   title: string;
   cover_image_path: string | null;
   brand: string | null;
+  price?: unknown;
+  currency?: string | null;
+  negotiable?: boolean | null;
+  auto_negotiate_enabled?: boolean | null;
+  auto_negotiate_floor_price?: unknown;
   status?: string | null;
   description?: string | null;
   deleted_at?: string | null;
@@ -1241,6 +1247,65 @@ async function createConversationMessage(
   return mappedMessage;
 }
 
+async function maybeCreateAutoNegotiationReply(input: {
+  conversationId: string;
+  buyerId: string;
+  listing: RawListing;
+  buyerMessage: string;
+  hasAttachments: boolean;
+}): Promise<void> {
+  const { conversationId, buyerId, listing, buyerMessage, hasAttachments } = input;
+  const sellerId = listing.seller_id;
+  const trimmedMessage = buyerMessage.trim();
+
+  if (
+    !sellerId ||
+    buyerId === sellerId ||
+    !trimmedMessage ||
+    hasAttachments ||
+    isModerationListing(listing) ||
+    isSupportListing(listing) ||
+    listing.auto_negotiate_enabled !== true ||
+    listing.negotiable !== true ||
+    !['active', 'reserved'].includes(listing.status ?? '')
+  ) {
+    return;
+  }
+
+  const askingPrice = toNumber(listing.price, Number.NaN);
+  const floorPrice = toNumber(listing.auto_negotiate_floor_price, Number.NaN);
+
+  if (
+    !Number.isFinite(askingPrice) ||
+    askingPrice <= 0 ||
+    !Number.isFinite(floorPrice) ||
+    floorPrice <= 0 ||
+    floorPrice > askingPrice
+  ) {
+    return;
+  }
+
+  try {
+    const autoReply = await evaluateAutoNegotiationReply({
+      buyerMessage: trimmedMessage,
+      listingTitle: listing.title,
+      askingPrice,
+      floorPrice,
+      currency: listing.currency?.trim() || 'MYR',
+    });
+
+    if (!autoReply?.reply) {
+      return;
+    }
+
+    await createConversationMessage(sellerId, conversationId, {
+      content: autoReply.reply,
+    });
+  } catch (error) {
+    console.error('[Auto Negotiation] Failed to create seller auto-reply:', error);
+  }
+}
+
 export async function createSupportConversation(
   sender: MessagingActor,
   payload: { subject?: string; content: string; attachments?: MessageAttachmentInput[] }
@@ -1315,7 +1380,19 @@ export async function sendMessage(
 
   const { data: listing, error: listingError } = await supabaseAdmin
     .from('listings')
-    .select('seller_id, title, brand, description')
+    .select(`
+      seller_id,
+      title,
+      brand,
+      description,
+      price,
+      currency,
+      negotiable,
+      status,
+      cover_image_path,
+      auto_negotiate_enabled,
+      auto_negotiate_floor_price
+    `)
     .eq('id', payload.listing_id)
     .is('deleted_at', null)
     .single();
@@ -1407,10 +1484,22 @@ export async function sendMessage(
      }
   }
 
-  return createConversationMessage(sender.id, conversationId, {
+  const createdMessage = await createConversationMessage(sender.id, conversationId, {
     content,
     attachments: payload.attachments,
   });
+
+  if (!isSeller) {
+    await maybeCreateAutoNegotiationReply({
+      conversationId,
+      buyerId: sender.id,
+      listing: listing as RawListing,
+      buyerMessage: content,
+      hasAttachments: (payload.attachments ?? []).length > 0,
+    });
+  }
+
+  return createdMessage;
 }
 
 export async function sendReply(
@@ -1427,11 +1516,19 @@ export async function sendReply(
     .select(`
       id,
       listing_id,
+      buyer_id,
+      seller_id,
       listings (
         seller_id,
         title,
         brand,
+        price,
+        currency,
+        negotiable,
         status,
+        cover_image_path,
+        auto_negotiate_enabled,
+        auto_negotiate_floor_price,
         description,
         deleted_at
       )
@@ -1472,10 +1569,22 @@ export async function sendReply(
     }
   }
 
-  return createConversationMessage(sender.id, conversationId, {
+  const createdMessage = await createConversationMessage(sender.id, conversationId, {
     content: trimmedContent,
     attachments,
   });
+
+  if (sender.id === convo.buyer_id && sender.id !== listing.seller_id) {
+    await maybeCreateAutoNegotiationReply({
+      conversationId,
+      buyerId: sender.id,
+      listing,
+      buyerMessage: trimmedContent,
+      hasAttachments: attachments.length > 0,
+    });
+  }
+
+  return createdMessage;
 }
 
 export async function updateSupportTicketStatus(

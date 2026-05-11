@@ -113,6 +113,8 @@ CREATE TABLE public.listings (
   price numeric NOT NULL CHECK (price >= 0::numeric),
   currency character NOT NULL DEFAULT 'MYR'::bpchar,
   negotiable boolean NOT NULL DEFAULT true,
+  auto_negotiate_enabled boolean NOT NULL DEFAULT false,
+  auto_negotiate_floor_price numeric CHECK (auto_negotiate_floor_price IS NULL OR auto_negotiate_floor_price >= 0::numeric AND auto_negotiate_floor_price <= price),
   status text NOT NULL DEFAULT 'draft'::text CHECK (status = ANY (ARRAY['draft'::text, 'active'::text, 'reserved'::text, 'sold'::text, 'rejected'::text, 'archived'::text])),
   cover_image_path text,
   published_at timestamp with time zone,

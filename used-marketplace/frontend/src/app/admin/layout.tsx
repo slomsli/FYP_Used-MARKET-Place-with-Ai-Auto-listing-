@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { Suspense, useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { Suspense, useEffect, useRef, useState, useTransition } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import DashboardSidebar from '@/src/components/layout/DashboardSidebar';
 import Spinner from '@/src/components/ui/Spinner';
 import { ROUTES } from '@/src/config/routes';
 import { useAuth } from '@/src/hooks/useAuth';
@@ -19,7 +20,6 @@ import {
   type DashboardNotification,
 } from '@/src/services/notificationService';
 import { resolveSupabaseUserRole } from '@/src/utils/authHelpers';
-import { signOut } from '@/src/services/authService';
 import styles from './layout.module.css';
 
 function SearchIcon() {
@@ -57,92 +57,6 @@ function SettingsIcon() {
       <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.4 1Z" />
     </svg>
   );
-}
-
-function UsersIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M23 21v-2a4 4 0 0 0-3-3.9" />
-      <path d="M16 3.1a4 4 0 0 1 0 7.8" />
-    </svg>
-  );
-}
-
-function AlertIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M12 9v4" />
-      <path d="M12 17h.01" />
-      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-    </svg>
-  );
-}
-
-function ListingsIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M4 5h16" />
-      <path d="M4 12h16" />
-      <path d="M4 19h16" />
-      <path d="M8 5v14" />
-    </svg>
-  );
-}
-
-function MessageIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-    </svg>
-  );
-}
-
-function TicketIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4V7Z" />
-      <path d="M9 9h6" />
-      <path d="M9 15h4" />
-    </svg>
-  );
-}
-
-function CategoryIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M3 7h7v7H3z" />
-      <path d="M14 3h7v7h-7z" />
-      <path d="M14 14h7v7h-7z" />
-      <path d="M10 10l4-4" />
-    </svg>
-  );
-}
-
-function DashboardIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M3 13h8V3H3z" />
-      <path d="M13 21h8v-6h-8z" />
-      <path d="M13 11h8V3h-8z" />
-      <path d="M3 21h8v-4H3z" />
-    </svg>
-  );
-}
-
-function LogoutIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-      <polyline points="16 17 21 12 16 7" />
-      <line x1="21" y1="12" x2="9" y2="12" />
-    </svg>
-  );
-}
-
-function getInitials(name: string) {
-  return name.split(' ').map((part) => part[0]).join('').toUpperCase().slice(0, 2);
 }
 
 function formatRelative(iso: string) {
@@ -218,15 +132,7 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
   const notifRef = useRef<HTMLDivElement>(null);
   const unreadCountRef = useRef(0);
   const searchValue = searchParams.get('q') ?? '';
-
-  const handleLogout = async () => {
-    await signOut();
-    if (typeof window !== 'undefined') {
-      window.location.assign(ROUTES.LOGIN);
-    } else {
-      router.replace(ROUTES.LOGIN);
-    }
-  };
+  const displayedUnreadCount = token ? unreadCount : 0;
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -241,7 +147,7 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
 
   // Fetch notifications
   useEffect(() => {
-    if (!token) { setUnreadCount(0); return; }
+    if (!token) return;
     let cancelled = false;
     async function loadNotifs() {
       const res = await getNotifications(token!, 8);
@@ -360,21 +266,6 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
     pathname === ROUTES.ADMIN_MESSAGES  ? 'Inbox search stays inside the messages workspace.' :
     pathname === ROUTES.ADMIN_SUPPORT   ? 'Use the support workspace filters to triage tickets.' :
     'Overview metrics refresh automatically.';
-  const isListingsRoute = pathname === ROUTES.ADMIN_LISTINGS || pathname.startsWith(`${ROUTES.ADMIN_LISTINGS}/`);
-
-  const navItems = useMemo(
-    () => [
-      { label: 'Overview',  href: ROUTES.ADMIN,           icon: <DashboardIcon />, active: pathname === ROUTES.ADMIN },
-      { label: 'Reports',   href: ROUTES.ADMIN_REPORTS,   icon: <AlertIcon />,     active: pathname === ROUTES.ADMIN_REPORTS },
-      { label: 'Listings',  href: ROUTES.ADMIN_LISTINGS,  icon: <ListingsIcon />,  active: isListingsRoute },
-      { label: 'Users',     href: ROUTES.ADMIN_USERS,     icon: <UsersIcon />,     active: pathname === ROUTES.ADMIN_USERS },
-      { label: 'Messages',  href: ROUTES.ADMIN_MESSAGES,  icon: <MessageIcon />,   active: pathname === ROUTES.ADMIN_MESSAGES },
-      { label: 'Support',   href: ROUTES.ADMIN_SUPPORT,   icon: <TicketIcon />,    active: pathname === ROUTES.ADMIN_SUPPORT },
-      { label: 'Guide',     href: ROUTES.ADMIN_GUIDE,     icon: <HelpIcon />,      active: pathname === ROUTES.ADMIN_GUIDE },
-      { label: 'Structure', href: ROUTES.ADMIN_STRUCTURE, icon: <CategoryIcon />,  active: pathname === ROUTES.ADMIN_STRUCTURE },
-    ],
-    [isListingsRoute, pathname]
-  );
 
   if (loading || !user || profileLoading || !isAdmin) {
     return (
@@ -400,55 +291,12 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className={styles.shell}>
-      <aside className={styles.sidebar}>
-        <div className={styles.brandBlock}>
-          <p className={styles.consoleLabel}>Admin Console</p>
-          <h1 className={styles.brandTitle}>Internal Operations</h1>
-        </div>
-
-        <div className={styles.profileCard}>
-          <div className={styles.profileAvatar}>
-            {avatarPath ? (
-              <img src={avatarPath} alt={displayName} className={styles.profileAvatarImage} />
-            ) : (
-              getInitials(displayName)
-            )}
-          </div>
-          <div>
-            <p className={styles.profileName}>{displayName}</p>
-            <p className={styles.profileRole}>Administrator</p>
-          </div>
-        </div>
-
-        <nav className={styles.nav}>
-          {navItems.map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className={`${styles.navItem} ${item.active ? styles.navItemActive : ''}`}
-            >
-              <span className={styles.navIcon}>{item.icon}</span>
-              <span>{item.label}</span>
-            </Link>
-          ))}
-
-        </nav>
-
-        <div className={styles.sidebarFooter}>
-          <button
-            onClick={handleLogout}
-            className={`${styles.navItem} ${styles.footerNavButton}`}
-          >
-            <span className={styles.navIcon}><LogoutIcon /></span>
-            <span>Log Out</span>
-          </button>
-
-          <Link href={ROUTES.BROWSE} className={styles.dashboardLink}>
-            <DashboardIcon />
-            <span>Marketplace View</span>
-          </Link>
-        </div>
-      </aside>
+      <DashboardSidebar
+        mode="admin"
+        userName={displayName}
+        userRole="admin"
+        avatarUrl={avatarPath}
+      />
 
       <div className={styles.main}>
         <header className={styles.topbar}>
@@ -470,13 +318,13 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
             <div className={styles.notifWrap} ref={notifRef}>
               <button
                 type="button"
-                className={`${styles.iconButton} ${unreadCount > 0 ? styles.iconButtonAlert : ''}`}
-                aria-label={unreadCount > 0 ? `${unreadCount} unread notifications` : 'Notifications'}
+                className={`${styles.iconButton} ${displayedUnreadCount > 0 ? styles.iconButtonAlert : ''}`}
+                aria-label={displayedUnreadCount > 0 ? `${displayedUnreadCount} unread notifications` : 'Notifications'}
                 onClick={() => setNotifOpen((v) => !v)}
               >
                 <BellIcon />
-                {unreadCount > 0 && (
-                  <span className={styles.notifBadge}>{unreadCount > 9 ? '9+' : unreadCount}</span>
+                {displayedUnreadCount > 0 && (
+                  <span className={styles.notifBadge}>{displayedUnreadCount > 9 ? '9+' : displayedUnreadCount}</span>
                 )}
               </button>
 
@@ -484,7 +332,7 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
                 <div className={styles.notifDropdown}>
                   <div className={styles.notifHeader}>
                     <span className={styles.notifTitle}>Notifications</span>
-                    {unreadCount > 0 && (
+                    {displayedUnreadCount > 0 && (
                       <button
                         type="button"
                         className={styles.notifMarkAll}

@@ -127,6 +127,23 @@ export function validateCreateListing(req: Request, res: Response, next: NextFun
   }
 
   if (
+    body.autoNegotiationEnabled !== undefined &&
+    typeof body.autoNegotiationEnabled !== 'boolean'
+  ) {
+    sendError(res, 'Auto-negotiation must be a boolean value', 422);
+    return;
+  }
+
+  if (
+    body.autoNegotiationFloorPrice !== undefined &&
+    body.autoNegotiationFloorPrice !== null &&
+    !isNonNegativeNumberLike(body.autoNegotiationFloorPrice)
+  ) {
+    sendError(res, 'Auto-negotiation floor price must be a valid non-negative number', 422);
+    return;
+  }
+
+  if (
     !isDraft &&
     body.stateId !== undefined &&
     body.stateId !== null &&

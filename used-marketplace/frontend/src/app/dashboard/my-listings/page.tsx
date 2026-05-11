@@ -227,6 +227,10 @@ function getAccent(listing: ListingSummary) {
     return `${listing.favoritesCount} Saves`;
   }
 
+  if (listing.autoNegotiationEnabled) {
+    return 'Auto-Negotiate';
+  }
+
   return listing.negotiable ? 'Negotiable' : 'Fixed Price';
 }
 

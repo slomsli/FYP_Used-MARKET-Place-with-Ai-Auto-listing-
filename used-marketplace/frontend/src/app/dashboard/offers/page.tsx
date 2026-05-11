@@ -18,11 +18,13 @@ import { ROUTES } from '@/src/config/routes';
 import styles from './offers.module.css';
 
 function formatCurrency(amount: number, currency = 'MYR') {
+  const hasFraction = !Number.isInteger(amount);
+
   return new Intl.NumberFormat('en-MY', {
     style: 'currency',
     currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: hasFraction ? 2 : 0,
+    maximumFractionDigits: 2,
   }).format(amount);
 }
 

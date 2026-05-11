@@ -1,10 +1,13 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { ROUTES } from '@/src/config/routes';
 import { signOut } from '@/src/services/authService';
 import styles from './DashboardSidebar.module.css';
+
+type SidebarMode = 'dashboard' | 'admin';
 
 interface DashboardSidebarProps {
   userName?: string;
@@ -12,9 +15,16 @@ interface DashboardSidebarProps {
   avatarUrl?: string | null;
   isOpen?: boolean;
   onClose?: () => void;
+  mode?: SidebarMode;
 }
 
-/* ── Navigation SVG Icons ── */
+interface SidebarNavItem {
+  label: string;
+  icon: ReactNode;
+  href: string;
+  active?: boolean;
+}
+
 const DashboardIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="3" y="3" width="7" height="9" rx="1" /><rect x="14" y="3" width="7" height="5" rx="1" />
@@ -78,6 +88,40 @@ const SettingsIcon = () => (
   </svg>
 );
 
+const UsersIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M23 21v-2a4 4 0 0 0-3-3.9" />
+    <path d="M16 3.1a4 4 0 0 1 0 7.8" />
+  </svg>
+);
+
+const AlertIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M12 9v4" />
+    <path d="M12 17h.01" />
+    <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+  </svg>
+);
+
+const HelpIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="12" cy="12" r="9" />
+    <path d="M9.1 9a3 3 0 1 1 5.2 2c-.9.9-1.3 1.4-1.3 2.5" />
+    <circle cx="12" cy="17" r="1" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+const CategoryIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M3 7h7v7H3z" />
+    <path d="M14 3h7v7h-7z" />
+    <path d="M14 14h7v7h-7z" />
+    <path d="M10 10l4-4" />
+  </svg>
+);
+
 const LogoutIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -86,21 +130,12 @@ const LogoutIcon = () => (
   </svg>
 );
 
-export default function DashboardSidebar({ userName, userRole, avatarUrl, isOpen, onClose }: DashboardSidebarProps) {
-  const pathname = usePathname();
-  const router = useRouter();
-  const displayName = userName || 'User';
-  const memberLabel = userRole === 'admin' ? 'Admin' : 'User';
+function getInitials(name: string) {
+  return name.split(' ').map((part) => part[0]).join('').toUpperCase().slice(0, 2);
+}
 
-  const handleLogout = async () => {
-    await signOut();
-    if (typeof window !== 'undefined') {
-      window.location.assign(ROUTES.LOGIN);
-    } else {
-      router.replace(ROUTES.LOGIN);
-    }
-  };
-  const navItems = [
+function getDashboardNavItems(userRole: string | undefined): SidebarNavItem[] {
+  return [
     { label: 'Dashboard', icon: <DashboardIcon />, href: ROUTES.DASHBOARD },
     { label: 'My Listings', icon: <ListingsIcon />, href: ROUTES.MY_LISTINGS },
     { label: 'Favorites', icon: <FavoritesIcon />, href: ROUTES.FAVORITES },
@@ -113,32 +148,83 @@ export default function DashboardSidebar({ userName, userRole, avatarUrl, isOpen
       : []),
     { label: 'Settings', icon: <SettingsIcon />, href: ROUTES.SETTINGS },
   ];
+}
+
+function getAdminNavItems(pathname: string): SidebarNavItem[] {
+  const isListingsRoute = pathname === ROUTES.ADMIN_LISTINGS || pathname.startsWith(`${ROUTES.ADMIN_LISTINGS}/`);
+
+  return [
+    { label: 'Overview', href: ROUTES.ADMIN, icon: <DashboardIcon />, active: pathname === ROUTES.ADMIN },
+    { label: 'Reports', href: ROUTES.ADMIN_REPORTS, icon: <AlertIcon />, active: pathname === ROUTES.ADMIN_REPORTS },
+    { label: 'Listings', href: ROUTES.ADMIN_LISTINGS, icon: <ListingsIcon />, active: isListingsRoute },
+    { label: 'Users', href: ROUTES.ADMIN_USERS, icon: <UsersIcon />, active: pathname === ROUTES.ADMIN_USERS },
+    { label: 'Messages', href: ROUTES.ADMIN_MESSAGES, icon: <MessagesIcon />, active: pathname === ROUTES.ADMIN_MESSAGES },
+    { label: 'Support', href: ROUTES.ADMIN_SUPPORT, icon: <TicketIcon />, active: pathname === ROUTES.ADMIN_SUPPORT },
+    { label: 'Guide', href: ROUTES.ADMIN_GUIDE, icon: <HelpIcon />, active: pathname === ROUTES.ADMIN_GUIDE },
+    { label: 'Structure', href: ROUTES.ADMIN_STRUCTURE, icon: <CategoryIcon />, active: pathname === ROUTES.ADMIN_STRUCTURE },
+  ];
+}
+
+export default function DashboardSidebar({
+  userName,
+  userRole,
+  avatarUrl,
+  isOpen,
+  onClose,
+  mode = 'dashboard',
+}: DashboardSidebarProps) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const isAdminMode = mode === 'admin';
+  const displayName = userName || (isAdminMode ? 'Admin User' : 'User');
+  const memberLabel = isAdminMode ? 'Administrator' : userRole === 'admin' ? 'Admin' : 'User';
+  const navItems = isAdminMode ? getAdminNavItems(pathname) : getDashboardNavItems(userRole);
+
+  const handleLogout = async () => {
+    await signOut();
+    if (typeof window !== 'undefined') {
+      window.location.assign(ROUTES.LOGIN);
+    } else {
+      router.replace(ROUTES.LOGIN);
+    }
+  };
+
+  const sidebarClassName = [
+    styles.sidebar,
+    isAdminMode ? styles.sidebarAdmin : '',
+    isOpen ? styles.sidebarOpen : '',
+  ].filter(Boolean).join(' ');
 
   return (
     <>
-      {/* Mobile overlay */}
       {isOpen && <div className={styles.overlay} onClick={onClose} />}
 
-      <aside className={`${styles.sidebar} ${isOpen ? styles.sidebarOpen : ''}`}>
-        {/* User Info */}
-        <div className={styles.userSection}>
-          <div className={styles.userAvatar}>
+      <aside className={sidebarClassName}>
+        {isAdminMode && (
+          <div className={styles.adminBrandBlock}>
+            <p className={styles.adminConsoleLabel}>Admin Console</p>
+            <h1 className={styles.adminBrandTitle}>Internal Operations</h1>
+          </div>
+        )}
+
+        <div className={isAdminMode ? styles.adminProfileCard : styles.userSection}>
+          <div className={isAdminMode ? styles.adminProfileAvatar : styles.userAvatar}>
             {avatarUrl ? (
               <img src={avatarUrl} alt={displayName} className={styles.avatarImg} />
             ) : (
-              displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+              getInitials(displayName)
             )}
           </div>
-          <div className={styles.userInfo}>
-            <div className={styles.userName}>{displayName}</div>
-            <div className={styles.userRole}>{memberLabel}</div>
+          <div className={isAdminMode ? styles.adminProfileInfo : styles.userInfo}>
+            <div className={isAdminMode ? styles.adminProfileName : styles.userName}>{displayName}</div>
+            <div className={isAdminMode ? styles.adminProfileRole : styles.userRole}>{memberLabel}</div>
           </div>
         </div>
 
-        {/* Navigation */}
         <nav className={styles.nav}>
           {navItems.map((item) => {
-            const isActive = pathname === item.href;
+            const isActive = item.active ?? pathname === item.href;
+
             return (
               <Link
                 key={item.href}
@@ -152,17 +238,36 @@ export default function DashboardSidebar({ userName, userRole, avatarUrl, isOpen
               </Link>
             );
           })}
-          
-          {/* Logout Button */}
-          <button
-            onClick={handleLogout}
-            className={styles.navItem}
-            style={{ width: '100%', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer', outline: 'none', color: 'inherit', fontFamily: 'inherit', fontSize: 'inherit' }}
-          >
-            <span className={styles.navIcon}><LogoutIcon /></span>
-            <span className={styles.navLabel} style={{ color: 'inherit' }}>Log Out</span>
-          </button>
+
+          {!isAdminMode && (
+            <button
+              onClick={handleLogout}
+              className={styles.navItem}
+              style={{ width: '100%', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer', outline: 'none', color: 'inherit', fontFamily: 'inherit', fontSize: 'inherit' }}
+            >
+              <span className={styles.navIcon}><LogoutIcon /></span>
+              <span className={styles.navLabel} style={{ color: 'inherit' }}>Log Out</span>
+            </button>
+          )}
         </nav>
+
+        {isAdminMode && (
+          <div className={styles.adminSidebarFooter}>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className={`${styles.navItem} ${styles.adminFooterNavButton}`}
+            >
+              <span className={styles.navIcon}><LogoutIcon /></span>
+              <span className={styles.navLabel}>Log Out</span>
+            </button>
+
+            <Link href={ROUTES.BROWSE} className={styles.adminMarketplaceLink}>
+              <DashboardIcon />
+              <span>Marketplace View</span>
+            </Link>
+          </div>
+        )}
       </aside>
     </>
   );

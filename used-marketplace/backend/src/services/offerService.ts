@@ -21,6 +21,7 @@ import {
   ensurePurchaseReceiptForAcceptedOffer,
   isPurchaseReceiptsTableMissingError,
 } from './purchaseService';
+import { generateAutoNegotiationReplyForKnownOffer } from './autoNegotiationService';
 
 /* ── Types ─────────────────────────────────────────────── */
 
@@ -44,11 +45,25 @@ interface RawListing {
   price: unknown;
   currency: string;
   negotiable: boolean;
+  auto_negotiate_enabled?: boolean | null;
+  auto_negotiate_floor_price?: unknown;
   status: string;
   deleted_at: string | null;
   sold_to_user_id: string | null;
   cover_image_path: string | null;
   categories: Relation<RawCategory>;
+}
+
+interface RawAutoNegotiationListing {
+  id: string;
+  seller_id: string;
+  title: string;
+  status: string;
+  price: unknown;
+  currency: string | null;
+  negotiable: boolean | null;
+  auto_negotiate_enabled: boolean | null;
+  auto_negotiate_floor_price: unknown;
 }
 
 interface RawOffer {
@@ -948,7 +963,7 @@ const OFFER_SELECT = `
   initiated_by,
   offer_kind,
   listings!offers_listing_id_fkey (
-    id, seller_id, title, price, currency, negotiable, status, deleted_at, sold_to_user_id, cover_image_path,
+    id, seller_id, title, price, currency, negotiable, auto_negotiate_enabled, auto_negotiate_floor_price, status, deleted_at, sold_to_user_id, cover_image_path,
     categories!listings_category_id_fkey ( id, name, slug )
   ),
   buyer_profile:profiles!offers_buyer_id_fkey (
@@ -958,6 +973,55 @@ const OFFER_SELECT = `
     id, username, full_name, avatar_path
   )
 `;
+
+async function maybeAutoRespondToCreatedOffer(
+  createdOffer: OfferSummary,
+  listing: RawAutoNegotiationListing
+): Promise<OfferSummary | null> {
+  if (
+    listing.auto_negotiate_enabled !== true ||
+    listing.negotiable !== true ||
+    listing.status !== 'active'
+  ) {
+    return null;
+  }
+
+  const askingPrice = toNumber(listing.price, Number.NaN);
+  const floorPrice = toNumber(listing.auto_negotiate_floor_price, Number.NaN);
+
+  if (
+    !Number.isFinite(askingPrice) ||
+    askingPrice <= 0 ||
+    !Number.isFinite(floorPrice) ||
+    floorPrice <= 0 ||
+    floorPrice > askingPrice
+  ) {
+    return null;
+  }
+
+  const autoDecision = await generateAutoNegotiationReplyForKnownOffer({
+    buyerOffer: createdOffer.offerPrice,
+    buyerMessage: createdOffer.message ?? '',
+    listingTitle: listing.title,
+    askingPrice,
+    floorPrice,
+    currency: listing.currency?.trim() || createdOffer.listing.currency || 'MYR',
+  });
+
+  if (!autoDecision) {
+    return null;
+  }
+
+  if (autoDecision.action === 'accept') {
+    return acceptOffer(listing.seller_id, createdOffer.id);
+  }
+
+  return createCounterOffer(listing.seller_id, {
+    offerId: createdOffer.id,
+    counterPrice: autoDecision.targetPrice,
+    message: autoDecision.reply,
+  });
+}
 
 /* ── Service Functions ─────────────────────────────────── */
 
@@ -1027,7 +1091,17 @@ export async function createOffer(
   // Validate listing exists and is active
   const { data: listing, error: listingErr } = await supabaseAdmin
     .from('listings')
-    .select('id, seller_id, status, price')
+    .select(`
+      id,
+      seller_id,
+      title,
+      status,
+      price,
+      currency,
+      negotiable,
+      auto_negotiate_enabled,
+      auto_negotiate_floor_price
+    `)
     .eq('id', listingId)
     .is('deleted_at', null)
     .maybeSingle();
@@ -1099,6 +1173,19 @@ export async function createOffer(
   }
 
   const createdOffer = mapOffer(newOffer as RawOffer);
+
+  try {
+    const autoResponse = await maybeAutoRespondToCreatedOffer(
+      createdOffer,
+      listing as RawAutoNegotiationListing
+    );
+
+    if (autoResponse) {
+      return autoResponse;
+    }
+  } catch (autoNegotiationError) {
+    console.error('[Offers] Auto-negotiation failed for submitted offer:', autoNegotiationError);
+  }
 
   try {
     await notifyOfferCreated(createdOffer);
@@ -1443,6 +1530,24 @@ export async function createCounterOffer(
   }
 
   const createdCounterOffer = mapOffer(counterOffer as RawOffer);
+
+  if (userId === originalRecord.buyer_id) {
+    try {
+      const counterOfferListing = unwrapRelation((counterOffer as RawOffer).listings);
+      if (counterOfferListing) {
+        const autoResponse = await maybeAutoRespondToCreatedOffer(
+          createdCounterOffer,
+          counterOfferListing as RawAutoNegotiationListing
+        );
+
+        if (autoResponse) {
+          return autoResponse;
+        }
+      }
+    } catch (autoNegotiationError) {
+      console.error('[Offers] Auto-negotiation failed for buyer counter-offer:', autoNegotiationError);
+    }
+  }
 
   try {
     await notifyOfferCreated(createdCounterOffer);

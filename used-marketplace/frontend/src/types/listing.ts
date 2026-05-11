@@ -58,6 +58,8 @@ export interface CreateListingPayload {
   price: number | null;
   currency?: string;
   negotiable?: boolean;
+  autoNegotiationEnabled?: boolean;
+  autoNegotiationFloorPrice?: number | null;
   status?: SellerListingSubmissionStatus;
   stateId?: number | null;
   areaId?: number | null;
@@ -122,6 +124,8 @@ export interface ListingSummary {
   price: number;
   currency: string;
   negotiable: boolean;
+  autoNegotiationEnabled?: boolean;
+  autoNegotiationFloorPrice?: number | null;
   status: string;
   statusLabel: string;
   condition: ListingCondition;

@@ -488,6 +488,52 @@
   transform: translateX(20px);
 }
 
+.autoNegotiationBox {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-input);
+  background: #ffffff;
+  box-shadow: var(--shadow-sm);
+}
+
+.autoNegotiationBoxActive {
+  border-color: rgba(34, 197, 94, 0.32);
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.06), rgba(255, 255, 255, 0.96));
+}
+
+.autoNegotiationMain {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.autoNegotiationTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.autoNegotiationTitle svg {
+  color: #16a34a;
+  flex-shrink: 0;
+}
+
+.autoNegotiationSub {
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.autoNegotiationFloorRow {
+  margin-top: 1rem;
+  max-width: 320px;
+}
+
 .toggle:disabled,
 .aiButton:disabled,
 .dropButton:disabled,
