@@ -12,6 +12,7 @@ import {
   listAssistantThreads,
   sendAssistantMessage as sendAssistantMessageRequest,
 } from '@/src/services/assistantService';
+import { getPublicConfig } from '@/src/services/publicSettingsService';
 import { getProfile } from '@/src/services/profileService';
 import { resolveSupabaseUserRole } from '@/src/utils/authHelpers';
 import type {
@@ -415,6 +416,7 @@ export default function MarketplaceAssistant() {
   const router = useRouter();
   const { user, session, loading } = useAuth();
   const token = session?.access_token;
+  const [assistantEnabled, setAssistantEnabled] = useState<boolean | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');
@@ -441,6 +443,32 @@ export default function MarketplaceAssistant() {
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
+    getPublicConfig()
+      .then((response) => {
+        if (!cancelled) {
+          setAssistantEnabled(response.data?.ai_assistant_enabled !== false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAssistantEnabled(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
+
+  useEffect(() => {
+    if (assistantEnabled === false) {
+      setAssistantRole(null);
+      setProfileLoading(false);
+      return;
+    }
+
     if (!token) {
       setAssistantRole(null);
       setProfileLoading(false);
@@ -489,7 +517,7 @@ export default function MarketplaceAssistant() {
     return () => {
       cancelled = true;
     };
-  }, [token, user]);
+  }, [assistantEnabled, token, user]);
 
   useEffect(() => {
     if (!assistantRole || !token) {
@@ -1011,6 +1039,10 @@ export default function MarketplaceAssistant() {
     token,
     user,
   ]);
+
+  if (assistantEnabled === false || assistantEnabled === null) {
+    return null;
+  }
 
   if (loading || profileLoading || !user || !token || !assistantRole) {
     return null;

@@ -5,6 +5,10 @@ import { sanitizeStorageFileName } from '../utils/storageFile';
 import { sendReply } from './messageService';
 import { ensurePurchaseReceiptForManualSale } from './purchaseService';
 import {
+  AI_LISTING_AUTOFILL_SETTING_KEY,
+  isSettingEnabled,
+} from './settingsService';
+import {
   getPublicStorageUrl,
   getPublicStorageUrls,
   normalizeStoragePathForDatabase,
@@ -1551,7 +1555,7 @@ export async function getListingMetadata(stateId?: number): Promise<ListingMetad
     await ensureStateExists(stateId);
   }
 
-  const [categoriesResult, statesResult, areasResult] = await Promise.all([
+  const [categoriesResult, statesResult, areasResult, aiListingAutofillEnabled] = await Promise.all([
     supabaseAdmin
       .from('categories')
       .select('id, name, slug, parent_id')
@@ -1567,6 +1571,7 @@ export async function getListingMetadata(stateId?: number): Promise<ListingMetad
         .select('id, name, slug, state_id')
         .eq('state_id', stateId)
         .order('name', { ascending: true }),
+    isSettingEnabled(AI_LISTING_AUTOFILL_SETTING_KEY, true),
   ]);
 
   if (categoriesResult.error) {
@@ -1607,6 +1612,9 @@ export async function getListingMetadata(stateId?: number): Promise<ListingMetad
       label,
     })),
     currencies: ['MYR'],
+    features: {
+      aiListingAutofillEnabled,
+    },
   };
 }
 

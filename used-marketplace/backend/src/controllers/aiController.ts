@@ -1,6 +1,10 @@
 import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../types/auth';
 import { generateListingData } from '../services/aiService';
+import {
+  AI_LISTING_AUTOFILL_SETTING_KEY,
+  isSettingEnabled,
+} from '../services/settingsService';
 import { sendError, sendSuccess } from '../utils/apiResponse';
 
 const MAX_IMAGE_SIZE_BYTES = 8 * 1024 * 1024; // 8MB limit
@@ -13,6 +17,13 @@ export async function generateListingFromImageHandler(req: AuthenticatedRequest,
   }
 
   try {
+    const isAutofillEnabled = await isSettingEnabled(AI_LISTING_AUTOFILL_SETTING_KEY, true);
+
+    if (!isAutofillEnabled) {
+      sendError(res, 'AI listing autofill is disabled by an administrator', 403);
+      return;
+    }
+
     const { images } = req.body;
 
     if (!images || !Array.isArray(images) || images.length === 0) {

@@ -654,6 +654,7 @@ export default function AddListingPage() {
   }, [autoFillLocationFromCoordinates]);
 
   const displayedAreas = stateId ? areas : [];
+  const aiListingAutofillEnabled = metadata?.features?.aiListingAutofillEnabled !== false;
   const isPausedListing = existingListing?.status === 'archived';
   const isPendingReviewListing = existingListing?.status === 'rejected';
   const listingModerationReason = existingListing?.moderationReason?.trim() || null;
@@ -665,12 +666,19 @@ export default function AddListingPage() {
     isSuspended ||
     isGeneratingAI ||
     isPendingReviewListing;
+  const aiGenerateDisabled = disabled || !aiListingAutofillEnabled;
 
   const handleGenerateAI = useCallback(async () => {
     if (!token) {
       showToast('Authentication required to use AI.');
       return;
     }
+
+    if (!aiListingAutofillEnabled) {
+      showToast('AI listing photo autofill is currently disabled.');
+      return;
+    }
+
     const imagesToUse = images.length > 0 ? images : [];
     if (imagesToUse.length === 0) {
       showToast('Please upload at least one image to use AI generation.');
@@ -726,13 +734,13 @@ export default function AddListingPage() {
       }
 
       setDescription(desc);
-      showToast('Magic applied! Please review your listing details.');
+      showToast('Listing autofilled. Please review the details before publishing.');
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'An error occurred during AI generation.');
     } finally {
       setIsGeneratingAI(false);
     }
-  }, [images, token, showToast]);
+  }, [aiListingAutofillEnabled, images, token, showToast]);
 
   const openFilePicker = useCallback(() => {
     if (disabled) {
@@ -990,15 +998,17 @@ export default function AddListingPage() {
               : 'Create a real marketplace listing with categories, states, areas, and photos saved through the backend.'}
           </p>
         </div>
-        <button
-          className={styles.aiButton}
-          id="ai-generate-btn"
-          type="button"
-          onClick={handleGenerateAI}
-          disabled={disabled}
-        >
-          <SparklesIcon /> {isGeneratingAI ? 'Generating...' : 'Generate All with AI'}
-        </button>
+        {aiListingAutofillEnabled && (
+          <button
+            className={styles.aiButton}
+            id="ai-generate-btn"
+            type="button"
+            onClick={handleGenerateAI}
+            disabled={aiGenerateDisabled}
+          >
+            <SparklesIcon /> {isGeneratingAI ? 'Auto-filling...' : 'Auto-fill from Photos'}
+          </button>
+        )}
       </section>
 
       {metadataError && (

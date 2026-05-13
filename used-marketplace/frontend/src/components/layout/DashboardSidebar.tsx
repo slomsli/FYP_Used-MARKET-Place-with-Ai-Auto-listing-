@@ -162,6 +162,7 @@ function getAdminNavItems(pathname: string): SidebarNavItem[] {
     { label: 'Support', href: ROUTES.ADMIN_SUPPORT, icon: <TicketIcon />, active: pathname === ROUTES.ADMIN_SUPPORT },
     { label: 'Guide', href: ROUTES.ADMIN_GUIDE, icon: <HelpIcon />, active: pathname === ROUTES.ADMIN_GUIDE },
     { label: 'Structure', href: ROUTES.ADMIN_STRUCTURE, icon: <CategoryIcon />, active: pathname === ROUTES.ADMIN_STRUCTURE },
+    { label: 'Settings', href: ROUTES.ADMIN_SETTINGS, icon: <SettingsIcon />, active: pathname === ROUTES.ADMIN_SETTINGS },
   ];
 }
 

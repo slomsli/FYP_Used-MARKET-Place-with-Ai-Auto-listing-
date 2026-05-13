@@ -37,6 +37,9 @@ interface ListingMetadataPayload {
   conditions?: unknown;
   statuses?: unknown;
   currencies?: unknown;
+  features?: {
+    aiListingAutofillEnabled?: unknown;
+  };
   lookups?: {
     categories?: unknown;
     states?: unknown;
@@ -264,6 +267,9 @@ function normalizeListingMetadata(raw: unknown): ListingMetadata {
     conditions: normalizeConditions(payload.conditions),
     statuses: normalizeStatuses(payload.statuses),
     currencies: normalizeCurrencies(payload.currencies),
+    features: {
+      aiListingAutofillEnabled: payload.features?.aiListingAutofillEnabled !== false,
+    },
   };
 }
 

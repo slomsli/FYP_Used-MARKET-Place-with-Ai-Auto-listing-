@@ -20,6 +20,11 @@ import {
   updateAdminUserStatusHandler,
 } from '../controllers/adminController';
 
+import {
+  getPlatformSettings,
+  updatePlatformSettings,
+} from '../controllers/settingsController';
+
 const router = Router();
 
 router.use(authenticate);
@@ -42,5 +47,8 @@ router.delete('/listings/:listingId', deleteAdminListingHandler);
 router.get('/structure', getAdminStructureHandler);
 router.post('/structure/categories', createCategoryHandler);
 router.post('/structure/locations', createLocationHandler);
+
+router.get('/settings', getPlatformSettings);
+router.put('/settings', updatePlatformSettings);
 
 export default router;

@@ -47,6 +47,9 @@ export interface ListingMetadata {
   conditions: Array<{ value: ListingCondition; label: string }>;
   statuses: Array<{ value: CreateableListingStatus; label: string }>;
   currencies: string[];
+  features: {
+    aiListingAutofillEnabled: boolean;
+  };
 }
 
 export interface CreateListingPayload {

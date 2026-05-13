@@ -400,7 +400,7 @@ function AdminLayoutShell({ children }: { children: React.ReactNode }) {
               <HelpIcon />
               <span className={styles.iconLabel}>Guide</span>
             </Link>
-            <Link href={ROUTES.ADMIN_STRUCTURE} className={styles.iconButton} aria-label="Admin structure settings" title="Structure Settings">
+            <Link href={ROUTES.ADMIN_SETTINGS} className={styles.iconButton} aria-label="Admin settings" title="Admin Settings">
               <SettingsIcon />
               <span className={styles.iconLabel}>Settings</span>
             </Link>
