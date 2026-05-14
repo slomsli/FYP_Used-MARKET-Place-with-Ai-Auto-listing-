@@ -1,9 +1,11 @@
 import { supabaseAdmin } from '../config/supabase';
+import { buildDisplayName } from '../utils/profile';
+import { type Relation, unwrapRelation } from '../utils/relation';
 import { getPublicStorageUrl, getPublicStorageUrls } from '../utils/storage';
+import { AVATAR_BUCKET, LISTING_IMAGE_BUCKET } from '../utils/storageBuckets';
+import { toNumber } from '../utils/value';
 
 /* ── Types ─────────────────────────────────────────────── */
-
-type Relation<T> = T | T[] | null;
 
 interface RawCategory {
   id: number;
@@ -38,6 +40,7 @@ interface RawFavoriteListing {
   cover_image_path: string | null;
   created_at: string;
   views_count: unknown;
+  deleted_at: string | null;
   categories: Relation<RawCategory>;
   states: Relation<RawState>;
   areas: Relation<RawArea>;
@@ -126,31 +129,6 @@ const CONDITION_LABELS: Record<string, string> = {
   poor: 'Poor',
 };
 
-const LISTING_IMAGE_BUCKET =
-  process.env.SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
-  process.env.NEXT_PUBLIC_SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
-  'listing-images';
-const AVATAR_BUCKET =
-  process.env.SUPABASE_AVATARS_BUCKET?.trim() ||
-  process.env.NEXT_PUBLIC_SUPABASE_AVATARS_BUCKET?.trim() ||
-  'avatars';
-
-function unwrapRelation<T>(relation: Relation<T>): T | null {
-  if (Array.isArray(relation)) {
-    return relation[0] ?? null;
-  }
-  return relation ?? null;
-}
-
-function toNumber(value: unknown, fallback = 0): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string' && value.trim()) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return fallback;
-}
-
 function humanizeStatus(status: string): string {
   return status
     .split('_')
@@ -173,11 +151,7 @@ function buildLocationLabel(
 function buildSellerDisplayName(
   profile: Pick<RawSellerProfile, 'full_name' | 'username'>
 ): string {
-  const fullName = profile.full_name?.trim();
-  if (fullName) return fullName;
-  const username = profile.username?.trim();
-  if (username) return username;
-  return 'Seller';
+  return buildDisplayName(profile, 'Seller');
 }
 
 /* ── Image helper ──────────────────────────────────────── */
@@ -269,6 +243,7 @@ export async function getUserFavorites(
         cover_image_path,
         created_at,
         views_count,
+        deleted_at,
         categories!listings_category_id_fkey (
           id, name, slug
         ),
@@ -293,7 +268,7 @@ export async function getUserFavorites(
   // Filter out favorites whose listing no longer exists
   const validFavorites = favorites.filter((fav) => {
     const listing = unwrapRelation(fav.listings);
-    return listing !== null;
+    return listing !== null && listing.deleted_at === null;
   });
 
   // 2) Collect listing IDs and seller IDs for batch lookups
@@ -397,6 +372,7 @@ export async function toggleFavorite(
     .from('listings')
     .select('id')
     .eq('id', listingId)
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (listingError) {
@@ -463,7 +439,12 @@ export async function checkFavoriteStatus(
 
   const { data, error } = await supabaseAdmin
     .from('favorites')
-    .select('listing_id')
+    .select(`
+      listing_id,
+      listings (
+        deleted_at
+      )
+    `)
     .eq('user_id', userId)
     .in('listing_id', listingIds);
 
@@ -472,7 +453,14 @@ export async function checkFavoriteStatus(
     throw new FavoriteServiceError('Unable to check favorite status', 500);
   }
 
-  const favoritedSet = new Set((data ?? []).map((row) => row.listing_id));
+  const favoritedSet = new Set(
+    ((data ?? []) as Array<{
+      listing_id: string;
+      listings: Relation<{ deleted_at: string | null }>;
+    }>)
+      .filter((row) => unwrapRelation(row.listings)?.deleted_at === null)
+      .map((row) => row.listing_id)
+  );
   for (const id of listingIds) {
     result[id] = favoritedSet.has(id);
   }

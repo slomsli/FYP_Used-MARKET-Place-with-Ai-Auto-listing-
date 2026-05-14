@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/src/hooks/useAuth';
 import { subscribeToDashboardProfileUpdates } from '@/src/lib/profileSync';
+import { resolveSupabaseUserRole } from '@/src/utils/authHelpers';
 import DashboardNavbar from '@/src/components/layout/DashboardNavbar';
 import {
   DashboardAccountProvider,
@@ -96,7 +97,7 @@ export default function DashboardLayout({
     user.user_metadata?.full_name ||
     user.email?.split('@')[0] ||
     'User';
-  const role = profileRole || user.user_metadata?.role || 'user';
+  const role = resolveSupabaseUserRole(user, profileRole) || 'user';
 
   const resolvedAvatarPath =
     avatarPath ??
@@ -122,7 +123,11 @@ export default function DashboardLayout({
       }}
     >
       <div className={styles.shell}>
-        <DashboardNavbar userName={displayName} avatarUrl={resolvedAvatarPath} />
+        <DashboardNavbar
+          userName={displayName}
+          avatarUrl={resolvedAvatarPath}
+          authToken={token ?? null}
+        />
 
         <div className={styles.body}>
           {/* Mobile menu toggle */}

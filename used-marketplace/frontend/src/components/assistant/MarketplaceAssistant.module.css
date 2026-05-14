@@ -801,17 +801,112 @@
   border-top: 1px solid rgba(16, 35, 71, 0.06);
 }
 
+/* ── Image attachment UI ── */
+.hiddenFileInput {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .inputField {
   flex: 1;
   display: flex;
-  align-items: stretch;
+  flex-direction: column;
   border: 1px solid rgba(16, 35, 71, 0.08);
   border-radius: 1.2rem;
   background: #ffffff;
   box-shadow: 0 14px 30px rgba(15, 29, 54, 0.06);
+  overflow: hidden;
+}
+
+.imagePreviewStrip {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.6rem 0.85rem 0.4rem;
+  border-bottom: 1px solid rgba(16, 35, 71, 0.06);
+  background: rgba(16, 35, 71, 0.02);
+}
+
+.imagePreviewThumb {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.imagePreviewImg {
+  display: block;
+  width: 52px;
+  height: 52px;
+  border-radius: 0.6rem;
+  object-fit: cover;
+  border: 1px solid rgba(16, 35, 71, 0.1);
+}
+
+.imagePreviewRemove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: none;
+  background: #ef4444;
+  color: #ffffff;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+}
+
+.imagePreviewLabel {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #1f6d72;
+}
+
+.inputRow {
+  display: flex;
+  align-items: flex-end;
+}
+
+.attachButton {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  margin: 0.55rem 0 0.55rem 0.6rem;
+  border: 1px solid rgba(16, 35, 71, 0.08);
+  border-radius: 0.75rem;
+  background: transparent;
+  color: #7c92a8;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.attachButton:hover:not(:disabled) {
+  background: rgba(31, 109, 114, 0.08);
+  color: #1f6d72;
+  border-color: rgba(31, 109, 114, 0.2);
+}
+
+.attachButtonActive {
+  background: rgba(31, 109, 114, 0.12);
+  color: #1f6d72;
+  border-color: rgba(31, 109, 114, 0.3);
+}
+
+.attachButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .inputField textarea {
+  flex: 1;
   width: 100%;
   min-height: 4.4rem;
   max-height: 11rem;
@@ -823,6 +918,18 @@
   font: inherit;
   line-height: 1.55;
 }
+
+/* Image shown in user chat bubble */
+.messageImage {
+  display: block;
+  max-width: 100%;
+  max-height: 260px;
+  border-radius: 0.85rem;
+  object-fit: contain;
+  margin-bottom: 0.55rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
 
 .sendButton {
   display: inline-flex;

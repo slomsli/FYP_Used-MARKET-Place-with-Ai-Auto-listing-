@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { ROUTES } from './config/routes';
+import { resolveSupabaseUserRole } from './utils/authHelpers';
 
 const DASHBOARD_PREFIX = '/dashboard';
 const ADMIN_PREFIX = '/admin';
@@ -95,8 +96,7 @@ export async function middleware(request: NextRequest) {
     return buildLoginRedirect(request, supabaseResponse);
   }
 
-  let role =
-    typeof user.user_metadata?.role === 'string' ? user.user_metadata.role : null;
+  let role = resolveSupabaseUserRole(user);
 
   if (!role) {
     const { data: profile } = await supabase
@@ -105,7 +105,7 @@ export async function middleware(request: NextRequest) {
       .eq('id', user.id)
       .maybeSingle();
 
-    role = profile?.role ?? null;
+    role = resolveSupabaseUserRole(user, profile?.role ?? null);
   }
 
   const isAdmin = role === 'admin';

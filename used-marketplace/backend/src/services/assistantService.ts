@@ -1,9 +1,9 @@
 import {
   FunctionCallingConfigMode,
-  GoogleGenAI,
   type FunctionCall,
   type FunctionDeclaration,
 } from '@google/genai';
+import { geminiClient } from '../config/gemini';
 import { supabaseAdmin } from '../config/supabase';
 import {
   createListingReport,
@@ -39,8 +39,6 @@ import {
 import { MODERATION_LISTING_BRAND } from '../utils/moderationThread';
 import { getPublicStorageUrl } from '../utils/storage';
 import { logAssistantToolCall } from '../utils/assistantAudit';
-
-const ai = new GoogleGenAI({});
 
 const DEFAULT_ASSISTANT_MODEL =
   process.env.GEMINI_ASSISTANT_MODEL?.trim() || 'gemini-2.5-flash';
@@ -1718,12 +1716,12 @@ function toAssistantProviderError(error: unknown): AssistantServiceError {
 async function generateAssistantContent(params: {
   model: string;
   fallbackModel?: string | null;
-  contents: string;
+  contents: string | object;
   systemInstruction: string;
   tools: FunctionDeclaration[];
 }): Promise<{
   model: string;
-  response: Awaited<ReturnType<typeof ai.models.generateContent>>;
+  response: Awaited<ReturnType<typeof geminiClient.models.generateContent>>;
 }> {
   const modelsToTry = [
     params.model,
@@ -1736,9 +1734,9 @@ async function generateAssistantContent(params: {
   for (const candidateModel of modelsToTry) {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        const response = await ai.models.generateContent({
+  const response = await geminiClient.models.generateContent({
           model: candidateModel,
-          contents: params.contents,
+          contents: params.contents as any,
           config: {
             systemInstruction: params.systemInstruction,
             tools: [{ functionDeclarations: params.tools }],
@@ -1789,13 +1787,13 @@ function buildPrompt(
     | 'history'
     | 'hasExplicitReportConfirmation'
   >
-): string {
+): string | object {
   const recentHistory = context.history.slice(-6).map((entry) => ({
     role: entry.role,
     message: entry.message,
   }));
 
-  return JSON.stringify(
+  const textPayload = JSON.stringify(
     {
       userMessage: input.message,
       requestedRole: input.userRole,
@@ -1813,6 +1811,26 @@ function buildPrompt(
     null,
     2
   );
+
+  // When an image is attached, send it as a real multimodal content block.
+  if (input.imageBase64 && input.imageMimeType) {
+    return [
+      {
+        role: 'user',
+        parts: [
+          { text: textPayload },
+          {
+            inlineData: {
+              mimeType: input.imageMimeType,
+              data: input.imageBase64,
+            },
+          },
+        ],
+      },
+    ];
+  }
+
+  return textPayload;
 }
 
 function buildPlannerSystemInstruction(actualRole: AssistantRole): string {
@@ -1827,6 +1845,11 @@ Core rules:
 - Prefer a single best tool call. Only call a second tool when the first tool cannot finish the task.
 - If no tool is needed, answer directly in concise plain text.
 - Keep the wording clear and helpful.
+
+Image analysis:
+- You CAN see images attached by the user. Analyse them fully and respond with specific, helpful details.
+- If the user sends a screenshot of a listing, report, or marketplace page, extract visible information (title, price, status, seller, reporter, dates, etc.) and present it clearly.
+- Never say you cannot access or see images — you have full vision capability.
 
 Safety:
 - If a user says they were scammed or suspects fraud, do not accuse anyone or declare wrongdoing as fact.
@@ -4210,6 +4233,8 @@ export async function chatWithAssistant(input: {
       currentPageContext,
       selectedEntityContext,
       history,
+      imageBase64: input.body.imageBase64,
+      imageMimeType: input.body.imageMimeType,
     },
     context
   );

@@ -126,9 +126,23 @@ export async function sendAssistantMessage(
   token: string,
   payload: AssistantSendMessagePayload
 ): Promise<ServiceResponse<AssistantSendMessageResult>> {
+  // Build the body; only include image fields when present to keep payloads small
+  const body: Record<string, unknown> = {
+    threadId: payload.threadId,
+    message: payload.message,
+    roleContext: payload.roleContext,
+    currentPageContext: payload.currentPageContext,
+    selectedEntityContext: payload.selectedEntityContext,
+  };
+
+  if (payload.imageBase64 && payload.imageMimeType) {
+    body.imageBase64 = payload.imageBase64;
+    body.imageMimeType = payload.imageMimeType;
+  }
+
   return requestAssistantApi<AssistantSendMessageResult>(token, '/api/assistant/message', {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
 }
 

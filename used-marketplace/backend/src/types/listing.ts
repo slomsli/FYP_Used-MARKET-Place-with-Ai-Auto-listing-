@@ -40,13 +40,21 @@ export interface CreateListingBody {
   price: number | string | null;
   currency?: string;
   negotiable?: boolean;
+  autoNegotiationEnabled?: boolean;
+  autoNegotiationFloorPrice?: number | string | null;
   status?: SellerListingSubmissionStatus;
   stateId?: number | string | null;
   areaId?: number | string | null;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
   imageStoragePaths?: string[];
   coverImageStoragePath?: string | null;
   imagePaths?: string[];
   coverImagePath?: string | null;
+}
+
+export interface MarkListingSoldBody {
+  buyerUserId?: string | null;
 }
 
 export interface UploadListingImageBody {
@@ -78,6 +86,9 @@ export interface ListingMetadata {
   conditions: Array<{ value: ListingCondition; label: string }>;
   statuses: Array<{ value: CreateableListingStatus; label: string }>;
   currencies: string[];
+  features: {
+    aiListingAutofillEnabled: boolean;
+  };
 }
 
 export interface ListingCategorySummary {
@@ -91,12 +102,22 @@ export interface ListingLocationSummary {
   stateName: string | null;
   areaId: number | null;
   areaName: string | null;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export interface ListingBuyerSummary {
   id: string;
   displayName: string;
   avatarPath: string | null;
+}
+
+export interface ListingSaleBuyerCandidate {
+  id: string;
+  displayName: string;
+  avatarPath: string | null;
+  contextLabel: string;
+  lastActivityAt: string | null;
 }
 
 export interface ListingSummary {
@@ -107,6 +128,8 @@ export interface ListingSummary {
   price: number;
   currency: string;
   negotiable: boolean;
+  autoNegotiationEnabled?: boolean;
+  autoNegotiationFloorPrice?: number | null;
   status: string;
   statusLabel: string;
   condition: ListingCondition;

@@ -207,6 +207,8 @@ export interface AssistantConversationMessage {
   text: string;
   response?: AssistantResponse;
   createdAt: string;
+  /** Data-URI of the image the user attached (for local display only) */
+  imageDataUrl?: string;
 }
 
 export interface AssistantConversationSession {
@@ -242,6 +244,10 @@ export interface AssistantSendMessagePayload {
   roleContext?: AssistantRoleContext;
   currentPageContext?: AssistantCurrentPageContext;
   selectedEntityContext?: AssistantSelectedEntityContext;
+  /** Base-64 encoded image data (without data-URI prefix) */
+  imageBase64?: string;
+  /** MIME type, e.g. 'image/jpeg' */
+  imageMimeType?: string;
 }
 
 export interface AssistantThreadSummary {

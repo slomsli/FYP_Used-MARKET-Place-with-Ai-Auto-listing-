@@ -1,7 +1,5 @@
-import { GoogleGenAI } from '@google/genai';
 import { supabaseAdmin } from '../config/supabase';
-
-const ai = new GoogleGenAI({});
+import { geminiClient } from '../config/gemini';
 
 export interface GenerateListingImageInput {
   base64Data: string;
@@ -20,11 +18,12 @@ export interface GeneratedListingData {
   material: string | null;
 }
 
-export async function generateListingData(images: GenerateListingImageInput[]): Promise<GeneratedListingData> {
+export async function generateListingData(
+  images: GenerateListingImageInput[]
+): Promise<GeneratedListingData> {
   const { data: categories, error } = await supabaseAdmin
     .from('categories')
     .select('id, name')
-    .is('parent_id', null) // Probably getting main categories, wait I'll get all categories to be safe
     .order('name', { ascending: true });
 
   if (error) {
@@ -32,19 +31,7 @@ export async function generateListingData(images: GenerateListingImageInput[]): 
     throw new Error('Failed to fetch categories context');
   }
 
-  // Get all categories, we don't necessarily want only parent_id = null. Let me fetch all categories.
-  // Actually I need to fetch all categories:
-  const { data: allCategories, error: allCatError } = await supabaseAdmin
-    .from('categories')
-    .select('id, name')
-    .order('name', { ascending: true });
-
-  if (allCatError) {
-    console.error('[AI Service] Failed to fetch all categories for AI prompt', allCatError);
-    throw new Error('Failed to fetch categories context');
-  }
-
-  const categoryListStr = (allCategories || [])
+  const categoryListStr = (categories ?? [])
     .map((c) => `ID: ${c.id}, Name: ${c.name}`)
     .join('\n');
 
@@ -63,21 +50,21 @@ Generate a compelling description (at least 2-3 sentences).
 
   const parts = [
     { text: promptText },
-    ...images.map(img => ({
+    ...images.map((img) => ({
       inlineData: {
         mimeType: img.contentType,
         data: img.base64Data.replace(/^data:image\/\w+;base64,/, ''),
       }
-    }))
+    })),
   ];
 
-  const response = await ai.models.generateContent({
+  const response = await geminiClient.models.generateContent({
     model: 'gemini-2.5-flash',
     contents: [
       {
         role: 'user',
         parts: parts as any,
-      }
+      },
     ],
     config: {
       responseMimeType: 'application/json',
@@ -98,10 +85,10 @@ Generate a compelling description (at least 2-3 sentences).
           model: { type: 'string', nullable: true, description: 'Specific model name or number' },
           material: { type: 'string', nullable: true, description: 'Material composition' }
         },
-        required: ['title', 'suggestedCategoryName', 'condition', 'description']
+        required: ['title', 'suggestedCategoryName', 'condition', 'description'],
       } as any,
-      temperature: 0.4
-    }
+      temperature: 0.4,
+    },
   });
 
   const parsedText = response.text;
@@ -112,7 +99,7 @@ Generate a compelling description (at least 2-3 sentences).
   try {
     const result = JSON.parse(parsedText) as GeneratedListingData;
     return result;
-  } catch (e) {
+  } catch {
     console.error('[AI Service] Failed to parse AI structured JSON:', parsedText);
     throw new Error('Failed to parse the AI generated data');
   }

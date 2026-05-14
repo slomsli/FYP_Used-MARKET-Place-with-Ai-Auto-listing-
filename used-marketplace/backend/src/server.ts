@@ -9,6 +9,7 @@ import dashboardRoutes from './routes/dashboardRoutes';
 import listingRoutes from './routes/listingRoutes';
 import messageRoutes from './routes/messageRoutes';
 import assistantRoutes from './routes/assistantRoutes';
+import publicSettingsRoutes from './routes/publicSettingsRoutes';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -103,6 +104,7 @@ app.use('/api/listings', listingRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/assistant', assistantRoutes);
+app.use('/api/public', publicSettingsRoutes);
 
 app.use(errorHandler);
 

@@ -65,6 +65,7 @@ export async function createListingReport(
       .from('listings')
       .select('id, seller_id, title, status, brand')
       .eq('id', input.listingId)
+      .is('deleted_at', null)
       .maybeSingle(),
     supabaseAdmin
       .from('profiles')

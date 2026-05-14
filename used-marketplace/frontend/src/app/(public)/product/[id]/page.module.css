@@ -575,6 +575,13 @@
   font-size: 1rem;
   font-weight: 800;
   box-shadow: 0 14px 24px rgba(21, 34, 74, 0.24);
+  overflow: hidden;
+}
+
+.sellerAvatarImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .sellerMeta {

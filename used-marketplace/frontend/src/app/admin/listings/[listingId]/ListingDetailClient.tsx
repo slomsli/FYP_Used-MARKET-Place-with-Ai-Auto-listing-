@@ -8,6 +8,7 @@ import { ROUTES } from '@/src/config/routes';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import { getAdminListingDetails } from '@/src/services/adminService';
 import type { AdminListingDetailResponse } from '@/src/types/admin';
+import ImageLightbox from '@/src/components/ui/ImageLightbox';
 import styles from './page.module.css';
 
 interface ListingDetailClientProps {
@@ -163,6 +164,7 @@ export default function ListingDetailClient({ listingId }: ListingDetailClientPr
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) {
@@ -198,7 +200,6 @@ export default function ListingDetailClient({ listingId }: ListingDetailClientPr
   const backLabel = source === 'reports' ? 'Back to Reports' : 'Back to Listings';
 
   const gallery = useMemo(() => (detail ? buildGallery(detail.listing) : []), [detail]);
-  const activeImage = gallery[activeIndex] ?? null;
 
   if (authLoading || loading) {
     return (
@@ -311,35 +312,36 @@ export default function ListingDetailClient({ listingId }: ListingDetailClientPr
             <p className={styles.galleryNote}>Updated {formatDateTime(listing.updatedAt)}</p>
           </div>
 
-          <div className={styles.heroMedia}>
-            {activeImage ? (
-              <img src={activeImage} alt={listing.title} className={styles.heroImage} />
-            ) : (
-              <div className={styles.heroPlaceholder}>
-                <PhotoIcon />
-                <strong>{getInitials(listing.title)}</strong>
-                <p>No seller photos were uploaded for this listing.</p>
-              </div>
-            )}
-          </div>
+          {gallery.length === 0 && (
+            <div className={styles.heroPlaceholder}>
+              <PhotoIcon />
+              <strong>{getInitials(listing.title)}</strong>
+              <p>No seller photos were uploaded for this listing.</p>
+            </div>
+          )}
 
           {gallery.length > 0 && (
             <div className={styles.galleryRail}>
-              {gallery.map((imageUrl, index) => {
-                const isActive = index === activeIndex;
-
-                return (
-                  <button
-                    key={imageUrl}
-                    type="button"
-                    className={`${styles.thumbnailButton} ${isActive ? styles.thumbnailButtonActive : ''}`}
-                    onClick={() => setActiveIndex(index)}
-                  >
-                    <img src={imageUrl} alt={`${listing.title} view ${index + 1}`} className={styles.thumbnailImage} />
-                    <span>Photo {index + 1}</span>
-                  </button>
-                );
-              })}
+              {gallery.map((imageUrl, index) => (
+                <button
+                  key={imageUrl}
+                  type="button"
+                  className={styles.thumbnailButton}
+                  onClick={() => {
+                    setActiveIndex(index);
+                    setLightboxSrc(imageUrl);
+                  }}
+                  title="Click to enlarge"
+                >
+                  <img
+                    src={imageUrl}
+                    alt={`${listing.title} view ${index + 1}`}
+                    className={styles.thumbnailImage}
+                    style={{ cursor: 'zoom-in' }}
+                  />
+                  <span>Photo {index + 1}</span>
+                </button>
+              ))}
             </div>
           )}
         </article>
@@ -497,6 +499,17 @@ export default function ListingDetailClient({ listingId }: ListingDetailClientPr
           )}
         </article>
       </section>
+
+      <ImageLightbox
+        src={lightboxSrc}
+        alt={detail?.listing.title}
+        gallery={gallery}
+        onClose={() => setLightboxSrc(null)}
+        onNavigate={(index) => {
+          setActiveIndex(index);
+          setLightboxSrc(gallery[index] ?? null);
+        }}
+      />
     </div>
   );
 }

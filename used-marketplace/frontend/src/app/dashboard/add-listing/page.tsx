@@ -29,6 +29,15 @@ import type {
   SellerListingSubmissionStatus,
 } from '@/src/types/listing';
 import styles from './page.module.css';
+import ImageLightbox from '@/src/components/ui/ImageLightbox';
+import OriginMapPicker, {
+  type ListingCoordinates,
+} from '@/src/components/listings/OriginMapPicker';
+import {
+  collectLocationCandidates,
+  matchLocationOption,
+  reverseGeocodeCoordinates,
+} from '@/src/utils/locationMatching';
 
 const MAX_LISTING_IMAGES = 6;
 const MAX_LISTING_IMAGE_SIZE_BYTES = 8 * 1024 * 1024;
@@ -195,8 +204,12 @@ export default function AddListingPage() {
   const [condition, setCondition] = useState<ListingCondition | ''>('');
   const [price, setPrice] = useState('');
   const [openToOffers, setOpenToOffers] = useState(true);
+  const [autoNegotiateEnabled, setAutoNegotiateEnabled] = useState(false);
+  const [autoNegotiationFloorPrice, setAutoNegotiationFloorPrice] = useState('');
   const [stateId, setStateId] = useState('');
   const [areaId, setAreaId] = useState('');
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
   const [images, setImages] = useState<ListingImageItem[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [toast, setToast] = useState<{ message: string; visible: boolean }>({
@@ -204,10 +217,12 @@ export default function AddListingPage() {
     visible: false,
   });
   const [submittingStatus, setSubmittingStatus] = useState<SellerListingSubmissionStatus | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const locationLookupRequestRef = useRef(0);
   const imagesRef = useRef<ListingImageItem[]>([]);
 
   useEffect(() => {
@@ -331,8 +346,16 @@ export default function AddListingPage() {
       setCondition(listing.condition);
       setPrice(String(listing.price));
       setOpenToOffers(listing.negotiable);
+      setAutoNegotiateEnabled(Boolean(listing.negotiable && listing.autoNegotiationEnabled));
+      setAutoNegotiationFloorPrice(
+        listing.autoNegotiationFloorPrice !== undefined && listing.autoNegotiationFloorPrice !== null
+          ? String(listing.autoNegotiationFloorPrice)
+          : ''
+      );
       setStateId(listing.location.stateId ? String(listing.location.stateId) : '');
       setAreaId(listing.location.areaId ? String(listing.location.areaId) : '');
+      setLatitude(listing.location.latitude);
+      setLongitude(listing.location.longitude);
       replaceImages(buildStoredImageItems(listing));
       setListingLoading(false);
     }
@@ -534,7 +557,104 @@ export default function AddListingPage() {
     return formatCurrency(parsedPrice);
   }, [price]);
 
+  const selectedMapCoordinates = useMemo<ListingCoordinates | null>(() => {
+    if (latitude === null || longitude === null) {
+      return null;
+    }
+
+    return { latitude, longitude };
+  }, [latitude, longitude]);
+
+  const autoFillLocationFromCoordinates = useCallback(async (coordinates: ListingCoordinates) => {
+    if (!token || !metadata?.states.length) {
+      return;
+    }
+
+    const requestId = locationLookupRequestRef.current + 1;
+    locationLookupRequestRef.current = requestId;
+
+    try {
+      const result = await reverseGeocodeCoordinates(coordinates);
+      if (locationLookupRequestRef.current !== requestId) {
+        return;
+      }
+
+      const address = result.address ?? {};
+      const stateCandidates = collectLocationCandidates([
+        address.state,
+        address.state_district,
+        address.city,
+        result.display_name,
+      ]);
+      const matchedState = matchLocationOption(metadata.states, stateCandidates);
+
+      if (!matchedState) {
+        showToast('Map pin saved. Please choose State and Area manually.');
+        return;
+      }
+
+      const metadataResponse = await getListingMetadata(token, matchedState.id);
+      if (locationLookupRequestRef.current !== requestId) {
+        return;
+      }
+
+      if (!metadataResponse.data) {
+        setStateId(String(matchedState.id));
+        setAreaId('');
+        showToast('State filled from the map. Please choose the closest area manually.');
+        return;
+      }
+
+      const nextMetadata = metadataResponse.data;
+      const matchedAreas = nextMetadata.areas;
+      const areaCandidates = collectLocationCandidates([
+        address.suburb,
+        address.neighbourhood,
+        address.quarter,
+        address.city_district,
+        address.village,
+        address.town,
+        address.city,
+        address.municipality,
+        address.county,
+        address.state_district,
+        result.display_name,
+      ]);
+      const matchedArea = matchLocationOption(matchedAreas, areaCandidates);
+
+      setStateId(String(matchedState.id));
+      setAreas(matchedAreas);
+      setMetadata((currentMetadata) =>
+        currentMetadata
+          ? {
+              ...currentMetadata,
+              ...nextMetadata,
+              areas: matchedAreas,
+            }
+          : nextMetadata
+      );
+      setAreaId(matchedArea ? String(matchedArea.id) : '');
+
+      showToast(
+        matchedArea
+          ? `Location filled as ${matchedArea.name}, ${matchedState.name}.`
+          : `State filled as ${matchedState.name}. Please choose the closest area manually.`
+      );
+    } catch {
+      if (locationLookupRequestRef.current === requestId) {
+        showToast('Map pin saved, but automatic State/Area matching is unavailable right now.');
+      }
+    }
+  }, [metadata, showToast, token]);
+
+  const handleMapCoordinatesChange = useCallback((coordinates: ListingCoordinates) => {
+    setLatitude(coordinates.latitude);
+    setLongitude(coordinates.longitude);
+    void autoFillLocationFromCoordinates(coordinates);
+  }, [autoFillLocationFromCoordinates]);
+
   const displayedAreas = stateId ? areas : [];
+  const aiListingAutofillEnabled = metadata?.features?.aiListingAutofillEnabled !== false;
   const isPausedListing = existingListing?.status === 'archived';
   const isPendingReviewListing = existingListing?.status === 'rejected';
   const listingModerationReason = existingListing?.moderationReason?.trim() || null;
@@ -546,12 +666,19 @@ export default function AddListingPage() {
     isSuspended ||
     isGeneratingAI ||
     isPendingReviewListing;
+  const aiGenerateDisabled = disabled || !aiListingAutofillEnabled;
 
   const handleGenerateAI = useCallback(async () => {
     if (!token) {
       showToast('Authentication required to use AI.');
       return;
     }
+
+    if (!aiListingAutofillEnabled) {
+      showToast('AI listing photo autofill is currently disabled.');
+      return;
+    }
+
     const imagesToUse = images.length > 0 ? images : [];
     if (imagesToUse.length === 0) {
       showToast('Please upload at least one image to use AI generation.');
@@ -607,13 +734,13 @@ export default function AddListingPage() {
       }
 
       setDescription(desc);
-      showToast('Magic applied! Please review your listing details.');
-    } catch (e: any) {
-      showToast(e.message || 'An error occurred during AI generation.');
+      showToast('Listing autofilled. Please review the details before publishing.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'An error occurred during AI generation.');
     } finally {
       setIsGeneratingAI(false);
     }
-  }, [images, token, showToast]);
+  }, [aiListingAutofillEnabled, images, token, showToast]);
 
   const openFilePicker = useCallback(() => {
     if (disabled) {
@@ -626,6 +753,31 @@ export default function AddListingPage() {
   const validateForm = useCallback((status: SellerListingSubmissionStatus) => {
     if (!title.trim()) {
       return 'Please add a title for your listing';
+    }
+
+    if (autoNegotiateEnabled) {
+      const parsedPrice = Number(price);
+      const parsedFloorPrice = Number(autoNegotiationFloorPrice);
+
+      if (!openToOffers) {
+        return 'Turn on Open to Offers before enabling Auto-Negotiate';
+      }
+
+      if (!price.trim() || Number.isNaN(parsedPrice) || parsedPrice <= 0) {
+        return 'Please enter a listing price before enabling Auto-Negotiate';
+      }
+
+      if (
+        !autoNegotiationFloorPrice.trim() ||
+        Number.isNaN(parsedFloorPrice) ||
+        parsedFloorPrice <= 0
+      ) {
+        return 'Please enter a hidden floor price for Auto-Negotiate';
+      }
+
+      if (parsedFloorPrice > parsedPrice) {
+        return 'Auto-Negotiate floor price cannot be higher than the listing price';
+      }
     }
 
     if (status === 'draft') {
@@ -653,7 +805,17 @@ export default function AddListingPage() {
     }
 
     return null;
-  }, [areaId, categoryId, condition, price, stateId, title]);
+  }, [
+    areaId,
+    autoNegotiateEnabled,
+    autoNegotiationFloorPrice,
+    categoryId,
+    condition,
+    openToOffers,
+    price,
+    stateId,
+    title,
+  ]);
 
   const submitListing = useCallback(async (status: SellerListingSubmissionStatus) => {
     if (isSuspended) {
@@ -690,9 +852,16 @@ export default function AddListingPage() {
       price: price ? Number(price) : null,
       currency: metadata?.currencies[0] || 'MYR',
       negotiable: openToOffers,
+      autoNegotiationEnabled: openToOffers && autoNegotiateEnabled,
+      autoNegotiationFloorPrice:
+        openToOffers && autoNegotiateEnabled && autoNegotiationFloorPrice
+          ? Number(autoNegotiationFloorPrice)
+          : null,
       status,
       stateId: stateId ? Number(stateId) : null,
       areaId: areaId ? Number(areaId) : null,
+      latitude,
+      longitude,
     };
 
     const existingImageStoragePaths = images
@@ -774,11 +943,15 @@ export default function AddListingPage() {
     }, 700);
   }, [
     areaId,
+    autoNegotiateEnabled,
+    autoNegotiationFloorPrice,
     brand,
     categoryId,
     condition,
     description,
     images,
+    latitude,
+    longitude,
     metadata?.currencies,
     openToOffers,
     price,
@@ -825,15 +998,17 @@ export default function AddListingPage() {
               : 'Create a real marketplace listing with categories, states, areas, and photos saved through the backend.'}
           </p>
         </div>
-        <button
-          className={styles.aiButton}
-          id="ai-generate-btn"
-          type="button"
-          onClick={handleGenerateAI}
-          disabled={disabled}
-        >
-          <SparklesIcon /> {isGeneratingAI ? 'Generating...' : 'Generate All with AI'}
-        </button>
+        {aiListingAutofillEnabled && (
+          <button
+            className={styles.aiButton}
+            id="ai-generate-btn"
+            type="button"
+            onClick={handleGenerateAI}
+            disabled={aiGenerateDisabled}
+          >
+            <SparklesIcon /> {isGeneratingAI ? 'Auto-filling...' : 'Auto-fill from Photos'}
+          </button>
+        )}
       </section>
 
       {metadataError && (
@@ -916,7 +1091,13 @@ export default function AddListingPage() {
               <div className={styles.imagePreviews}>
                 {images.map((image, index) => (
                   <div key={image.preview} className={styles.imagePreview}>
-                    <img src={image.preview} alt={`Upload ${index + 1}`} />
+                    <img
+                      src={image.preview}
+                      alt={`Upload ${index + 1}`}
+                      className={styles.imageThumb}
+                      onClick={() => setLightboxImage(image.preview)}
+                      title="Click to preview"
+                    />
                     <button
                       className={styles.imageRemove}
                       onClick={() => removeImage(index)}
@@ -927,6 +1108,15 @@ export default function AddListingPage() {
                     </button>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {isGeneratingAI && (
+              <div className={styles.aiAnalyzingBanner}>
+                <span className={styles.aiAnalyzingDot} />
+                <span className={styles.aiAnalyzingText}>
+                  ✦ AI is analyzing your photos — this may take a few seconds…
+                </span>
               </div>
             )}
           </div>
@@ -1063,7 +1253,16 @@ export default function AddListingPage() {
                   <button
                     type="button"
                     className={`${styles.toggle} ${openToOffers ? styles.toggleActive : ''}`}
-                    onClick={() => setOpenToOffers((current) => !current)}
+                    onClick={() =>
+                      setOpenToOffers((current) => {
+                        const nextValue = !current;
+                        if (!nextValue) {
+                          setAutoNegotiateEnabled(false);
+                        }
+
+                        return nextValue;
+                      })
+                    }
                     role="switch"
                     aria-checked={openToOffers}
                     id="open-to-offers-toggle"
@@ -1071,6 +1270,65 @@ export default function AddListingPage() {
                   />
                 </div>
               </div>
+            </div>
+
+            <div
+              className={`${styles.autoNegotiationBox} ${
+                autoNegotiateEnabled ? styles.autoNegotiationBoxActive : ''
+              }`}
+            >
+              <div className={styles.autoNegotiationMain}>
+                <div>
+                  <div className={styles.autoNegotiationTitle}>
+                    <SparklesIcon />
+                    <span>Auto-Negotiate</span>
+                  </div>
+                  <div className={styles.autoNegotiationSub}>
+                    Hidden floor for chat counters
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={`${styles.toggle} ${
+                    autoNegotiateEnabled ? styles.toggleActive : ''
+                  }`}
+                  onClick={() => {
+                    if (!openToOffers) {
+                      return;
+                    }
+
+                    setAutoNegotiateEnabled((current) => !current);
+                  }}
+                  role="switch"
+                  aria-checked={autoNegotiateEnabled}
+                  id="auto-negotiate-toggle"
+                  disabled={disabled || !openToOffers}
+                />
+              </div>
+
+              {autoNegotiateEnabled && openToOffers && (
+                <div className={styles.autoNegotiationFloorRow}>
+                  <div className={styles.formGroup}>
+                    <label className={styles.label} htmlFor="auto-negotiation-floor">
+                      Floor price (hidden)
+                    </label>
+                    <div className={styles.priceInputWrapper}>
+                      <span className={styles.currencyBadge}>RM</span>
+                      <input
+                        type="number"
+                        id="auto-negotiation-floor"
+                        className={`${styles.input} ${styles.priceInput}`}
+                        placeholder="0.00"
+                        min="0"
+                        step="0.01"
+                        value={autoNegotiationFloorPrice}
+                        onChange={(event) => setAutoNegotiationFloorPrice(event.target.value)}
+                        disabled={disabled}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1080,23 +1338,14 @@ export default function AddListingPage() {
               <h2 className={styles.sectionTitle}>Origin</h2>
             </div>
 
-            <div className={styles.mapPlaceholder}>
-              <div className={styles.mapOverlay} />
-              <svg width="100%" height="100%" viewBox="0 0 600 200" preserveAspectRatio="xMidYMid slice" style={{ opacity: 0.18 }}>
-                <defs>
-                  <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                    <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#334d85" strokeWidth="0.8" />
-                  </pattern>
-                </defs>
-                <rect width="600" height="200" fill="url(#grid)" />
-                <circle cx="300" cy="100" r="6" fill="#334d85" opacity="0.5" />
-                <circle cx="300" cy="100" r="18" fill="none" stroke="#334d85" strokeWidth="0.8" opacity="0.3" />
-                <circle cx="300" cy="100" r="36" fill="none" stroke="#334d85" strokeWidth="0.5" opacity="0.15" />
-              </svg>
-            </div>
+            <OriginMapPicker
+              value={selectedMapCoordinates}
+              onChange={handleMapCoordinatesChange}
+              disabled={disabled}
+            />
 
             <p className={styles.fieldHint}>
-              Choose the listing location from the database-backed `states` and `areas` tables.
+              Use your current location to fill the pin, State, and Area automatically when a match is found. You can still adjust everything manually.
             </p>
 
             <div className={styles.locationGrid}>
@@ -1110,6 +1359,7 @@ export default function AddListingPage() {
                   className={styles.select}
                   value={stateId}
                   onChange={(event) => {
+                    locationLookupRequestRef.current += 1;
                     setStateId(event.target.value);
                     setAreaId('');
                   }}
@@ -1130,7 +1380,10 @@ export default function AddListingPage() {
                   id="listing-area"
                   className={styles.select}
                   value={areaId}
-                  onChange={(event) => setAreaId(event.target.value)}
+                  onChange={(event) => {
+                    locationLookupRequestRef.current += 1;
+                    setAreaId(event.target.value);
+                  }}
                   disabled={disabled || !stateId || areasLoading}
                 >
                   <option value="">
@@ -1233,6 +1486,14 @@ export default function AddListingPage() {
       <div className={`${styles.toast} ${toast.visible ? styles.toastVisible : ''}`} role="status">
         {toast.message}
       </div>
+
+      <ImageLightbox
+        src={lightboxImage}
+        alt="Uploaded photo preview"
+        gallery={images.map((img) => img.preview)}
+        onClose={() => setLightboxImage(null)}
+        onNavigate={(index) => setLightboxImage(images[index]?.preview ?? null)}
+      />
     </div>
   );
 }

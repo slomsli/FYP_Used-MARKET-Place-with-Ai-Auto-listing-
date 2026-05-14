@@ -14,6 +14,8 @@ export interface ProfileData {
   updatedAt: string;
   stateId: number | null;
   areaId: number | null;
+  latitude: number | null;
+  longitude: number | null;
   stateName: string | null;
   areaName: string | null;
   accountStatus: 'active' | 'pending_verification' | 'suspended';
@@ -26,6 +28,8 @@ export interface UpdateProfilePayload {
   phone?: string;
   stateId?: number | null;
   areaId?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export interface StateLookup {

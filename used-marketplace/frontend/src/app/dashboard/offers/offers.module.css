@@ -196,6 +196,7 @@
 .statusPending { background: #fef3c7; color: #d97706; }
 .statusAccepted { background: #dcfce7; color: #15803d; }
 .statusRejected { background: #fee2e2; color: var(--dash-tertiary); }
+.statusWithdrawn { background: #ede9fe; color: #6d28d9; }
 .statusCancelled { background: #f1f5f9; color: #64748b; }
 
 .metaInfo {
@@ -409,6 +410,99 @@
   font-size: 0.92rem;
   line-height: 1.55;
   font-style: italic;
+}
+
+.sellerReplyBlock {
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.sellerReplyHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.sellerReplyHeader strong {
+  color: #0f172a;
+  font-size: 0.88rem;
+}
+
+.sellerReplyHeader span {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.sellerReplyText {
+  margin: 0.55rem 0 0;
+  color: #334155;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.receiptBlock {
+  margin-top: 0.95rem;
+  padding-top: 0.95rem;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.receiptHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.receiptHeader strong {
+  color: #0f172a;
+  font-size: 0.88rem;
+}
+
+.receiptStatus {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.32rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.receiptStatusPending {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.receiptStatusWaiting {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.receiptStatusPaid {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.receiptMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+}
+
+.receiptMeta span {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.38rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .ratingRow {

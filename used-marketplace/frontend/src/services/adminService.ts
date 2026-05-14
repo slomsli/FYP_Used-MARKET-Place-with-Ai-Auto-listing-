@@ -73,9 +73,18 @@ export interface CreateLocationPayload {
 }
 
 export async function getAdminOverview(
-  token: string
+  token: string,
+  year?: number
 ): Promise<ServiceResponse<AdminOverviewResponse>> {
-  return authorizedRequest<AdminOverviewResponse>('/api/admin/overview', token, {
+  const params = new URLSearchParams();
+
+  if (Number.isInteger(year)) {
+    params.set('year', String(year));
+  }
+
+  const suffix = params.size ? `?${params.toString()}` : '';
+
+  return authorizedRequest<AdminOverviewResponse>(`/api/admin/overview${suffix}`, token, {
     method: 'GET',
   });
 }

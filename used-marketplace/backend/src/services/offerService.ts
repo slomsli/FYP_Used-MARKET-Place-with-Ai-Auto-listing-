@@ -4,12 +4,26 @@ import {
   buildDeliveryDisputeDetails,
   parseDeliveryDisputeDetails,
 } from '../utils/deliveryDispute';
+import { buildDisplayName } from '../utils/profile';
+import { type Relation, unwrapRelation } from '../utils/relation';
+import { sanitizeStorageFileName } from '../utils/storageFile';
 import { REPORT_STATUS_LABELS, type ReportStatus } from '../types/report';
+import type { PurchasePaymentStatus } from '../types/purchase';
 import { getPublicStorageUrl, removeStorageObjects } from '../utils/storage';
+import {
+  AVATAR_BUCKET,
+  DELIVERY_PROOF_BUCKET,
+  LISTING_IMAGE_BUCKET,
+} from '../utils/storageBuckets';
+import { toNumber, trimOptional } from '../utils/value';
+import { createNotification, createNotifications } from './notificationService';
+import {
+  ensurePurchaseReceiptForAcceptedOffer,
+  isPurchaseReceiptsTableMissingError,
+} from './purchaseService';
+import { generateAutoNegotiationReplyForKnownOffer } from './autoNegotiationService';
 
 /* ── Types ─────────────────────────────────────────────── */
-
-type Relation<T> = T | T[] | null;
 
 interface RawProfile {
   id: string;
@@ -31,10 +45,25 @@ interface RawListing {
   price: unknown;
   currency: string;
   negotiable: boolean;
+  auto_negotiate_enabled?: boolean | null;
+  auto_negotiate_floor_price?: unknown;
   status: string;
+  deleted_at: string | null;
   sold_to_user_id: string | null;
   cover_image_path: string | null;
   categories: Relation<RawCategory>;
+}
+
+interface RawAutoNegotiationListing {
+  id: string;
+  seller_id: string;
+  title: string;
+  status: string;
+  price: unknown;
+  currency: string | null;
+  negotiable: boolean | null;
+  auto_negotiate_enabled: boolean | null;
+  auto_negotiate_floor_price: unknown;
 }
 
 interface RawOffer {
@@ -63,6 +92,10 @@ interface RawReview {
   rating: unknown;
   comment: string | null;
   created_at: string;
+  updated_at: string;
+  seller_response: string | null;
+  seller_response_created_at: string | null;
+  seller_response_updated_at: string | null;
 }
 
 interface RawReport {
@@ -80,6 +113,7 @@ interface RawCompletedSaleListing {
   title: string;
   currency: string;
   status: string;
+  deleted_at: string | null;
   sold_to_user_id: string | null;
 }
 
@@ -93,14 +127,32 @@ interface RawCompletedSaleOffer {
   listings: Relation<RawCompletedSaleListing>;
 }
 
+interface RawPurchaseReceipt {
+  id: string;
+  offer_id: string | null;
+  receipt_number: string;
+  payment_status: PurchasePaymentStatus;
+  total_amount: unknown;
+  currency: string;
+  buyer_marked_paid_at: string | null;
+  seller_confirmed_paid_at: string | null;
+}
+
 export type OfferKind = 'purchase_request' | 'offer' | 'counter_offer';
-export type OfferStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
+export type OfferStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'withdrawn';
+
+export interface OfferReviewSellerResponse {
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface OfferReviewSummary {
   id: string;
   rating: number;
   comment: string | null;
   createdAt: string;
+  sellerResponse: OfferReviewSellerResponse | null;
 }
 
 export interface OfferDeliveryIssueSummary {
@@ -115,11 +167,23 @@ export interface OfferDeliveryIssueSummary {
   buyerStatement: string;
 }
 
+export interface OfferPurchaseReceiptSummary {
+  id: string;
+  receiptNumber: string;
+  paymentStatus: PurchasePaymentStatus;
+  paymentStatusLabel: string;
+  totalAmount: number;
+  currency: string;
+  buyerMarkedPaidAt: string | null;
+  sellerConfirmedPaidAt: string | null;
+}
+
 export interface OfferSaleFollowUp {
   canBuyerConfirmReceived: boolean;
   canBuyerReportNotReceived: boolean;
   review: OfferReviewSummary | null;
   deliveryIssue: OfferDeliveryIssueSummary | null;
+  receipt: OfferPurchaseReceiptSummary | null;
 }
 
 export interface OfferSummary {
@@ -189,6 +253,11 @@ export interface CreateBuyerReviewInput {
   comment?: string;
 }
 
+export interface CreateSellerReviewResponseInput {
+  offerId: string;
+  response: string;
+}
+
 export interface ReportDeliveryIssueInput {
   offerId: string;
   buyerStatement: string;
@@ -215,57 +284,16 @@ export class OfferServiceError extends Error {
   }
 }
 
-const LISTING_IMAGE_BUCKET =
-  process.env.SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
-  process.env.NEXT_PUBLIC_SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
-  'listing-images';
-const AVATAR_BUCKET =
-  process.env.SUPABASE_AVATARS_BUCKET?.trim() ||
-  process.env.NEXT_PUBLIC_SUPABASE_AVATARS_BUCKET?.trim() ||
-  'avatars';
-const DELIVERY_PROOF_BUCKET =
-  process.env.SUPABASE_TRANSACTION_PROOFS_BUCKET?.trim() ||
-  process.env.NEXT_PUBLIC_SUPABASE_TRANSACTION_PROOFS_BUCKET?.trim() ||
-  'transaction-proofs';
 const MAX_DELIVERY_PROOF_SIZE_BYTES = 4 * 1024 * 1024;
 const DELIVERY_PROOF_MIME_TYPES = ['image/*'];
 let deliveryProofBucketPromise: Promise<void> | null = null;
 
+interface UploadedDeliveryProof {
+  publicUrl: string;
+  storagePath: string;
+}
+
 /* ── Helpers ───────────────────────────────────────────── */
-
-function unwrapRelation<T>(relation: Relation<T>): T | null {
-  if (Array.isArray(relation)) return relation[0] ?? null;
-  return relation ?? null;
-}
-
-function toNumber(value: unknown, fallback = 0): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string' && value.trim()) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return fallback;
-}
-
-function trimOptional(value: string | null | undefined): string | null {
-  if (typeof value !== 'string') {
-    return null;
-  }
-
-  const trimmedValue = value.trim();
-  return trimmedValue ? trimmedValue : null;
-}
-
-function sanitizeStorageFileName(fileName: string): string {
-  const normalizedFileName = fileName
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-
-  return normalizedFileName || `proof-${randomUUID()}.jpg`;
-}
 
 function formatCurrency(value: number, currency = 'MYR'): string {
   try {
@@ -278,6 +306,113 @@ function formatCurrency(value: number, currency = 'MYR'): string {
   } catch {
     return `${currency} ${value.toFixed(0)}`;
   }
+}
+
+function toSingleLineNotificationText(value: string | null | undefined, fallback: string): string {
+  const normalized = (value ?? '').replace(/\s+/g, ' ').trim();
+
+  if (!normalized) {
+    return fallback;
+  }
+
+  return normalized.length > 180 ? `${normalized.slice(0, 177)}...` : normalized;
+}
+
+function getOfferKindLabel(offerKind: OfferKind): string {
+  if (offerKind === 'purchase_request') {
+    return 'purchase request';
+  }
+
+  if (offerKind === 'counter_offer') {
+    return 'counter-offer';
+  }
+
+  return 'offer';
+}
+
+async function notifyOfferCreated(offer: OfferSummary): Promise<void> {
+  const recipientId =
+    offer.offerKind === 'counter_offer'
+      ? offer.initiatedBy === offer.sellerId
+        ? offer.buyerId
+        : offer.sellerId
+      : offer.sellerId;
+
+  await createNotification({
+    userId: recipientId,
+    type: 'offer',
+    title: offer.offerKind === 'counter_offer' ? 'Counter-offer received' : 'New offer received',
+    body: `"${offer.listing.title}" has a ${getOfferKindLabel(offer.offerKind)} for ${formatCurrency(
+      offer.offerPrice,
+      offer.listing.currency
+    )}.`,
+    linkPath: '/dashboard/offers',
+  });
+}
+
+async function notifyOfferAccepted(offer: OfferSummary, responderId: string): Promise<void> {
+  const recipientId = responderId === offer.buyerId ? offer.sellerId : offer.buyerId;
+
+  await createNotification({
+    userId: recipientId,
+    type: 'offer_accepted',
+    title: 'Offer accepted',
+    body: `"${offer.listing.title}" is now marked as sold for ${formatCurrency(
+      offer.offerPrice,
+      offer.listing.currency
+    )}.`,
+    linkPath: '/dashboard/offers',
+  });
+}
+
+async function notifyOfferRejected(offer: OfferSummary, responderId: string): Promise<void> {
+  const recipientId = responderId === offer.buyerId ? offer.sellerId : offer.buyerId;
+
+  await createNotification({
+    userId: recipientId,
+    type: 'offer_rejected',
+    title: offer.offerKind === 'counter_offer' ? 'Counter-offer rejected' : 'Offer rejected',
+    body: `The ${getOfferKindLabel(offer.offerKind)} for "${offer.listing.title}" was declined.`,
+    linkPath: '/dashboard/offers',
+  });
+}
+
+async function notifyCompetingOffersWithdrawn(
+  listingTitle: string,
+  buyerIds: string[]
+): Promise<void> {
+  const uniqueBuyerIds = Array.from(new Set(buyerIds.filter(Boolean)));
+
+  if (uniqueBuyerIds.length === 0) {
+    return;
+  }
+
+  await createNotifications(
+    uniqueBuyerIds.map((buyerId) => ({
+      userId: buyerId,
+      type: 'offer_rejected' as const,
+      title: 'Offer closed automatically',
+      body: `Another buyer completed the sale for "${listingTitle}", so this offer was withdrawn.`,
+      linkPath: '/dashboard/offers',
+    }))
+  );
+}
+
+async function notifyDeliveryIssueReported(
+  sellerId: string,
+  listingTitle: string,
+  buyerStatement: string
+): Promise<void> {
+  await createNotification({
+    userId: sellerId,
+    type: 'system',
+    title: 'Delivery issue reported',
+    body: toSingleLineNotificationText(
+      buyerStatement,
+      `The buyer reported that "${listingTitle}" was not received.`
+    ),
+    linkPath: '/dashboard/offers',
+  });
 }
 
 async function ensureDeliveryProofBucket(): Promise<void> {
@@ -348,13 +483,32 @@ async function ensureDeliveryProofBucket(): Promise<void> {
   return deliveryProofBucketPromise;
 }
 
-function buildDisplayName(profile: Pick<RawProfile, 'full_name' | 'username'> | null): string {
-  if (!profile) return 'User';
-  const fullName = profile.full_name?.trim();
-  if (fullName) return fullName;
-  const username = profile.username?.trim();
-  if (username) return username;
-  return 'User';
+function filterVisibleOffers(rawOffers: RawOffer[]): RawOffer[] {
+  return rawOffers.filter((offer) => unwrapRelation(offer.listings)?.deleted_at === null);
+}
+
+async function countVisibleOffers(
+  column: 'buyer_id' | 'seller_id',
+  userId: string
+): Promise<number> {
+  const { data, error } = await supabaseAdmin
+    .from('offers')
+    .select(`
+      id,
+      listings!offers_listing_id_fkey (
+        deleted_at
+      )
+    `)
+    .eq(column, userId);
+
+  if (error) {
+    console.error(`[Offers] Failed to count visible offers by ${column}:`, error);
+    return 0;
+  }
+
+  return ((data ?? []) as Array<{ listings: Relation<{ deleted_at: string | null }> }>).filter(
+    (offer) => unwrapRelation(offer.listings)?.deleted_at === null
+  ).length;
 }
 
 function getOfferInitiatorUserId(
@@ -384,6 +538,16 @@ function mapOfferReview(review: RawReview): OfferReviewSummary {
     rating: toNumber(review.rating),
     comment: review.comment,
     createdAt: review.created_at,
+    sellerResponse:
+      review.seller_response &&
+      review.seller_response_created_at &&
+      review.seller_response_updated_at
+        ? {
+            body: review.seller_response,
+            createdAt: review.seller_response_created_at,
+            updatedAt: review.seller_response_updated_at,
+          }
+        : null,
   };
 }
 
@@ -406,17 +570,42 @@ function mapDeliveryIssue(report: RawReport): OfferDeliveryIssueSummary | null {
   };
 }
 
+function getPurchasePaymentStatusLabel(status: PurchasePaymentStatus): string {
+  switch (status) {
+    case 'buyer_marked_paid':
+      return 'Waiting for seller confirmation';
+    case 'seller_confirmed_paid':
+      return 'Paid';
+    case 'pending':
+    default:
+      return 'Not paid yet';
+  }
+}
+
+function mapOfferReceipt(receipt: RawPurchaseReceipt): OfferPurchaseReceiptSummary {
+  return {
+    id: receipt.id,
+    receiptNumber: receipt.receipt_number,
+    paymentStatus: receipt.payment_status,
+    paymentStatusLabel: getPurchasePaymentStatusLabel(receipt.payment_status),
+    totalAmount: toNumber(receipt.total_amount),
+    currency: receipt.currency || 'MYR',
+    buyerMarkedPaidAt: receipt.buyer_marked_paid_at,
+    sellerConfirmedPaidAt: receipt.seller_confirmed_paid_at,
+  };
+}
+
 async function uploadDeliveryProofs(
   buyerId: string,
   proofs: DeliveryIssueProofInput[]
-): Promise<string[]> {
+): Promise<UploadedDeliveryProof[]> {
   if (proofs.length === 0) {
     return [];
   }
 
   await ensureDeliveryProofBucket();
 
-  const proofUrls: string[] = [];
+  const uploadedProofs: UploadedDeliveryProof[] = [];
 
   for (const proof of proofs) {
     const fileName = trimOptional(proof.fileName);
@@ -446,7 +635,10 @@ async function uploadDeliveryProofs(
       throw new OfferServiceError('Each proof image must be 4 MB or smaller', 422);
     }
 
-    const storagePath = `delivery-proofs/${buyerId}/${new Date().toISOString().slice(0, 10)}/${randomUUID()}-${sanitizeStorageFileName(fileName)}`;
+    const storagePath = `delivery-proofs/${buyerId}/${new Date().toISOString().slice(0, 10)}/${randomUUID()}-${sanitizeStorageFileName(
+      fileName,
+      'proof'
+    )}`;
     const { error: uploadError } = await supabaseAdmin.storage
       .from(DELIVERY_PROOF_BUCKET)
       .upload(storagePath, fileBuffer, {
@@ -468,18 +660,22 @@ async function uploadDeliveryProofs(
       throw new OfferServiceError('Unable to generate a proof image URL', 500);
     }
 
-    proofUrls.push(publicUrl);
+    uploadedProofs.push({
+      publicUrl,
+      storagePath,
+    });
   }
 
-  return proofUrls;
+  return uploadedProofs;
 }
 
 async function attachSaleFollowUp(
   currentUserId: string,
   rawOffers: RawOffer[]
 ): Promise<OfferSummary[]> {
-  const offers = rawOffers.map(mapOffer);
-  const completedSales = rawOffers.filter((offer) => {
+  const visibleRawOffers = filterVisibleOffers(rawOffers);
+  const offers = visibleRawOffers.map(mapOffer);
+  const completedSales = visibleRawOffers.filter((offer) => {
     const listing = unwrapRelation(offer.listings);
 
     return (
@@ -494,6 +690,7 @@ async function attachSaleFollowUp(
   }
 
   const completedSaleOfferIdSet = new Set(completedSales.map((saleOffer) => saleOffer.id));
+  const completedOfferIds = completedSales.map((saleOffer) => saleOffer.id);
 
   const saleKeys = new Set<string>();
   const listingIds: string[] = [];
@@ -510,10 +707,22 @@ async function attachSaleFollowUp(
     buyerIds.push(saleOffer.buyer_id);
   }
 
-  const [reviewsResult, reportsResult] = await Promise.all([
+  const [reviewsResult, reportsResult, receiptsResult] = await Promise.all([
     supabaseAdmin
       .from('reviews')
-      .select('id, listing_id, reviewer_id, seller_id, rating, comment, created_at')
+      .select(`
+        id,
+        listing_id,
+        reviewer_id,
+        seller_id,
+        rating,
+        comment,
+        created_at,
+        updated_at,
+        seller_response,
+        seller_response_created_at,
+        seller_response_updated_at
+      `)
       .in('listing_id', listingIds)
       .in('reviewer_id', buyerIds),
     supabaseAdmin
@@ -522,6 +731,19 @@ async function attachSaleFollowUp(
       .in('listing_id', listingIds)
       .in('reporter_id', buyerIds)
       .order('created_at', { ascending: false }),
+    supabaseAdmin
+      .from('purchase_receipts')
+      .select(`
+        id,
+        offer_id,
+        receipt_number,
+        payment_status,
+        total_amount,
+        currency,
+        buyer_marked_paid_at,
+        seller_confirmed_paid_at
+      `)
+      .in('offer_id', completedOfferIds),
   ]);
 
   if (reviewsResult.error) {
@@ -532,6 +754,14 @@ async function attachSaleFollowUp(
   if (reportsResult.error) {
     console.error('[Offers] Failed to load sale follow-up delivery issues:', reportsResult.error);
     throw new OfferServiceError('Unable to load delivery issue reports', 500);
+  }
+
+  const shouldSkipReceipts =
+    receiptsResult.error && isPurchaseReceiptsTableMissingError(receiptsResult.error);
+
+  if (receiptsResult.error && !shouldSkipReceipts) {
+    console.error('[Offers] Failed to load sale follow-up receipts:', receiptsResult.error);
+    throw new OfferServiceError('Unable to load sale receipts', 500);
   }
 
   const reviewMap = new Map<string, OfferReviewSummary>();
@@ -555,11 +785,19 @@ async function attachSaleFollowUp(
     }
   }
 
+  const receiptMap = new Map<string, OfferPurchaseReceiptSummary>();
+  for (const receipt of (shouldSkipReceipts ? [] : receiptsResult.data ?? []) as RawPurchaseReceipt[]) {
+    if (receipt.offer_id && !receiptMap.has(receipt.offer_id)) {
+      receiptMap.set(receipt.offer_id, mapOfferReceipt(receipt));
+    }
+  }
+
   return offers.map((offer) => {
     const saleKey = buildSaleFollowUpKey(offer.listingId, offer.buyerId);
     const review = reviewMap.get(saleKey) ?? null;
     const deliveryIssue = deliveryIssueMap.get(saleKey) ?? null;
     const isCompletedSale = completedSaleOfferIdSet.has(offer.id);
+    const receipt = receiptMap.get(offer.id) ?? null;
 
     if (!isCompletedSale) {
       return offer;
@@ -572,6 +810,7 @@ async function attachSaleFollowUp(
         canBuyerReportNotReceived: currentUserId === offer.buyerId && !review && !deliveryIssue,
         review,
         deliveryIssue,
+        receipt,
       },
     };
   });
@@ -592,6 +831,7 @@ async function getCompletedSaleOfferById(offerId: string): Promise<RawCompletedS
         title,
         currency,
         status,
+        deleted_at,
         sold_to_user_id
       )
     `)
@@ -627,8 +867,40 @@ function assertBuyerCanManageSale(
     throw new OfferServiceError('Listing not found for this purchase', 404);
   }
 
+  if (listing.deleted_at !== null) {
+    throw new OfferServiceError('Listing not found for this purchase', 404);
+  }
+
   if (listing.status !== 'sold' || listing.sold_to_user_id !== offer.buyer_id) {
     throw new OfferServiceError('This listing is not marked as sold to you', 422);
+  }
+
+  return listing;
+}
+
+function assertSellerCanRespondToReview(
+  userId: string,
+  offer: RawCompletedSaleOffer
+): RawCompletedSaleListing {
+  if (offer.seller_id !== userId) {
+    throw new OfferServiceError('Only the seller can reply to this review', 403);
+  }
+
+  if (offer.status !== 'accepted') {
+    throw new OfferServiceError('This purchase is not ready for a seller reply yet', 422);
+  }
+
+  const listing = unwrapRelation(offer.listings);
+  if (!listing) {
+    throw new OfferServiceError('Listing not found for this purchase', 404);
+  }
+
+  if (listing.deleted_at !== null) {
+    throw new OfferServiceError('Listing not found for this purchase', 404);
+  }
+
+  if (listing.status !== 'sold' || listing.sold_to_user_id !== offer.buyer_id) {
+    throw new OfferServiceError('This listing is not marked as sold to this buyer', 422);
   }
 
   return listing;
@@ -691,7 +963,7 @@ const OFFER_SELECT = `
   initiated_by,
   offer_kind,
   listings!offers_listing_id_fkey (
-    id, seller_id, title, price, currency, negotiable, status, sold_to_user_id, cover_image_path,
+    id, seller_id, title, price, currency, negotiable, auto_negotiate_enabled, auto_negotiate_floor_price, status, deleted_at, sold_to_user_id, cover_image_path,
     categories!listings_category_id_fkey ( id, name, slug )
   ),
   buyer_profile:profiles!offers_buyer_id_fkey (
@@ -701,6 +973,55 @@ const OFFER_SELECT = `
     id, username, full_name, avatar_path
   )
 `;
+
+async function maybeAutoRespondToCreatedOffer(
+  createdOffer: OfferSummary,
+  listing: RawAutoNegotiationListing
+): Promise<OfferSummary | null> {
+  if (
+    listing.auto_negotiate_enabled !== true ||
+    listing.negotiable !== true ||
+    listing.status !== 'active'
+  ) {
+    return null;
+  }
+
+  const askingPrice = toNumber(listing.price, Number.NaN);
+  const floorPrice = toNumber(listing.auto_negotiate_floor_price, Number.NaN);
+
+  if (
+    !Number.isFinite(askingPrice) ||
+    askingPrice <= 0 ||
+    !Number.isFinite(floorPrice) ||
+    floorPrice <= 0 ||
+    floorPrice > askingPrice
+  ) {
+    return null;
+  }
+
+  const autoDecision = await generateAutoNegotiationReplyForKnownOffer({
+    buyerOffer: createdOffer.offerPrice,
+    buyerMessage: createdOffer.message ?? '',
+    listingTitle: listing.title,
+    askingPrice,
+    floorPrice,
+    currency: listing.currency?.trim() || createdOffer.listing.currency || 'MYR',
+  });
+
+  if (!autoDecision) {
+    return null;
+  }
+
+  if (autoDecision.action === 'accept') {
+    return acceptOffer(listing.seller_id, createdOffer.id);
+  }
+
+  return createCounterOffer(listing.seller_id, {
+    offerId: createdOffer.id,
+    counterPrice: autoDecision.targetPrice,
+    message: autoDecision.reply,
+  });
+}
 
 /* ── Service Functions ─────────────────────────────────── */
 
@@ -719,20 +1040,12 @@ export async function getReceivedOffers(userId: string): Promise<OffersPageRespo
     throw new OfferServiceError('Unable to load received offers', 500);
   }
 
-  const { count: sentCount, error: sentCountErr } = await supabaseAdmin
-    .from('offers')
-    .select('id', { count: 'exact', head: true })
-    .eq('buyer_id', userId);
-
-  if (sentCountErr) {
-    console.error('[Offers] Failed to count sent offers:', sentCountErr);
-  }
-
   const offers = await attachSaleFollowUp(userId, (received ?? []) as RawOffer[]);
+  const sentCount = await countVisibleOffers('buyer_id', userId);
 
   return {
     receivedCount: offers.length,
-    sentCount: sentCount ?? 0,
+    sentCount,
     offers,
   };
 }
@@ -752,19 +1065,11 @@ export async function getSentOffers(userId: string): Promise<OffersPageResponse>
     throw new OfferServiceError('Unable to load sent offers', 500);
   }
 
-  const { count: receivedCount, error: recvCountErr } = await supabaseAdmin
-    .from('offers')
-    .select('id', { count: 'exact', head: true })
-    .eq('seller_id', userId);
-
-  if (recvCountErr) {
-    console.error('[Offers] Failed to count received offers:', recvCountErr);
-  }
-
   const offers = await attachSaleFollowUp(userId, (sent ?? []) as RawOffer[]);
+  const receivedCount = await countVisibleOffers('seller_id', userId);
 
   return {
-    receivedCount: receivedCount ?? 0,
+    receivedCount,
     sentCount: offers.length,
     offers,
   };
@@ -779,11 +1084,26 @@ export async function createOffer(
 ): Promise<OfferSummary> {
   const { listingId, offerPrice, message, offerKind } = input;
 
+  if (!Number.isFinite(offerPrice) || offerPrice <= 0) {
+    throw new OfferServiceError('offerPrice must be greater than 0', 422);
+  }
+
   // Validate listing exists and is active
   const { data: listing, error: listingErr } = await supabaseAdmin
     .from('listings')
-    .select('id, seller_id, status, price')
+    .select(`
+      id,
+      seller_id,
+      title,
+      status,
+      price,
+      currency,
+      negotiable,
+      auto_negotiate_enabled,
+      auto_negotiate_floor_price
+    `)
     .eq('id', listingId)
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (listingErr) {
@@ -852,7 +1172,28 @@ export async function createOffer(
     throw new OfferServiceError('Unable to create offer', 500);
   }
 
-  return mapOffer(newOffer as RawOffer);
+  const createdOffer = mapOffer(newOffer as RawOffer);
+
+  try {
+    const autoResponse = await maybeAutoRespondToCreatedOffer(
+      createdOffer,
+      listing as RawAutoNegotiationListing
+    );
+
+    if (autoResponse) {
+      return autoResponse;
+    }
+  } catch (autoNegotiationError) {
+    console.error('[Offers] Auto-negotiation failed for submitted offer:', autoNegotiationError);
+  }
+
+  try {
+    await notifyOfferCreated(createdOffer);
+  } catch (notificationError) {
+    console.error('[Offers] Failed to create new-offer notification:', notificationError);
+  }
+
+  return createdOffer;
 }
 
 /**
@@ -905,6 +1246,7 @@ export async function acceptOffer(
       updated_at: acceptedAt,
     })
     .eq('id', offer.listing_id)
+    .is('deleted_at', null)
     .select('id, status, sold_to_user_id')
     .maybeSingle();
 
@@ -928,10 +1270,21 @@ export async function acceptOffer(
     throw new OfferServiceError('Unable to complete the sale for this buyer', 500);
   }
 
-  // Reject all other pending offers for this listing
+  const { data: competingOffers, error: competingOffersError } = await supabaseAdmin
+    .from('offers')
+    .select('buyer_id')
+    .eq('listing_id', offer.listing_id)
+    .eq('status', 'pending')
+    .neq('id', offerId);
+
+  if (competingOffersError) {
+    console.error('[Offers] Failed to inspect competing offers before rejection:', competingOffersError);
+  }
+
+  // Close all other pending offers for this listing because the item has sold.
   const { error: rejectErr } = await supabaseAdmin
     .from('offers')
-    .update({ status: 'rejected', updated_at: new Date().toISOString() })
+    .update({ status: 'withdrawn', updated_at: new Date().toISOString() })
     .eq('listing_id', offer.listing_id)
     .eq('status', 'pending')
     .neq('id', offerId);
@@ -951,7 +1304,30 @@ export async function acceptOffer(
     throw new OfferServiceError('Offer accepted but unable to fetch updated data', 500);
   }
 
-  return mapOffer(updatedOffer as RawOffer);
+  const acceptedOffer = mapOffer(updatedOffer as RawOffer);
+
+  try {
+    await notifyOfferAccepted(acceptedOffer, userId);
+  } catch (notificationError) {
+    console.error('[Offers] Failed to create accepted-offer notification:', notificationError);
+  }
+
+  try {
+    await notifyCompetingOffersWithdrawn(
+      acceptedOffer.listing.title,
+      ((competingOffers ?? []) as Array<{ buyer_id: string }>).map((item) => item.buyer_id)
+    );
+  } catch (notificationError) {
+    console.error('[Offers] Failed to notify competing offer buyers:', notificationError);
+  }
+
+  try {
+    await ensurePurchaseReceiptForAcceptedOffer(offerId);
+  } catch (receiptError) {
+    console.error('[Offers] Failed to create accepted-offer receipt:', receiptError);
+  }
+
+  return acceptedOffer;
 }
 
 /**
@@ -1002,7 +1378,15 @@ export async function rejectOffer(
     throw new OfferServiceError('Offer rejected but unable to fetch updated data', 500);
   }
 
-  return mapOffer(updatedOffer as RawOffer);
+  const rejectedOffer = mapOffer(updatedOffer as RawOffer);
+
+  try {
+    await notifyOfferRejected(rejectedOffer, userId);
+  } catch (notificationError) {
+    console.error('[Offers] Failed to create rejected-offer notification:', notificationError);
+  }
+
+  return rejectedOffer;
 }
 
 /**
@@ -1065,6 +1449,10 @@ export async function createCounterOffer(
 ): Promise<OfferSummary> {
   const { offerId, counterPrice, message } = input;
 
+  if (!Number.isFinite(counterPrice) || counterPrice <= 0) {
+    throw new OfferServiceError('counterPrice must be greater than 0', 422);
+  }
+
   const { data: original, error: fetchErr } = await supabaseAdmin
     .from('offers')
     .select('id, listing_id, buyer_id, seller_id, status, initiated_by, offer_kind')
@@ -1086,9 +1474,12 @@ export async function createCounterOffer(
     throw new OfferServiceError('You can only counter a proposal when it is your turn to respond', 403);
   }
 
+  const counterUpdatedAt = new Date().toISOString();
+  const counterOfferId = randomUUID();
+
   const { error: rejectErr } = await supabaseAdmin
     .from('offers')
-    .update({ status: 'rejected', updated_at: new Date().toISOString() })
+    .update({ status: 'rejected', updated_at: counterUpdatedAt })
     .eq('id', offerId);
 
   if (rejectErr) {
@@ -1096,9 +1487,10 @@ export async function createCounterOffer(
     throw new OfferServiceError('Unable to process counter offer', 500);
   }
 
-  const { data: counterOffer, error: insertErr } = await supabaseAdmin
+  const { error: insertErr } = await supabaseAdmin
     .from('offers')
     .insert({
+      id: counterOfferId,
       listing_id: originalRecord.listing_id,
       buyer_id: originalRecord.buyer_id,
       seller_id: originalRecord.seller_id,
@@ -1108,16 +1500,62 @@ export async function createCounterOffer(
       offer_kind: 'counter_offer',
       initiated_by: userId,
       parent_offer_id: offerId,
-    })
-    .select(OFFER_SELECT)
-    .single();
+      updated_at: counterUpdatedAt,
+    });
 
-  if (insertErr || !counterOffer) {
+  if (insertErr) {
     console.error('[Offers] Failed to create counter offer:', insertErr);
+
+    const { error: rollbackErr } = await supabaseAdmin
+      .from('offers')
+      .update({ status: 'pending', updated_at: new Date().toISOString() })
+      .eq('id', offerId);
+
+    if (rollbackErr) {
+      console.error('[Offers] Failed to roll back original offer after counter insert error:', rollbackErr);
+    }
+
     throw new OfferServiceError('Unable to create counter offer', 500);
   }
 
-  return mapOffer(counterOffer as RawOffer);
+  const { data: counterOffer, error: refetchErr } = await supabaseAdmin
+    .from('offers')
+    .select(OFFER_SELECT)
+    .eq('id', counterOfferId)
+    .single();
+
+  if (refetchErr || !counterOffer) {
+    console.error('[Offers] Counter offer created but failed to fetch updated data:', refetchErr);
+    throw new OfferServiceError('Counter offer created but unable to fetch updated data', 500);
+  }
+
+  const createdCounterOffer = mapOffer(counterOffer as RawOffer);
+
+  if (userId === originalRecord.buyer_id) {
+    try {
+      const counterOfferListing = unwrapRelation((counterOffer as RawOffer).listings);
+      if (counterOfferListing) {
+        const autoResponse = await maybeAutoRespondToCreatedOffer(
+          createdCounterOffer,
+          counterOfferListing as RawAutoNegotiationListing
+        );
+
+        if (autoResponse) {
+          return autoResponse;
+        }
+      }
+    } catch (autoNegotiationError) {
+      console.error('[Offers] Auto-negotiation failed for buyer counter-offer:', autoNegotiationError);
+    }
+  }
+
+  try {
+    await notifyOfferCreated(createdCounterOffer);
+  } catch (notificationError) {
+    console.error('[Offers] Failed to create counter-offer notification:', notificationError);
+  }
+
+  return createdCounterOffer;
 }
 
 export async function createBuyerReview(
@@ -1190,7 +1628,19 @@ export async function createBuyerReview(
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
-    .select('id, listing_id, reviewer_id, seller_id, rating, comment, created_at')
+    .select(`
+      id,
+      listing_id,
+      reviewer_id,
+      seller_id,
+      rating,
+      comment,
+      created_at,
+      updated_at,
+      seller_response,
+      seller_response_created_at,
+      seller_response_updated_at
+    `)
     .single();
 
   if (insertError || !createdReview) {
@@ -1202,6 +1652,87 @@ export async function createBuyerReview(
   }
 
   return mapOfferReview(createdReview as RawReview);
+}
+
+export async function createSellerReviewResponse(
+  userId: string,
+  input: CreateSellerReviewResponseInput
+): Promise<OfferReviewSummary> {
+  const response = trimOptional(input.response);
+
+  if (!response || response.length < 3) {
+    throw new OfferServiceError('response must be at least 3 characters long', 422);
+  }
+
+  if (response.length > 1000) {
+    throw new OfferServiceError('response must be 1000 characters or fewer', 422);
+  }
+
+  const offer = await getCompletedSaleOfferById(input.offerId);
+  assertSellerCanRespondToReview(userId, offer);
+
+  const { data: existingReview, error: reviewError } = await supabaseAdmin
+    .from('reviews')
+    .select(`
+      id,
+      listing_id,
+      reviewer_id,
+      seller_id,
+      rating,
+      comment,
+      created_at,
+      updated_at,
+      seller_response,
+      seller_response_created_at,
+      seller_response_updated_at
+    `)
+    .eq('listing_id', offer.listing_id)
+    .eq('reviewer_id', offer.buyer_id)
+    .maybeSingle();
+
+  if (reviewError) {
+    console.error('[Offers] Failed to inspect review before seller response:', reviewError);
+    throw new OfferServiceError('Unable to inspect the buyer review for this purchase', 500);
+  }
+
+  if (!existingReview) {
+    throw new OfferServiceError('The buyer has not left a review for this purchase yet', 404);
+  }
+
+  const timestamp = new Date().toISOString();
+  const nextSellerResponseCreatedAt =
+    (existingReview as RawReview).seller_response_created_at ?? timestamp;
+
+  const { data: updatedReview, error: updateError } = await supabaseAdmin
+    .from('reviews')
+    .update({
+      seller_response: response,
+      seller_response_created_at: nextSellerResponseCreatedAt,
+      seller_response_updated_at: timestamp,
+      updated_at: timestamp,
+    })
+    .eq('id', existingReview.id)
+    .select(`
+      id,
+      listing_id,
+      reviewer_id,
+      seller_id,
+      rating,
+      comment,
+      created_at,
+      updated_at,
+      seller_response,
+      seller_response_created_at,
+      seller_response_updated_at
+    `)
+    .single();
+
+  if (updateError || !updatedReview) {
+    console.error('[Offers] Failed to save seller review response:', updateError);
+    throw new OfferServiceError('Unable to save your reply to this buyer review', 500);
+  }
+
+  return mapOfferReview(updatedReview as RawReview);
 }
 
 export async function reportDeliveryIssue(
@@ -1274,12 +1805,12 @@ export async function reportDeliveryIssue(
     toNumber(offer.offer_price),
     listing.currency
   );
-  const proofUrls = await uploadDeliveryProofs(userId, proofs);
+  const uploadedProofs = await uploadDeliveryProofs(userId, proofs);
   const reportDetails = buildDeliveryDisputeDetails({
     offerId: input.offerId,
     agreedPriceLabel,
     paymentReference,
-    proofUrls,
+    proofUrls: uploadedProofs.map((proof) => proof.publicUrl),
     buyerStatement,
   });
   const timestamp = new Date().toISOString();
@@ -1301,9 +1832,12 @@ export async function reportDeliveryIssue(
   if (insertError || !createdReport) {
     console.error('[Offers] Failed to create delivery issue report:', insertError);
 
-    if (proofUrls.length > 0) {
+    if (uploadedProofs.length > 0) {
       try {
-        await removeStorageObjects(DELIVERY_PROOF_BUCKET, proofUrls);
+        await removeStorageObjects(
+          DELIVERY_PROOF_BUCKET,
+          uploadedProofs.map((proof) => proof.storagePath)
+        );
       } catch (cleanupError) {
         console.error('[Offers] Failed to clean up uploaded proof images:', cleanupError);
       }
@@ -1318,6 +1852,12 @@ export async function reportDeliveryIssue(
   const mappedIssue = mapDeliveryIssue(createdReport as RawReport);
   if (!mappedIssue) {
     throw new OfferServiceError('Delivery issue saved but could not be mapped correctly', 500);
+  }
+
+  try {
+    await notifyDeliveryIssueReported(offer.seller_id, listing.title, buyerStatement);
+  } catch (notificationError) {
+    console.error('[Offers] Failed to create delivery-issue notification:', notificationError);
   }
 
   return mappedIssue;

@@ -21,6 +21,9 @@ import {
 } from '../services/adminService';
 import { sendError, sendSuccess } from '../utils/apiResponse';
 
+const MIN_ADMIN_USER_PASSWORD_LENGTH = 8;
+const MAX_ADMIN_USER_PASSWORD_LENGTH = 72;
+
 function handleAdminError(res: Response, error: unknown, fallbackMessage: string): void {
   if (error instanceof AdminServiceError) {
     sendError(res, error.message, error.status);
@@ -31,9 +34,28 @@ function handleAdminError(res: Response, error: unknown, fallbackMessage: string
   sendError(res, fallbackMessage, 500);
 }
 
+function parseOverviewYear(value: unknown): number | undefined {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+
+  if (typeof rawValue !== 'string' || !rawValue.trim()) {
+    return undefined;
+  }
+
+  const parsedYear = Number(rawValue);
+  const maxYear = new Date().getUTCFullYear() + 1;
+
+  if (!Number.isInteger(parsedYear) || parsedYear < 2000 || parsedYear > maxYear) {
+    throw new AdminServiceError('year must be a valid calendar year', 422);
+  }
+
+  return parsedYear;
+}
+
 export async function getAdminOverviewHandler(req: Request, res: Response): Promise<void> {
   try {
-    const data = await getAdminOverview();
+    const data = await getAdminOverview({
+      year: parseOverviewYear(req.query.year),
+    });
     sendSuccess(res, data);
   } catch (error) {
     handleAdminError(res, error, 'Internal server error while fetching the admin overview');
@@ -57,14 +79,45 @@ export async function getAdminUsersHandler(req: Request, res: Response): Promise
 }
 
 export async function createAdminUserHandler(req: Request, res: Response): Promise<void> {
+  const { fullName, username, email, password, stateId, areaId } = req.body as {
+    fullName?: string;
+    username?: string;
+    email?: string;
+    password?: string;
+    stateId?: number | null;
+    areaId?: number | null;
+  };
+
+  if (typeof password !== 'string' || !password.trim()) {
+    sendError(res, 'Password is required', 422);
+    return;
+  }
+
+  if (
+    password.length < MIN_ADMIN_USER_PASSWORD_LENGTH ||
+    password.length > MAX_ADMIN_USER_PASSWORD_LENGTH
+  ) {
+    sendError(
+      res,
+      `Password must be between ${MIN_ADMIN_USER_PASSWORD_LENGTH} and ${MAX_ADMIN_USER_PASSWORD_LENGTH} characters`,
+      422
+    );
+    return;
+  }
+
+  if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password)) {
+    sendError(res, 'Password must include uppercase, lowercase, and number characters', 422);
+    return;
+  }
+
   try {
-    const data = await createAdminUser(req.body as {
-      fullName: string;
-      username: string;
-      email: string;
-      password: string;
-      stateId?: number | null;
-      areaId?: number | null;
+    const data = await createAdminUser({
+      fullName: fullName ?? '',
+      username: username ?? '',
+      email: email ?? '',
+      password,
+      stateId,
+      areaId,
     });
 
     sendSuccess(res, data, 201);

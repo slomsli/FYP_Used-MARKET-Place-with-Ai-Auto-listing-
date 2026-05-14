@@ -47,7 +47,7 @@ export async function getProfileHandler(
 
 /**
  * PATCH /api/dashboard/profile
- * Body: { fullName?, username?, phone?, stateId?, areaId? }
+ * Body: { fullName?, username?, phone?, stateId?, areaId?, latitude?, longitude? }
  */
 export async function updateProfileHandler(
   req: AuthenticatedRequest,
@@ -59,12 +59,14 @@ export async function updateProfileHandler(
   }
 
   try {
-    const { fullName, username, phone, stateId, areaId } = req.body as {
+    const { fullName, username, phone, stateId, areaId, latitude, longitude } = req.body as {
       fullName?: string;
       username?: string;
       phone?: string;
       stateId?: number | null;
       areaId?: number | null;
+      latitude?: number | string | null;
+      longitude?: number | string | null;
     };
 
     const result = await updateProfile(req.user.id, {
@@ -73,6 +75,8 @@ export async function updateProfileHandler(
       phone,
       stateId,
       areaId,
+      latitude,
+      longitude,
     });
 
     sendSuccess(res, result);

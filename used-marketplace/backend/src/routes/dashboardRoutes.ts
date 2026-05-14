@@ -1,9 +1,11 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { getSummary } from '../controllers/dashboardController';
 import {
   createNewListing,
   deleteSellerListing,
   getListingFormMetadata,
+  getSellerListingSaleBuyerCandidates,
   getSellerListing,
   getSellerListings,
   markSellerListingActive,
@@ -26,6 +28,7 @@ import {
   cancelOfferHandler,
   counterOfferHandler,
   createBuyerReviewHandler,
+  createSellerReviewResponseHandler,
   reportDeliveryIssueHandler,
 } from '../controllers/offerController';
 import {
@@ -36,11 +39,33 @@ import {
   getStatesHandler,
   getAreasHandler,
 } from '../controllers/profileController';
+import {
+  getNotificationsHandler,
+  markAllNotificationsReadHandler,
+  markNotificationReadHandler,
+} from '../controllers/notificationController';
+import {
+  confirmPurchaseReceiptPaymentHandler,
+  getPurchaseReceiptDetailHandler,
+  getPurchasesHandler,
+  markPurchaseReceiptPaidHandler,
+} from '../controllers/purchaseController';
 import { authenticate } from '../middleware/authenticate';
 import { requireMarketplaceUser } from '../middleware/requireUnsuspendedTransactionUser';
 import { validateCreateListing } from '../middleware/listings/validateCreateListing';
 
 const router = Router();
+
+const listingGenerationLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 12,
+  message: {
+    success: false,
+    error: 'Too many AI listing requests. Please wait a few minutes before generating again.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // Apply auth middleware to all dashboard endpoints
 router.use(authenticate);
@@ -48,9 +73,13 @@ router.use('/summary', requireMarketplaceUser);
 router.use('/favorites', requireMarketplaceUser);
 router.use('/offers', requireMarketplaceUser);
 router.use('/listings', requireMarketplaceUser);
+router.use('/purchases', requireMarketplaceUser);
 
 // GET /api/dashboard/summary
 router.get('/summary', getSummary);
+router.get('/notifications', getNotificationsHandler);
+router.patch('/notifications/read-all', markAllNotificationsReadHandler);
+router.patch('/notifications/:notificationId/read', markNotificationReadHandler);
 
 // ── Profile ────────────────────────────────────────────
 // GET /api/dashboard/profile
@@ -106,15 +135,30 @@ router.post('/offers/:offerId/counter', counterOfferHandler);
 // POST /api/dashboard/offers/:offerId/review
 router.post('/offers/:offerId/review', createBuyerReviewHandler);
 
+// PATCH /api/dashboard/offers/:offerId/review-response
+router.patch('/offers/:offerId/review-response', createSellerReviewResponseHandler);
+
 // POST /api/dashboard/offers/:offerId/not-received
 router.post('/offers/:offerId/not-received', reportDeliveryIssueHandler);
+
+// GET /api/dashboard/purchases
+router.get('/purchases', getPurchasesHandler);
+
+// GET /api/dashboard/purchases/:receiptId
+router.get('/purchases/:receiptId', getPurchaseReceiptDetailHandler);
+
+// PATCH /api/dashboard/purchases/:receiptId/mark-paid
+router.patch('/purchases/:receiptId/mark-paid', markPurchaseReceiptPaidHandler);
+
+// PATCH /api/dashboard/purchases/:receiptId/confirm-payment
+router.patch('/purchases/:receiptId/confirm-payment', confirmPurchaseReceiptPaymentHandler);
 
 // ── Listings ───────────────────────────────────────────
 // GET /api/dashboard/listings/metadata
 router.get('/listings/metadata', getListingFormMetadata);
 
 // POST /api/dashboard/listings/generate
-router.post('/listings/generate', generateListingFromImageHandler);
+router.post('/listings/generate', listingGenerationLimiter, generateListingFromImageHandler);
 
 // GET /api/dashboard/listings
 router.get('/listings', getSellerListings);
@@ -124,6 +168,9 @@ router.post('/listings', validateCreateListing, createNewListing);
 
 // POST /api/dashboard/listings/uploads
 router.post('/listings/uploads', uploadSellerListingImage);
+
+// GET /api/dashboard/listings/:listingId/sale-candidates
+router.get('/listings/:listingId/sale-candidates', getSellerListingSaleBuyerCandidates);
 
 // GET /api/dashboard/listings/:listingId
 router.get('/listings/:listingId', getSellerListing);
@@ -137,10 +184,10 @@ router.patch('/listings/:listingId/mark-sold', markSellerListingSold);
 // PATCH /api/dashboard/listings/:listingId/mark-active
 router.patch('/listings/:listingId/mark-active', markSellerListingActive);
 
-// PATCH /api/dashboard/listings/:listingId/activate
+// Legacy aliases kept for older frontend clients that still fall back to these paths.
+// New code should use /mark-active as the canonical route.
 router.patch('/listings/:listingId/activate', markSellerListingActive);
 
-// PATCH /api/dashboard/listings/:listingId/restore
 router.patch('/listings/:listingId/restore', markSellerListingActive);
 
 // DELETE /api/dashboard/listings/:listingId

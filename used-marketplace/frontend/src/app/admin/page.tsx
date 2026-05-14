@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ROUTES } from '@/src/config/routes';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import { getAdminOverview } from '@/src/services/adminService';
@@ -105,25 +105,31 @@ function RefreshIcon() {
   );
 }
 
+function ArrowUpIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+      <path d="M12 19V5" />
+      <path d="m5 12 7-7 7 7" />
+    </svg>
+  );
+}
+
 function formatRelativeTime(value: string) {
   const timestamp = new Date(value).getTime();
-  if (!Number.isFinite(timestamp)) {
-    return 'Recently';
-  }
-
+  if (!Number.isFinite(timestamp)) return 'Recently';
   const diffMinutes = Math.max(Math.floor((Date.now() - timestamp) / 60000), 0);
-
-  if (diffMinutes < 60) {
-    return `${diffMinutes || 1} min ago`;
-  }
-
+  if (diffMinutes < 60) return `${diffMinutes || 1} min ago`;
   const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) {
-    return `${diffHours} hr${diffHours === 1 ? '' : 's'} ago`;
-  }
-
+  if (diffHours < 24) return `${diffHours} hr${diffHours === 1 ? '' : 's'} ago`;
   const diffDays = Math.floor(diffHours / 24);
   return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+}
+
+function getTimeGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
 }
 
 export default function AdminPage() {
@@ -131,34 +137,35 @@ export default function AdminPage() {
   const [overview, setOverview] = useState<AdminOverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
+  const [selectedMonthIndex, setSelectedMonthIndex] = useState<number | null>(null);
+  const [selectedYear, setSelectedYear] = useState<number | undefined>(undefined);
+  const [selectedFocusKey, setSelectedFocusKey] = useState('verification');
 
-  useEffect(() => {
-    if (!token) {
-      return;
+  const loadOverview = useCallback(async () => {
+    if (!token) return;
+
+    setLoading(true);
+    const response = await getAdminOverview(token, selectedYear);
+
+    if (response.data) {
+      setOverview(response.data);
+      setError(null);
+      setLastRefreshedAt(new Intl.DateTimeFormat('en-MY', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }).format(new Date()));
+    } else {
+      setError(response.error || 'Failed to load the admin overview.');
     }
 
-    let cancelled = false;
+    setLoading(false);
+  }, [selectedYear, token]);
 
-    getAdminOverview(token).then((response) => {
-      if (cancelled) {
-        return;
-      }
-
-      if (response.data) {
-        setOverview(response.data);
-        setError(null);
-      } else {
-        setError(response.error || 'Failed to load the admin overview.');
-      }
-
-      setLoading(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshKey, token]);
+  useEffect(() => {
+    void loadOverview();
+  }, [loadOverview]);
 
   if (loading && !overview) {
     return <div className={styles.emptyState}>Loading admin overview...</div>;
@@ -172,195 +179,439 @@ export default function AdminPage() {
     );
   }
 
-  const chartMax = Math.max(
-    ...overview.activity.months.flatMap((month) => [month.users, month.listings, month.reports]),
-    1
-  );
+  const totalSoldThisPeriod = overview.activity.months.reduce((sum, m) => sum + m.soldItems, 0);
+
   const statCards = [
     {
       label: 'Total Users',
       value: overview.stats.totalUsers,
-      detail: `${overview.health.verificationRate}% verified accounts`,
+      detail: `${overview.health.verificationRate}% verified`,
       icon: <UsersIcon />,
       tone: styles.statCardInk,
+      trend: overview.health.verificationRate === 100 ? 'All verified' : `${overview.health.pendingVerificationUsers} pending`,
+      trendUp: overview.health.verificationRate >= 80,
     },
     {
       label: 'Active Listings',
       value: overview.stats.activeListings,
-      detail: `${overview.health.activeRegions} regions with live supply`,
+      detail: `Across ${overview.health.activeRegions} regions`,
       icon: <ListingIcon />,
       tone: styles.statCardMint,
+      trend: `${overview.health.activeRegions} active regions`,
+      trendUp: overview.stats.activeListings > 0,
     },
     {
       label: 'Pending Reports',
       value: overview.stats.pendingReports,
-      detail: `${overview.health.moderationThreads} moderation threads open`,
+      detail: `${overview.health.moderationThreads} threads open`,
       icon: <AlertIcon />,
       tone: styles.statCardPeach,
+      trend: overview.stats.pendingReports === 0 ? 'All clear' : `${overview.health.moderationThreads} in review`,
+      trendUp: overview.stats.pendingReports === 0,
     },
     {
-      label: 'Sold Items',
+      label: 'Items Sold',
       value: overview.stats.soldItems,
-      detail: `${overview.stats.pendingOffers} pending offers still in the queue`,
+      detail: `${totalSoldThisPeriod} sold this period`,
       icon: <SoldIcon />,
       tone: styles.statCardSoft,
+      trend: `${totalSoldThisPeriod} recent`,
+      trendUp: totalSoldThisPeriod > 0,
     },
     {
-      label: 'Marketplace Offers',
+      label: 'Open Offers',
       value: overview.stats.pendingOffers,
-      detail: `${overview.health.pendingVerificationUsers} users still awaiting verification`,
+      detail: `${overview.health.pendingVerificationUsers} users awaiting verification`,
       icon: <OfferIcon />,
       tone: styles.statCardNavy,
+      trend: overview.stats.pendingOffers === 0 ? 'None pending' : `${overview.stats.pendingOffers} active`,
+      trendUp: overview.stats.pendingOffers === 0,
     },
   ];
+  const focusItems = [
+    {
+      key: 'verification',
+      label: 'Email verification',
+      value: `${overview.health.verificationRate}%`,
+      description: `${overview.health.verificationRate}% of registered users have verified their email. ${overview.health.pendingVerificationUsers.toLocaleString()} user(s) are still waiting for verification.`,
+      actionLabel: 'Review users',
+      actionHref: ROUTES.ADMIN_USERS,
+      hasProgress: true,
+      progress: overview.health.verificationRate,
+    },
+    {
+      key: 'suspended',
+      label: 'Suspended accounts',
+      value: overview.health.suspendedUsers.toLocaleString(),
+      description: `${overview.health.suspendedUsers.toLocaleString()} account(s) are currently restricted from normal marketplace activity. Use this to check whether users need reactivation or further review.`,
+      actionLabel: 'Open users',
+      actionHref: ROUTES.ADMIN_USERS,
+    },
+    {
+      key: 'moderation',
+      label: 'Moderation threads',
+      value: overview.health.moderationThreads.toLocaleString(),
+      description: `${overview.health.moderationThreads.toLocaleString()} admin conversation thread(s) are open for listing moderation or user follow-up.`,
+      actionLabel: 'Open inbox',
+      actionHref: ROUTES.ADMIN_MESSAGES,
+    },
+    {
+      key: 'regions',
+      label: 'Active regions',
+      value: overview.health.activeRegions.toLocaleString(),
+      description: `${overview.health.activeRegions.toLocaleString()} region(s) currently have marketplace activity from active listings. This helps you see how widely the marketplace is being used.`,
+      actionLabel: 'Manage structure',
+      actionHref: ROUTES.ADMIN_STRUCTURE,
+    },
+  ];
+  const selectedFocus = focusItems.find((item) => item.key === selectedFocusKey) ?? focusItems[0];
 
   return (
     <div className={styles.page}>
-      <section className={styles.hero}>
-        <div className={styles.heroCopy}>
-          <p className={styles.eyebrow}>Platform Control</p>
-          <h1 className={styles.title}>Admin overview for the full marketplace.</h1>
-          <p className={styles.subtitle}>
-            Admin accounts stay management-only here. Buying, selling, favorites, and normal member
-            tools are disabled so this workspace stays focused on coordination, moderation, and
-            marketplace health.
+      {/* ── Greeting Banner ── */}
+      <section className={styles.greetingBanner}>
+        <div className={styles.greetingLeft}>
+          <p className={styles.greetingEyebrow}>Platform Control</p>
+          <h1 className={styles.greetingTitle}>{getTimeGreeting()}, Admin</h1>
+          <p className={styles.greetingSubtitle}>
+            Here&apos;s what&apos;s happening across the marketplace today. Review activity, moderate content, and manage operations all from one place.
           </p>
         </div>
 
-        <div className={styles.heroActions}>
+        <div className={styles.greetingActions}>
           <button
             type="button"
-            className={styles.secondaryButton}
-            onClick={() => {
-              setLoading(true);
-              setRefreshKey((value) => value + 1);
-            }}
+            className={styles.btnPrimary}
+            onClick={() => void loadOverview()}
+            disabled={loading}
           >
             <RefreshIcon />
-            <span>Refresh</span>
+            <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
           </button>
-          <Link href={ROUTES.ADMIN_LISTINGS} className={styles.primaryButton}>
+          <Link href={ROUTES.ADMIN_LISTINGS} className={styles.btnPrimary}>
             <ListingIcon />
-            <span>Manage Listings</span>
+            <span>Listings</span>
           </Link>
-          <Link href={ROUTES.ADMIN_REPORTS} className={styles.secondaryButton}>
+          <Link href={ROUTES.ADMIN_REPORTS} className={styles.btnGhost}>
             <AlertIcon />
-            <span>Open Reports</span>
+            <span>Reports</span>
           </Link>
-          <Link href={ROUTES.ADMIN_MESSAGES} className={styles.secondaryButton}>
-            <MessageIcon />
-            <span>Open Inbox</span>
-          </Link>
-          <Link href={ROUTES.ADMIN_SUPPORT} className={styles.secondaryButton}>
+          <Link href={ROUTES.ADMIN_SUPPORT} className={styles.btnGhost}>
             <TicketIcon />
-            <span>Support Tickets</span>
+            <span>Support</span>
           </Link>
+          <span className={styles.refreshStatus}>
+            {error ? error : lastRefreshedAt ? `Updated ${lastRefreshedAt}` : 'Live overview'}
+          </span>
         </div>
       </section>
 
+      {/* ── Stat Cards ── */}
       <section className={styles.statsGrid}>
         {statCards.map((card) => (
           <article key={card.label} className={`${styles.statCard} ${card.tone}`}>
-            <div className={styles.statIcon}>{card.icon}</div>
-            <p className={styles.statLabel}>{card.label}</p>
+            <div className={styles.statTop}>
+              <div className={styles.statIcon}>{card.icon}</div>
+              <span className={`${styles.statTrend} ${card.trendUp ? styles.trendUp : styles.trendNeutral}`}>
+                {card.trendUp && <ArrowUpIcon />}
+                {card.trend}
+              </span>
+            </div>
             <h2 className={styles.statValue}>{card.value.toLocaleString()}</h2>
+            <p className={styles.statLabel}>{card.label}</p>
             <p className={styles.statDetail}>{card.detail}</p>
           </article>
         ))}
       </section>
 
+      {/* ── Content Grid ── */}
       <section className={styles.contentGrid}>
-        <article className={styles.chartCard}>
+        <article className={styles.card}>
           <div className={styles.sectionHeader}>
             <div>
-              <p className={styles.sectionEyebrow}>Last Six Months</p>
-              <h2>Marketplace activity</h2>
+              <p className={styles.sectionEyebrow}>Activity Breakdown</p>
+              <h2 className={styles.sectionTitle}>Monthly Overview</h2>
             </div>
             <div className={styles.chartLegend}>
-              <span className={styles.legendItem}>
-                <span className={`${styles.legendDot} ${styles.legendUsers}`} />
-                Users
-              </span>
-              <span className={styles.legendItem}>
-                <span className={`${styles.legendDot} ${styles.legendListings}`} />
-                Listings
-              </span>
-              <span className={styles.legendItem}>
-                <span className={`${styles.legendDot} ${styles.legendReports}`} />
-                Reports
-              </span>
+              <span className={styles.legendItem}><span className={`${styles.legendDot} ${styles.legendUsers}`} />Users</span>
+              <span className={styles.legendItem}><span className={`${styles.legendDot} ${styles.legendListings}`} />Listings</span>
+              <span className={styles.legendItem}><span className={`${styles.legendDot} ${styles.legendSold}`} />Sold</span>
+              <span className={styles.legendItem}><span className={`${styles.legendDot} ${styles.legendReports}`} />Reports</span>
             </div>
           </div>
 
-          <div className={styles.chartGrid}>
-            {overview.activity.months.map((month) => (
-              <div key={month.value} className={styles.chartColumn}>
-                <div className={styles.chartBars}>
-                  <span
-                    className={`${styles.chartBar} ${styles.chartUsers}`}
-                    style={{ height: `${Math.max((month.users / chartMax) * 100, month.users ? 10 : 4)}%` }}
-                    title={`${month.label}: ${month.users} user(s)`}
-                  />
-                  <span
-                    className={`${styles.chartBar} ${styles.chartListings}`}
-                    style={{ height: `${Math.max((month.listings / chartMax) * 100, month.listings ? 10 : 4)}%` }}
-                    title={`${month.label}: ${month.listings} listing(s)`}
-                  />
-                  <span
-                    className={`${styles.chartBar} ${styles.chartReports}`}
-                    style={{ height: `${Math.max((month.reports / chartMax) * 100, month.reports ? 10 : 4)}%` }}
-                    title={`${month.label}: ${month.reports} report(s)`}
-                  />
+          {/* ── Year + Month Selector ── */}
+          <div className={styles.filterBar}>
+            <div className={styles.yearSelector}>
+              <label className={styles.yearLabel} htmlFor="overview-year">Year</label>
+              <select
+                id="overview-year"
+                className={styles.yearDropdown}
+                value={selectedYear ?? ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedYear(val ? Number(val) : undefined);
+                  setSelectedMonthIndex(null);
+                }}
+              >
+                <option value="">Recent 6 Months</option>
+                {(overview.activity.availableYears ?? []).map((yr) => (
+                  <option key={yr} value={yr}>{yr}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className={styles.monthTabs}>
+              <button
+                type="button"
+                className={`${styles.monthTab} ${selectedMonthIndex === null ? styles.monthTabActive : ''}`}
+                onClick={() => setSelectedMonthIndex(null)}
+              >
+                View All
+              </button>
+              {overview.activity.months.map((month, index) => (
+                <button
+                  key={month.value}
+                  type="button"
+                  className={`${styles.monthTab} ${selectedMonthIndex === index ? styles.monthTabActive : ''}`}
+                  onClick={() => setSelectedMonthIndex(index)}
+                >
+                  {month.label.split(' ')[0]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Chart content ── */}
+          {selectedMonthIndex === null ? (
+            <>
+              {/* View All — vertical grouped bar chart */}
+              {(() => {
+                const chartMax = Math.max(
+                  ...overview.activity.months.flatMap((m) => [m.users, m.listings, m.soldItems, m.reports]),
+                  1,
+                );
+                const yLabels = [chartMax, Math.round(chartMax * 0.75), Math.round(chartMax * 0.5), Math.round(chartMax * 0.25), 0];
+
+                return (
+                  <div className={styles.chartWrapper}>
+                    <div className={styles.chartArea}>
+                      <div className={styles.chartYAxis}>
+                        {yLabels.map((v, i) => (
+                          <span key={i} className={styles.chartYLabel}>{v}</span>
+                        ))}
+                      </div>
+                      <div className={styles.chartGrid}>
+                        {overview.activity.months.map((month) => (
+                          <div key={month.value} className={styles.chartColumn}>
+                            <div className={styles.chartBars}>
+                              <span
+                                className={`${styles.chartBar} ${styles.barUsers}`}
+                                style={{ height: `${Math.max((month.users / chartMax) * 100, month.users ? 5 : 2)}%` }}
+                              >
+                                <span className={styles.barValue}>Users: {month.users}</span>
+                              </span>
+                              <span
+                                className={`${styles.chartBar} ${styles.barListings}`}
+                                style={{ height: `${Math.max((month.listings / chartMax) * 100, month.listings ? 5 : 2)}%` }}
+                              >
+                                <span className={styles.barValue}>Listings: {month.listings}</span>
+                              </span>
+                              <span
+                                className={`${styles.chartBar} ${styles.barSold}`}
+                                style={{ height: `${Math.max((month.soldItems / chartMax) * 100, month.soldItems ? 5 : 2)}%` }}
+                              >
+                                <span className={styles.barValue}>Sold: {month.soldItems}</span>
+                              </span>
+                              <span
+                                className={`${styles.chartBar} ${styles.barReports}`}
+                                style={{ height: `${Math.max((month.reports / chartMax) * 100, month.reports ? 5 : 2)}%` }}
+                              >
+                                <span className={styles.barValue}>Reports: {month.reports}</span>
+                              </span>
+                            </div>
+                            <span className={styles.chartLabel}>{month.label.split(' ')[0]}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className={styles.chartFooter}>
+                <div className={styles.chartFooterItem}>
+                  <span className={styles.chartFooterLabel}>Pending verification</span>
+                  <strong className={styles.chartFooterValue}>{overview.health.pendingVerificationUsers.toLocaleString()}</strong>
                 </div>
-                <span className={styles.chartLabel}>{month.label}</span>
+                <div className={styles.chartFooterItem}>
+                  <span className={styles.chartFooterLabel}>Suspended users</span>
+                  <strong className={styles.chartFooterValue}>{overview.health.suspendedUsers.toLocaleString()}</strong>
+                </div>
+                <div className={styles.chartFooterItem}>
+                  <span className={styles.chartFooterLabel}>Sold this period</span>
+                  <strong className={styles.chartFooterValue}>{totalSoldThisPeriod.toLocaleString()}</strong>
+                </div>
               </div>
-            ))}
-          </div>
+            </>
+          ) : (
+            (() => {
+              const month = overview.activity.months[selectedMonthIndex];
+              const prevMonth = selectedMonthIndex > 0 ? overview.activity.months[selectedMonthIndex - 1] : null;
+              const metricMax = Math.max(month.users, month.listings, month.soldItems, month.reports, 1);
 
-          <div className={styles.chartSummary}>
-            <div>
-              <span>Pending verification</span>
-              <strong>{overview.health.pendingVerificationUsers.toLocaleString()}</strong>
+              function getChange(current: number, previous: number | undefined) {
+                if (previous === undefined || previous === 0) return current > 0 ? '+100%' : '—';
+                const pct = Math.round(((current - previous) / previous) * 100);
+                if (pct > 0) return `+${pct}%`;
+                if (pct < 0) return `${pct}%`;
+                return '0%';
+              }
+
+              const metrics = [
+                { label: 'New Users',     value: month.users,     prev: prevMonth?.users,     barClass: styles.barUsers },
+                { label: 'New Listings',  value: month.listings,  prev: prevMonth?.listings,  barClass: styles.barListings },
+                { label: 'Items Sold',    value: month.soldItems,  prev: prevMonth?.soldItems,  barClass: styles.barSold },
+                { label: 'Reports Filed', value: month.reports,   prev: prevMonth?.reports,   barClass: styles.barReports },
+              ];
+
+              const yLabels = [metricMax, Math.round(metricMax * 0.75), Math.round(metricMax * 0.5), Math.round(metricMax * 0.25), 0];
+
+              return (
+                <div className={styles.monthDetail}>
+                  <div className={styles.monthDetailHeader}>
+                    <h3 className={styles.monthDetailTitle}>{month.label}</h3>
+                    {prevMonth && <span className={styles.monthDetailCompare}>vs. {prevMonth.label}</span>}
+                  </div>
+
+                  <div className={styles.chartWrapper}>
+                    <div className={styles.chartArea}>
+                      <div className={styles.chartYAxis}>
+                        {yLabels.map((v, i) => (
+                          <span key={i} className={styles.chartYLabel}>{v}</span>
+                        ))}
+                      </div>
+                      <div className={`${styles.chartGrid} ${styles.chartGridSingle}`}>
+                        {metrics.map((m) => {
+                          const changeLabel = getChange(m.value, m.prev);
+                          const changeClass =
+                            m.value > (m.prev ?? 0) ? styles.changeUp :
+                            m.value < (m.prev ?? 0) ? styles.changeDown :
+                            styles.changeFlat;
+
+                          return (
+                            <div key={m.label} className={`${styles.chartColumn} ${styles.chartColumnSingle}`}>
+                              <div className={styles.chartBars}>
+                                <span
+                                  className={`${styles.chartBar} ${m.barClass} ${styles.chartBarWide}`}
+                                  style={{ height: `${Math.max((m.value / metricMax) * 100, m.value ? 5 : 2)}%` }}
+                                >
+                                  {prevMonth && (
+                                    <span className={`${styles.monthMetricChange} ${changeClass} ${styles.barChangeBadge}`}>
+                                      {changeLabel}
+                                    </span>
+                                  )}
+                                  <span className={styles.barValue}>
+                                    {m.label}: {m.value}{prevMonth && m.prev !== undefined ? ` (prev: ${m.prev})` : ''}
+                                  </span>
+                                </span>
+                              </div>
+                              <span className={styles.chartLabel}>{m.label}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={styles.monthTotalRow}>
+                    <span>Total activity for {month.label}</span>
+                    <strong>
+                      {(month.users + month.listings + month.soldItems + month.reports).toLocaleString()} events
+                    </strong>
+                  </div>
+                </div>
+              );
+            })()
+          )}
+
+          <div className={styles.compactActivity}>
+            <div className={styles.compactActivityHeader}>
+              <div>
+                <p className={styles.compactActivityKicker}>Live Timeline</p>
+                <h3 className={styles.compactActivityTitle}>Recent activity</h3>
+              </div>
+              <Link href={ROUTES.ADMIN_LISTINGS} className={styles.compactActivityLink}>
+                Open listings
+              </Link>
             </div>
-            <div>
-              <span>Suspended users</span>
-              <strong>{overview.health.suspendedUsers.toLocaleString()}</strong>
-            </div>
-            <div>
-              <span>Sold this period</span>
-              <strong>
-                {overview.activity.months
-                  .reduce((sum, month) => sum + month.soldItems, 0)
-                  .toLocaleString()}
-              </strong>
-            </div>
+
+            {overview.recentActivity.length === 0 ? (
+              <div className={styles.compactActivityEmpty}>No recent activity is available yet.</div>
+            ) : (
+              <div className={styles.compactActivityList}>
+                {overview.recentActivity.slice(0, 4).map((item) => (
+                  <article key={item.id} className={styles.compactActivityRow}>
+                    <div className={styles.compactActivityPrimary}>
+                      <strong>{item.actorLabel}</strong>
+                      <span>{item.actionLabel}</span>
+                    </div>
+                    <div className={styles.compactActivityTarget}>{item.targetLabel}</div>
+                    <div
+                      className={`${styles.statusPill} ${styles.compactStatus} ${
+                        item.statusTone === 'attention' ? styles.statusAttention :
+                        item.statusTone === 'success' ? styles.statusSuccess :
+                        styles.statusNeutral
+                      }`}
+                    >
+                      {item.statusLabel}
+                    </div>
+                    <time className={styles.compactActivityTime}>{formatRelativeTime(item.timestamp)}</time>
+                  </article>
+                ))}
+              </div>
+            )}
           </div>
         </article>
 
         <aside className={styles.sideColumn}>
-          <article className={styles.panel}>
+          {/* Operational Focus */}
+          <article className={styles.card}>
             <p className={styles.sectionEyebrow}>Operational Focus</p>
             <div className={styles.metricList}>
-              <div className={styles.metricRow}>
-                <span>Email verification</span>
-                <strong>{overview.health.verificationRate}%</strong>
-              </div>
-              <div className={styles.metricRow}>
-                <span>Suspended accounts</span>
-                <strong>{overview.health.suspendedUsers.toLocaleString()}</strong>
-              </div>
-              <div className={styles.metricRow}>
-                <span>Moderation threads</span>
-                <strong>{overview.health.moderationThreads.toLocaleString()}</strong>
-              </div>
-              <div className={styles.metricRow}>
-                <span>Active regions</span>
-                <strong>{overview.health.activeRegions.toLocaleString()}</strong>
-              </div>
+              {focusItems.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={`${styles.metricButton} ${selectedFocus.key === item.key ? styles.metricButtonActive : ''}`}
+                  onClick={() => setSelectedFocusKey(item.key)}
+                  aria-pressed={selectedFocus.key === item.key}
+                >
+                  <span className={styles.metricButtonTop}>
+                    <span>{item.label}</span>
+                    <strong>{item.value}</strong>
+                  </span>
+                  {item.hasProgress && (
+                    <span className={styles.progressTrack}>
+                      <span className={styles.progressFill} style={{ width: `${item.progress}%` }} />
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <div className={styles.focusDetail}>
+              <span className={styles.focusDetailLabel}>What it means</span>
+              <strong>{selectedFocus.label}</strong>
+              <p>{selectedFocus.description}</p>
+              <Link href={selectedFocus.actionHref} className={styles.focusDetailLink}>
+                {selectedFocus.actionLabel}
+              </Link>
             </div>
           </article>
 
-          <article className={styles.panel}>
+          {/* Spotlight */}
+          <article className={styles.card}>
             <p className={styles.sectionEyebrow}>Spotlight</p>
             <div className={styles.spotlightCard}>
               <span className={styles.spotlightLabel}>Busiest region</span>
@@ -383,80 +634,20 @@ export default function AdminPage() {
             </div>
           </article>
 
-          <article className={`${styles.panel} ${styles.quickActionsPanel}`}>
+          {/* Quick Actions */}
+          <article className={`${styles.card} ${styles.quickActionsPanel}`}>
             <p className={styles.sectionEyebrow}>Quick Actions</p>
             <div className={styles.quickActions}>
-              <Link href={ROUTES.ADMIN_LISTINGS} className={styles.quickAction}>
-                <ListingIcon />
-                <span>Listing review</span>
-              </Link>
-              <Link href={ROUTES.ADMIN_REPORTS} className={styles.quickAction}>
-                <AlertIcon />
-                <span>Report queue</span>
-              </Link>
-              <Link href={ROUTES.ADMIN_USERS} className={styles.quickAction}>
-                <UsersIcon />
-                <span>User review</span>
-              </Link>
-              <Link href={ROUTES.ADMIN_MESSAGES} className={styles.quickAction}>
-                <MessageIcon />
-                <span>Moderation inbox</span>
-              </Link>
-              <Link href={ROUTES.ADMIN_SUPPORT} className={styles.quickAction}>
-                <TicketIcon />
-                <span>Support command</span>
-              </Link>
-              <Link href={ROUTES.ADMIN_STRUCTURE} className={styles.quickAction}>
-                <StructureIcon />
-                <span>Structure control</span>
-              </Link>
-              <Link href={ROUTES.ADMIN_GUIDE} className={styles.quickAction}>
-                <GuideIcon />
-                <span>Admin guide</span>
-              </Link>
+              <Link href={ROUTES.ADMIN_LISTINGS} className={styles.quickAction}><ListingIcon /><span>Listings</span></Link>
+              <Link href={ROUTES.ADMIN_REPORTS} className={styles.quickAction}><AlertIcon /><span>Reports</span></Link>
+              <Link href={ROUTES.ADMIN_USERS} className={styles.quickAction}><UsersIcon /><span>Users</span></Link>
+              <Link href={ROUTES.ADMIN_MESSAGES} className={styles.quickAction}><MessageIcon /><span>Inbox</span></Link>
+              <Link href={ROUTES.ADMIN_SUPPORT} className={styles.quickAction}><TicketIcon /><span>Support</span></Link>
+              <Link href={ROUTES.ADMIN_STRUCTURE} className={styles.quickAction}><StructureIcon /><span>Structure</span></Link>
+              <Link href={ROUTES.ADMIN_GUIDE} className={styles.quickAction}><GuideIcon /><span>Guide</span></Link>
             </div>
           </article>
         </aside>
-      </section>
-
-      <section className={styles.activityCard}>
-        <div className={styles.sectionHeader}>
-          <div>
-            <p className={styles.sectionEyebrow}>Live Timeline</p>
-            <h2>Recent platform activity</h2>
-          </div>
-          <Link href={ROUTES.ADMIN_LISTINGS} className={styles.inlineLink}>
-            Open listing management
-          </Link>
-        </div>
-
-        {overview.recentActivity.length === 0 ? (
-          <div className={styles.emptyInline}>No recent activity is available yet.</div>
-        ) : (
-          <div className={styles.activityList}>
-            {overview.recentActivity.map((item) => (
-              <article key={item.id} className={styles.activityRow}>
-                <div className={styles.activityPrimary}>
-                  <strong>{item.actorLabel}</strong>
-                  <span>{item.actionLabel}</span>
-                </div>
-                <div className={styles.activityTarget}>{item.targetLabel}</div>
-                <div
-                  className={`${styles.statusPill} ${
-                    item.statusTone === 'attention'
-                      ? styles.statusAttention
-                      : item.statusTone === 'success'
-                        ? styles.statusSuccess
-                        : styles.statusNeutral
-                  }`}
-                >
-                  {item.statusLabel}
-                </div>
-                <time className={styles.activityTime}>{formatRelativeTime(item.timestamp)}</time>
-              </article>
-            ))}
-          </div>
-        )}
       </section>
     </div>
   );

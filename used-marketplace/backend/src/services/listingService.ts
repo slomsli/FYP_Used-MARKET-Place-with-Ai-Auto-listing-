@@ -1,6 +1,13 @@
 import { randomUUID } from 'crypto';
 import { supabaseAdmin } from '../config/supabase';
+import { type Relation, unwrapRelation } from '../utils/relation';
+import { sanitizeStorageFileName } from '../utils/storageFile';
 import { sendReply } from './messageService';
+import { ensurePurchaseReceiptForManualSale } from './purchaseService';
+import {
+  AI_LISTING_AUTOFILL_SETTING_KEY,
+  isSettingEnabled,
+} from './settingsService';
 import {
   getPublicStorageUrl,
   getPublicStorageUrls,
@@ -8,6 +15,8 @@ import {
   normalizeStoragePathsForDatabase,
   removeStorageObjects,
 } from '../utils/storage';
+import { AVATAR_BUCKET, LISTING_IMAGE_BUCKET } from '../utils/storageBuckets';
+import { toNumber, trimOptional } from '../utils/value';
 import { MODERATION_LISTING_BRAND } from '../utils/moderationThread';
 import {
   buildListingModerationMessage,
@@ -26,6 +35,7 @@ import {
   type ListingLocationSummary,
   type ListingLookupOption,
   type ListingMetadata,
+  type ListingSaleBuyerCandidate,
   type ListingSortOption,
   type ListingSummary,
   type MyListingsResponse,
@@ -39,8 +49,6 @@ import {
   type UploadedListingImage,
   type UploadListingImageBody,
 } from '../types/listing';
-
-type Relation<T> = T | T[] | null;
 
 interface RawCategory {
   id: number;
@@ -71,6 +79,8 @@ interface RawListing {
   price: unknown;
   currency: string;
   negotiable: boolean;
+  auto_negotiate_enabled?: boolean | null;
+  auto_negotiate_floor_price?: unknown;
   status: string;
   cover_image_path: string | null;
   created_at: string;
@@ -78,6 +88,8 @@ interface RawListing {
   published_at: string | null;
   views_count: unknown;
   sold_to_user_id: string | null;
+  latitude: unknown;
+  longitude: unknown;
   categories: Relation<RawCategory>;
   states: Relation<RawState>;
   areas: Relation<RawArea>;
@@ -103,6 +115,13 @@ interface RawDailyView {
   views_count: number;
 }
 
+interface RawListingEngagementCountRow {
+  listing_id: string;
+  favorite_count: unknown;
+  total_offer_count: unknown;
+  pending_offer_count: unknown;
+}
+
 interface RawPublicLookupListing {
   category_id: number;
   state_id: number | null;
@@ -110,6 +129,26 @@ interface RawPublicLookupListing {
   price: unknown;
   categories: Relation<RawCategory>;
   states: Relation<RawState>;
+}
+
+interface RawPublicLookupsRpcPayload {
+  categories?: Array<{
+    id: number;
+    name: string;
+    slug: string;
+    count: unknown;
+  }>;
+  states?: Array<{
+    id: number;
+    name: string;
+    slug: string;
+    count: unknown;
+  }>;
+  conditions?: Partial<Record<ListingCondition, unknown>>;
+  priceRange?: {
+    min?: unknown;
+    max?: unknown;
+  };
 }
 
 interface RawListingImage {
@@ -136,6 +175,21 @@ interface RawOwnedListing {
   cover_image_path: string | null;
 }
 
+interface RawSaleBuyerOffer {
+  buyer_id: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  buyer_profile: Relation<RawProfile>;
+}
+
+interface RawSaleBuyerConversation {
+  buyer_id: string;
+  created_at: string;
+  last_message_at: string;
+  buyer_profile: Relation<RawProfile>;
+}
+
 interface RawModerationConversation {
   id: string;
   seller_id: string;
@@ -156,6 +210,10 @@ interface ListingModerationSnapshot {
   createdAt: string | null;
   conversationId: string | null;
   adminUserId: string | null;
+}
+
+interface BuildListingSummaryOptions {
+  includeAutoNegotiationSettings?: boolean;
 }
 
 export class ListingServiceError extends Error {
@@ -181,44 +239,12 @@ const STATUS_LABELS: Record<CreateableListingStatus, string> = {
   active: 'Active',
 };
 
-const LISTING_IMAGE_BUCKET =
-  process.env.SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
-  process.env.NEXT_PUBLIC_SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
-  'listing-images';
-const AVATAR_BUCKET =
-  process.env.SUPABASE_AVATARS_BUCKET?.trim() ||
-  process.env.NEXT_PUBLIC_SUPABASE_AVATARS_BUCKET?.trim() ||
-  'avatars';
-
 const MAX_LISTING_IMAGE_SIZE_BYTES = 8 * 1024 * 1024;
 const LISTING_IMAGE_MIME_TYPES = ['image/*'];
 const PUBLIC_BROWSE_LISTING_STATUS = 'active';
 const PUBLIC_DETAIL_VISIBLE_STATUSES = ['active', 'reserved', 'sold'] as const;
 
 let listingImageBucketPromise: Promise<void> | null = null;
-
-function unwrapRelation<T>(relation: Relation<T>): T | null {
-  if (Array.isArray(relation)) {
-    return relation[0] ?? null;
-  }
-
-  return relation ?? null;
-}
-
-function toNumber(value: unknown, fallback = 0): number {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === 'string' && value.trim()) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-
-  return fallback;
-}
 
 function toInteger(value: number | string): number {
   const parsed = typeof value === 'number' ? value : Number(value);
@@ -229,17 +255,119 @@ function toInteger(value: number | string): number {
   return parsed;
 }
 
-function trimOptional(value: string | undefined | null): string | null {
-  if (typeof value !== 'string') {
+function normalizeCurrency(currency: string | undefined): string {
+  return currency?.trim() || 'MYR';
+}
+
+function normalizeRequiredTitle(value: string | null | undefined): string {
+  const title = trimOptional(value);
+  if (!title) {
+    throw new ListingServiceError('Title is required', 422);
+  }
+
+  return title;
+}
+
+function normalizeOptionalCoordinate(
+  value: number | string | null | undefined,
+  label: 'latitude' | 'longitude',
+  min: number,
+  max: number
+): number | null {
+  if (value === undefined || value === null || (typeof value === 'string' && value.trim() === '')) {
     return null;
   }
 
-  const trimmed = value.trim();
-  return trimmed ? trimmed : null;
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+    throw new ListingServiceError(`${label} must be a valid number between ${min} and ${max}`, 422);
+  }
+
+  return Number(parsed.toFixed(6));
 }
 
-function normalizeCurrency(currency: string | undefined): string {
-  return currency?.trim() || 'MYR';
+function toNullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeOptionalMoney(
+  value: number | string | null | undefined,
+  fieldLabel: string
+): number | null {
+  if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) {
+    return null;
+  }
+
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new ListingServiceError(`${fieldLabel} must be a valid non-negative number`, 422);
+  }
+
+  return Number(parsed.toFixed(2));
+}
+
+function resolveAutoNegotiationSettings(
+  payload: CreateListingBody,
+  listingPrice: number | null,
+  negotiable: boolean
+): { enabled: boolean; floorPrice: number | null } {
+  const enabled = payload.autoNegotiationEnabled === true;
+  const floorPrice = normalizeOptionalMoney(
+    payload.autoNegotiationFloorPrice,
+    'Auto-negotiation floor price'
+  );
+
+  if (!enabled) {
+    return {
+      enabled: false,
+      floorPrice: null,
+    };
+  }
+
+  if (!negotiable) {
+    throw new ListingServiceError(
+      'Auto-negotiation requires the listing to be open to offers',
+      422
+    );
+  }
+
+  if (floorPrice === null || floorPrice <= 0) {
+    throw new ListingServiceError(
+      'Set a hidden floor price greater than 0 to use auto-negotiation',
+      422
+    );
+  }
+
+  if (listingPrice === null || !Number.isFinite(listingPrice) || listingPrice <= 0) {
+    throw new ListingServiceError(
+      'Auto-negotiation requires a listing price greater than 0',
+      422
+    );
+  }
+
+  if (floorPrice > listingPrice) {
+    throw new ListingServiceError(
+      'Auto-negotiation floor price cannot be higher than the listing price',
+      422
+    );
+  }
+
+  return {
+    enabled,
+    floorPrice,
+  };
+}
+
+function isMissingRpcFunction(error: { code?: string | null; message?: string | null } | null | undefined) {
+  const errorCode = typeof error?.code === 'string' ? error.code : '';
+  const errorMessage = typeof error?.message === 'string' ? error.message.toLowerCase() : '';
+
+  return errorCode === 'PGRST202' || errorMessage.includes('could not find the function');
 }
 
 function humanizeStatus(status: string): string {
@@ -255,16 +383,6 @@ function humanizeStatus(status: string): string {
     .split('_')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
-}
-
-function sanitizeStorageFileName(fileName: string): string {
-  const trimmed = fileName.trim().toLowerCase();
-  const sanitized = trimmed
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-
-  return sanitized || `listing-image-${randomUUID()}.jpg`;
 }
 
 async function ensureListingImageBucket(): Promise<void> {
@@ -335,7 +453,11 @@ async function ensureListingImageBucket(): Promise<void> {
   return listingImageBucketPromise;
 }
 
-function buildLocationSummary(rawState: Relation<RawState>, rawArea: Relation<RawArea>): ListingLocationSummary {
+function buildLocationSummary(
+  rawState: Relation<RawState>,
+  rawArea: Relation<RawArea>,
+  coordinates?: Pick<RawListing, 'latitude' | 'longitude'>
+): ListingLocationSummary {
   const state = unwrapRelation(rawState);
   const area = unwrapRelation(rawArea);
 
@@ -344,6 +466,8 @@ function buildLocationSummary(rawState: Relation<RawState>, rawArea: Relation<Ra
     stateName: state?.name ?? null,
     areaId: area?.id ?? null,
     areaName: area?.name ?? null,
+    latitude: toNullableNumber(coordinates?.latitude),
+    longitude: toNullableNumber(coordinates?.longitude),
   };
 }
 
@@ -367,7 +491,8 @@ function buildListingSummary(
   favoriteCountMap: Map<string, number>,
   totalOfferCountMap: Map<string, number>,
   pendingOfferCountMap: Map<string, number>,
-  moderationSnapshotMap: Map<string, ListingModerationSnapshot> = new Map()
+  moderationSnapshotMap: Map<string, ListingModerationSnapshot> = new Map(),
+  options: BuildListingSummaryOptions = {}
 ): ListingSummary {
   const imageStoragePaths = imageMap.get(listing.id) ?? [];
   const coverImageStoragePath = listing.cover_image_path || imageStoragePaths[0] || null;
@@ -377,7 +502,7 @@ function buildListingSummary(
   const soldToProfile = unwrapRelation(listing.sold_to_profile);
   const moderationSnapshot = moderationSnapshotMap.get(listing.id);
 
-  return {
+  const summary: ListingSummary = {
     id: listing.id,
     title: listing.title,
     description: listing.description,
@@ -401,7 +526,7 @@ function buildListingSummary(
     totalOffersCount: totalOfferCountMap.get(listing.id) ?? 0,
     pendingOffersCount: pendingOfferCountMap.get(listing.id) ?? 0,
     category: buildCategorySummary(listing.categories),
-    location: buildLocationSummary(listing.states, listing.areas),
+    location: buildLocationSummary(listing.states, listing.areas, listing),
     soldTo: listing.sold_to_user_id
       ? {
           id: listing.sold_to_user_id,
@@ -412,6 +537,13 @@ function buildListingSummary(
     moderationReason: moderationSnapshot?.reason ?? null,
     moderationReasonUpdatedAt: moderationSnapshot?.createdAt ?? null,
   };
+
+  if (options.includeAutoNegotiationSettings) {
+    summary.autoNegotiationEnabled = listing.auto_negotiate_enabled === true;
+    summary.autoNegotiationFloorPrice = toNullableNumber(listing.auto_negotiate_floor_price);
+  }
+
+  return summary;
 }
 
 function buildLocationLabel(location: ListingLocationSummary): string {
@@ -446,6 +578,55 @@ function buildBuyerDisplayName(profile: Pick<RawProfile, 'full_name' | 'username
   }
 
   return buildSellerDisplayName(profile);
+}
+
+function getOfferCandidatePriority(status: string | null): number {
+  switch (status) {
+    case 'accepted':
+      return 0;
+    case 'pending':
+      return 1;
+    case 'withdrawn':
+      return 2;
+    case 'rejected':
+      return 3;
+    case 'cancelled':
+      return 4;
+    default:
+      return 5;
+  }
+}
+
+function getLatestIsoTimestamp(currentValue: string | null, nextValue: string | null): string | null {
+  if (!nextValue) {
+    return currentValue;
+  }
+
+  if (!currentValue) {
+    return nextValue;
+  }
+
+  return new Date(nextValue).getTime() >= new Date(currentValue).getTime() ? nextValue : currentValue;
+}
+
+function buildSaleBuyerContextLabel(offerStatus: string | null, hasConversation: boolean): string {
+  if (offerStatus === 'accepted') {
+    return hasConversation ? 'Accepted offer and chat' : 'Accepted offer';
+  }
+
+  if (offerStatus === 'pending') {
+    return hasConversation ? 'Pending offer and chat' : 'Pending offer';
+  }
+
+  if (offerStatus === 'withdrawn') {
+    return hasConversation ? 'Auto-closed offer and chat' : 'Auto-closed offer';
+  }
+
+  if (offerStatus) {
+    return hasConversation ? 'Past offer and chat' : 'Past offer';
+  }
+
+  return hasConversation ? 'Conversation' : 'Marketplace activity';
 }
 
 function buildPublicListingSummary(
@@ -558,6 +739,7 @@ async function getOwnedListingForSeller(
     .select('id, status, published_at, cover_image_path')
     .eq('id', listingId)
     .eq('seller_id', sellerId)
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (error) {
@@ -570,6 +752,137 @@ async function getOwnedListingForSeller(
   }
 
   return data as RawOwnedListing;
+}
+
+async function loadSaleBuyerCandidatesForListing(
+  listingId: string
+): Promise<ListingSaleBuyerCandidate[]> {
+  const [offersResult, conversationsResult] = await Promise.all([
+    supabaseAdmin
+      .from('offers')
+      .select(`
+        buyer_id,
+        status,
+        created_at,
+        updated_at,
+        buyer_profile:profiles!offers_buyer_id_fkey (
+          username,
+          full_name,
+          avatar_path
+        )
+      `)
+      .eq('listing_id', listingId),
+    supabaseAdmin
+      .from('conversations')
+      .select(`
+        buyer_id,
+        created_at,
+        last_message_at,
+        buyer_profile:profiles!conversations_buyer_id_fkey (
+          username,
+          full_name,
+          avatar_path
+        )
+      `)
+      .eq('listing_id', listingId),
+  ]);
+
+  if (offersResult.error) {
+    console.error('[Listings] Failed to load sale buyer offer candidates:', offersResult.error);
+    throw new ListingServiceError('Unable to load sale buyer candidates', 500);
+  }
+
+  if (conversationsResult.error) {
+    console.error(
+      '[Listings] Failed to load sale buyer conversation candidates:',
+      conversationsResult.error
+    );
+    throw new ListingServiceError('Unable to load sale buyer candidates', 500);
+  }
+
+  const candidateMap = new Map<
+    string,
+    {
+      id: string;
+      displayName: string;
+      avatarPath: string | null;
+      bestOfferStatus: string | null;
+      hasConversation: boolean;
+      lastActivityAt: string | null;
+    }
+  >();
+
+  for (const offer of (offersResult.data ?? []) as RawSaleBuyerOffer[]) {
+    const buyerProfile = unwrapRelation(offer.buyer_profile);
+    const existingCandidate = candidateMap.get(offer.buyer_id);
+    const nextOfferPriority = getOfferCandidatePriority(offer.status);
+    const currentOfferPriority = getOfferCandidatePriority(existingCandidate?.bestOfferStatus ?? null);
+
+    candidateMap.set(offer.buyer_id, {
+      id: offer.buyer_id,
+      displayName: existingCandidate?.displayName ?? buildBuyerDisplayName(buyerProfile),
+      avatarPath:
+        existingCandidate?.avatarPath ??
+        getPublicStorageUrl(AVATAR_BUCKET, buyerProfile?.avatar_path ?? null),
+      bestOfferStatus:
+        existingCandidate && currentOfferPriority <= nextOfferPriority
+          ? existingCandidate.bestOfferStatus
+          : offer.status,
+      hasConversation: existingCandidate?.hasConversation ?? false,
+      lastActivityAt: getLatestIsoTimestamp(
+        existingCandidate?.lastActivityAt ?? null,
+        offer.updated_at || offer.created_at
+      ),
+    });
+  }
+
+  for (const conversation of (conversationsResult.data ?? []) as RawSaleBuyerConversation[]) {
+    const buyerProfile = unwrapRelation(conversation.buyer_profile);
+    const existingCandidate = candidateMap.get(conversation.buyer_id);
+
+    candidateMap.set(conversation.buyer_id, {
+      id: conversation.buyer_id,
+      displayName: existingCandidate?.displayName ?? buildBuyerDisplayName(buyerProfile),
+      avatarPath:
+        existingCandidate?.avatarPath ??
+        getPublicStorageUrl(AVATAR_BUCKET, buyerProfile?.avatar_path ?? null),
+      bestOfferStatus: existingCandidate?.bestOfferStatus ?? null,
+      hasConversation: true,
+      lastActivityAt: getLatestIsoTimestamp(
+        existingCandidate?.lastActivityAt ?? null,
+        conversation.last_message_at || conversation.created_at
+      ),
+    });
+  }
+
+  return Array.from(candidateMap.values())
+    .sort((left, right) => {
+      const priorityDifference =
+        getOfferCandidatePriority(left.bestOfferStatus) -
+        getOfferCandidatePriority(right.bestOfferStatus);
+
+      if (priorityDifference !== 0) {
+        return priorityDifference;
+      }
+
+      const rightTimestamp = right.lastActivityAt ? new Date(right.lastActivityAt).getTime() : 0;
+      const leftTimestamp = left.lastActivityAt ? new Date(left.lastActivityAt).getTime() : 0;
+      if (rightTimestamp !== leftTimestamp) {
+        return rightTimestamp - leftTimestamp;
+      }
+
+      return left.displayName.localeCompare(right.displayName);
+    })
+    .map((candidate) => ({
+      id: candidate.id,
+      displayName: candidate.displayName,
+      avatarPath: candidate.avatarPath,
+      contextLabel: buildSaleBuyerContextLabel(
+        candidate.bestOfferStatus,
+        candidate.hasConversation
+      ),
+      lastActivityAt: candidate.lastActivityAt,
+    }));
 }
 
 async function getListingImages(listingIds: string[]): Promise<Map<string, string[]>> {
@@ -692,6 +1005,7 @@ async function getStoredListingImagePaths(listingId: string): Promise<string[]> 
     .from('listings')
     .select('cover_image_path')
     .eq('id', listingId)
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (listingError) {
@@ -776,6 +1090,8 @@ async function getListingByIdForSeller(listingId: string, sellerId: string): Pro
       price,
       currency,
       negotiable,
+      auto_negotiate_enabled,
+      auto_negotiate_floor_price,
       status,
       cover_image_path,
       created_at,
@@ -783,6 +1099,8 @@ async function getListingByIdForSeller(listingId: string, sellerId: string): Pro
       published_at,
       views_count,
       sold_to_user_id,
+      latitude,
+      longitude,
       categories!listings_category_id_fkey (
         id,
         name,
@@ -808,6 +1126,7 @@ async function getListingByIdForSeller(listingId: string, sellerId: string): Pro
     `)
     .eq('id', listingId)
     .eq('seller_id', sellerId)
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (error) {
@@ -830,7 +1149,8 @@ async function getListingByIdForSeller(listingId: string, sellerId: string): Pro
     new Map<string, number>(),
     new Map<string, number>(),
     new Map<string, number>(),
-    moderationSnapshots
+    moderationSnapshots,
+    { includeAutoNegotiationSettings: true }
   );
 }
 
@@ -908,6 +1228,31 @@ async function getListingEngagementMaps(listingIds: string[]) {
     };
   }
 
+  const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc(
+    'get_listing_engagement_counts',
+    {
+      p_listing_ids: listingIds,
+    }
+  );
+
+  if (!rpcError && Array.isArray(rpcData)) {
+    for (const row of rpcData as RawListingEngagementCountRow[]) {
+      favoriteCountMap.set(row.listing_id, toNumber(row.favorite_count));
+      totalOfferCountMap.set(row.listing_id, toNumber(row.total_offer_count));
+      pendingOfferCountMap.set(row.listing_id, toNumber(row.pending_offer_count));
+    }
+
+    return {
+      favoriteCountMap,
+      totalOfferCountMap,
+      pendingOfferCountMap,
+    };
+  }
+
+  if (rpcError && !isMissingRpcFunction(rpcError)) {
+    console.error('[Listings] Failed to load engagement counts via RPC, falling back to row scans:', rpcError);
+  }
+
   const [favoritesResult, offersResult] = await Promise.all([
     supabaseAdmin.from('favorites').select('listing_id').in('listing_id', listingIds),
     supabaseAdmin.from('offers').select('listing_id, status').in('listing_id', listingIds),
@@ -945,6 +1290,43 @@ async function getPublicListingLookups(): Promise<{
   lookups: PublicListingsResponse['lookups'];
   priceRange: PublicListingsResponse['summary']['priceRange'];
 }> {
+  const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc('get_public_listing_lookups');
+
+  if (!rpcError && rpcData) {
+    const payload = (Array.isArray(rpcData) ? rpcData[0] : rpcData) as RawPublicLookupsRpcPayload;
+    const conditionCounts = payload.conditions ?? {};
+
+    return {
+      lookups: {
+        categories: (payload.categories ?? []).map((category) => ({
+          id: category.id,
+          name: category.name,
+          slug: category.slug,
+          count: toNumber(category.count),
+        })),
+        states: (payload.states ?? []).map((state) => ({
+          id: state.id,
+          name: state.name,
+          slug: state.slug,
+          count: toNumber(state.count),
+        })),
+        conditions: Object.entries(CONDITION_LABELS).map(([value, label]) => ({
+          value: value as ListingCondition,
+          label,
+          count: toNumber(conditionCounts[value as ListingCondition]),
+        })),
+      },
+      priceRange: {
+        min: toNumber(payload.priceRange?.min),
+        max: toNumber(payload.priceRange?.max),
+      },
+    };
+  }
+
+  if (rpcError && !isMissingRpcFunction(rpcError)) {
+    console.error('[Listings] Failed to load browse lookups via RPC, falling back to row scans:', rpcError);
+  }
+
   const { data, error } = await supabaseAdmin
     .from('listings')
     .select(`
@@ -963,7 +1345,8 @@ async function getPublicListingLookups(): Promise<{
         slug
       )
     `)
-    .eq('status', PUBLIC_BROWSE_LISTING_STATUS);
+    .eq('status', PUBLIC_BROWSE_LISTING_STATUS)
+    .is('deleted_at', null);
 
   if (error) {
     console.error('[Listings] Failed to fetch public listing lookups:', error);
@@ -1037,18 +1420,19 @@ async function getPublicListingLookups(): Promise<{
 async function getPublicSellerSummary(
   sellerId: string
 ): Promise<PublicSellerSummary> {
-  const [profileResult, reviewsResult, listingsResult, sellerStatesResult, sellerAreasResult] =
-    await Promise.all([
-      supabaseAdmin
-        .from('profiles')
-        .select('id, username, full_name, avatar_path, created_at, state_id, area_id')
-        .eq('id', sellerId)
-        .maybeSingle(),
-      supabaseAdmin.from('reviews').select('rating').eq('seller_id', sellerId),
-      supabaseAdmin.from('listings').select('status').eq('seller_id', sellerId),
-      supabaseAdmin.from('states').select('id, name, slug'),
-      supabaseAdmin.from('areas').select('id, name, slug, state_id'),
-    ]);
+  const [profileResult, reviewsResult, listingsResult] = await Promise.all([
+    supabaseAdmin
+      .from('profiles')
+      .select('id, username, full_name, avatar_path, created_at, state_id, area_id')
+      .eq('id', sellerId)
+      .maybeSingle(),
+    supabaseAdmin.from('reviews').select('rating').eq('seller_id', sellerId),
+    supabaseAdmin
+      .from('listings')
+      .select('status')
+      .eq('seller_id', sellerId)
+      .is('deleted_at', null),
+  ]);
 
   if (profileResult.error) {
     console.error('[Listings] Failed to fetch seller profile:', profileResult.error);
@@ -1063,16 +1447,6 @@ async function getPublicSellerSummary(
   if (listingsResult.error) {
     console.error('[Listings] Failed to fetch seller listing stats:', listingsResult.error);
     throw new ListingServiceError('Unable to load seller listing statistics', 500);
-  }
-
-  if (sellerStatesResult.error) {
-    console.error('[Listings] Failed to fetch states for seller location:', sellerStatesResult.error);
-    throw new ListingServiceError('Unable to load seller location', 500);
-  }
-
-  if (sellerAreasResult.error) {
-    console.error('[Listings] Failed to fetch areas for seller location:', sellerAreasResult.error);
-    throw new ListingServiceError('Unable to load seller location', 500);
   }
 
   const ratings = (reviewsResult.data ?? []) as RawRating[];
@@ -1091,6 +1465,33 @@ async function getPublicSellerSummary(
   let activeListings = 0;
   const profile = profileResult.data as RawProfile | null;
 
+  const [sellerStateResult, sellerAreaResult] = await Promise.all([
+    profile?.state_id
+      ? supabaseAdmin
+          .from('states')
+          .select('id, name, slug')
+          .eq('id', profile.state_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    profile?.area_id
+      ? supabaseAdmin
+          .from('areas')
+          .select('id, name, slug, state_id')
+          .eq('id', profile.area_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+
+  if (sellerStateResult.error) {
+    console.error('[Listings] Failed to fetch seller state:', sellerStateResult.error);
+    throw new ListingServiceError('Unable to load seller location', 500);
+  }
+
+  if (sellerAreaResult.error) {
+    console.error('[Listings] Failed to fetch seller area:', sellerAreaResult.error);
+    throw new ListingServiceError('Unable to load seller location', 500);
+  }
+
   for (const listing of (listingsResult.data ?? []) as RawSellerStatsListing[]) {
     if (listing.status === 'sold') {
       totalSales += 1;
@@ -1101,18 +1502,8 @@ async function getPublicSellerSummary(
     }
   }
 
-  const sellerState =
-    profile
-      ? ((sellerStatesResult.data ?? []) as RawState[]).find(
-          (state: RawState) => state.id === profile.state_id
-        ) ?? null
-      : null;
-  const sellerArea =
-    profile
-      ? ((sellerAreasResult.data ?? []) as RawArea[]).find(
-          (area: RawArea) => area.id === profile.area_id
-        ) ?? null
-      : null;
+  const sellerState = (sellerStateResult.data as RawState | null) ?? null;
+  const sellerArea = (sellerAreaResult.data as RawArea | null) ?? null;
 
   if (!profile) {
     const shortSellerId = sellerId.replace(/-/g, '').slice(0, 6) || 'member';
@@ -1132,6 +1523,8 @@ async function getPublicSellerSummary(
         stateName: null,
         areaId: null,
         areaName: null,
+        latitude: null,
+        longitude: null,
       },
     };
   }
@@ -1151,6 +1544,8 @@ async function getPublicSellerSummary(
       stateName: sellerState?.name ?? null,
       areaId: sellerArea?.id ?? null,
       areaName: sellerArea?.name ?? null,
+      latitude: null,
+      longitude: null,
     },
   };
 }
@@ -1160,7 +1555,7 @@ export async function getListingMetadata(stateId?: number): Promise<ListingMetad
     await ensureStateExists(stateId);
   }
 
-  const [categoriesResult, statesResult, areasResult] = await Promise.all([
+  const [categoriesResult, statesResult, areasResult, aiListingAutofillEnabled] = await Promise.all([
     supabaseAdmin
       .from('categories')
       .select('id, name, slug, parent_id')
@@ -1176,6 +1571,7 @@ export async function getListingMetadata(stateId?: number): Promise<ListingMetad
         .select('id, name, slug, state_id')
         .eq('state_id', stateId)
         .order('name', { ascending: true }),
+    isSettingEnabled(AI_LISTING_AUTOFILL_SETTING_KEY, true),
   ]);
 
   if (categoriesResult.error) {
@@ -1216,6 +1612,9 @@ export async function getListingMetadata(stateId?: number): Promise<ListingMetad
       label,
     })),
     currencies: ['MYR'],
+    features: {
+      aiListingAutofillEnabled,
+    },
   };
 }
 
@@ -1320,7 +1719,10 @@ export async function uploadListingImage(
 
   await ensureListingImageBucket();
 
-  const storagePath = `listings/${sellerId}/${new Date().toISOString().slice(0, 10)}/${randomUUID()}-${sanitizeStorageFileName(fileName)}`;
+  const storagePath = `listings/${sellerId}/${new Date().toISOString().slice(0, 10)}/${randomUUID()}-${sanitizeStorageFileName(
+    fileName,
+    'listing-image'
+  )}`;
   const { error: uploadError } = await supabaseAdmin.storage
     .from(LISTING_IMAGE_BUCKET)
     .upload(storagePath, fileBuffer, {
@@ -1361,10 +1763,14 @@ export async function createListing(
   const price = isDraft && payload.price === undefined ? null : toNumber(payload.price, Number.NaN);
   const stateId = payload.stateId == null ? null : toInteger(payload.stateId);
   const areaId = payload.areaId == null ? null : toInteger(payload.areaId);
-  const title = payload.title.trim();
+  const latitude = normalizeOptionalCoordinate(payload.latitude, 'latitude', -90, 90);
+  const longitude = normalizeOptionalCoordinate(payload.longitude, 'longitude', -180, 180);
+  const title = normalizeRequiredTitle(payload.title);
   const description = trimOptional(payload.description);
   const brand = trimOptional(payload.brand);
   const currency = normalizeCurrency(payload.currency);
+  const negotiable = payload.negotiable ?? true;
+  const autoNegotiation = resolveAutoNegotiationSettings(payload, price, negotiable);
   const normalizedImageStoragePaths = normalizeStoragePathsForDatabase(LISTING_IMAGE_BUCKET, [
     ...(payload.imageStoragePaths ?? []),
     ...(payload.imagePaths ?? []),
@@ -1383,6 +1789,10 @@ export async function createListing(
 
   if (areaId !== null && stateId === null) {
     throw new ListingServiceError('stateId is required when areaId is provided', 422);
+  }
+
+  if ((latitude === null) !== (longitude === null)) {
+    throw new ListingServiceError('Latitude and longitude must be provided together', 422);
   }
 
   if (categoryId !== null) {
@@ -1410,12 +1820,16 @@ export async function createListing(
       condition: isDraft ? (payload.condition || null) : payload.condition,
       price,
       currency,
-      negotiable: payload.negotiable ?? true,
+      negotiable,
+      auto_negotiate_enabled: autoNegotiation.enabled,
+      auto_negotiate_floor_price: autoNegotiation.floorPrice,
       status,
       cover_image_path: coverImageStoragePath,
       published_at: publishedAt,
       state_id: stateId,
       area_id: areaId,
+      latitude,
+      longitude,
     })
     .select('id')
     .single();
@@ -1459,11 +1873,15 @@ export async function updateListing(
   const price = isDraft && payload.price === undefined ? null : toNumber(payload.price, Number.NaN);
   const stateId = payload.stateId == null ? null : toInteger(payload.stateId);
   const areaId = payload.areaId == null ? null : toInteger(payload.areaId);
+  const latitude = normalizeOptionalCoordinate(payload.latitude, 'latitude', -90, 90);
+  const longitude = normalizeOptionalCoordinate(payload.longitude, 'longitude', -180, 180);
   
-  const title = payload.title.trim();
+  const title = normalizeRequiredTitle(payload.title);
   const description = trimOptional(payload.description);
   const brand = trimOptional(payload.brand);
   const currency = normalizeCurrency(payload.currency);
+  const negotiable = payload.negotiable ?? true;
+  const autoNegotiation = resolveAutoNegotiationSettings(payload, price, negotiable);
   const normalizedImageStoragePaths = normalizeStoragePathsForDatabase(LISTING_IMAGE_BUCKET, [
     ...(payload.imageStoragePaths ?? []),
     ...(payload.imagePaths ?? []),
@@ -1492,6 +1910,10 @@ export async function updateListing(
 
   if (areaId !== null && stateId === null) {
     throw new ListingServiceError('stateId is required when areaId is provided', 422);
+  }
+
+  if ((latitude === null) !== (longitude === null)) {
+    throw new ListingServiceError('Latitude and longitude must be provided together', 422);
   }
 
   if (categoryId !== null) {
@@ -1525,12 +1947,16 @@ export async function updateListing(
       condition: isDraft ? (payload.condition || null) : payload.condition,
       price,
       currency,
-      negotiable: payload.negotiable ?? true,
+      negotiable,
+      auto_negotiate_enabled: autoNegotiation.enabled,
+      auto_negotiate_floor_price: autoNegotiation.floorPrice,
       status,
       cover_image_path: coverImageStoragePath,
       published_at: publishedAt,
       state_id: stateId,
       area_id: areaId,
+      latitude,
+      longitude,
       sold_at: restoringSoldListing ? null : undefined,
       sold_to_user_id: restoringSoldListing ? null : undefined,
       updated_at: updatedAt,
@@ -1554,9 +1980,18 @@ export async function updateListing(
   return getListingByIdForSeller(listingId, sellerId);
 }
 
-export async function markListingAsSold(
+export async function getListingSaleBuyerCandidates(
   sellerId: string,
   listingId: string
+): Promise<ListingSaleBuyerCandidate[]> {
+  await getOwnedListingForSeller(listingId, sellerId);
+  return loadSaleBuyerCandidatesForListing(listingId);
+}
+
+export async function markListingAsSold(
+  sellerId: string,
+  listingId: string,
+  buyerUserId?: string | null
 ): Promise<ListingSummary> {
   const existing = await getOwnedListingForSeller(listingId, sellerId);
 
@@ -1571,20 +2006,48 @@ export async function markListingAsSold(
     );
   }
 
+  const normalizedBuyerUserId = trimOptional(buyerUserId);
+  let soldToUserId: string | null = normalizedBuyerUserId;
+  const saleBuyerCandidates = await loadSaleBuyerCandidatesForListing(listingId);
+
+  if (normalizedBuyerUserId) {
+    if (!saleBuyerCandidates.some((candidate) => candidate.id === normalizedBuyerUserId)) {
+      throw new ListingServiceError(
+        'Selected buyer must come from an offer or conversation on this listing',
+        422
+      );
+    }
+  } else if (saleBuyerCandidates.length === 1) {
+    soldToUserId = saleBuyerCandidates[0].id;
+  }
+
   const { error } = await supabaseAdmin
     .from('listings')
     .update({
       status: 'sold',
       sold_at: new Date().toISOString(),
-      sold_to_user_id: null,
+      sold_to_user_id: soldToUserId,
       updated_at: new Date().toISOString(),
     })
     .eq('id', listingId)
-    .eq('seller_id', sellerId);
+    .eq('seller_id', sellerId)
+    .is('deleted_at', null);
 
   if (error) {
     console.error('[Listings] Failed to mark listing as sold:', error);
     throw new ListingServiceError('Failed to mark listing as sold', 500);
+  }
+
+  if (soldToUserId) {
+    try {
+      await ensurePurchaseReceiptForManualSale({
+        listingId,
+        sellerId,
+        buyerId: soldToUserId,
+      });
+    } catch (receiptError) {
+      console.error('[Listings] Failed to create manual sale receipt:', receiptError);
+    }
   }
 
   return getListingByIdForSeller(listingId, sellerId);
@@ -1614,7 +2077,8 @@ export async function markListingAsActive(
       updated_at: new Date().toISOString(),
     })
     .eq('id', listingId)
-    .eq('seller_id', sellerId);
+    .eq('seller_id', sellerId)
+    .is('deleted_at', null);
 
   if (error) {
     console.error('[Listings] Failed to mark listing as active again:', error);
@@ -1628,8 +2092,7 @@ export async function deleteListing(
   sellerId: string,
   listingId: string
 ): Promise<DeleteListingResult> {
-  const existingListing = await getOwnedListingForSeller(listingId, sellerId);
-  const storedImagePaths = await getStoredListingImagePaths(listingId);
+  await getOwnedListingForSeller(listingId, sellerId);
 
   const [offersResult, conversationsResult, reviewsResult, reportsResult] = await Promise.all([
     supabaseAdmin
@@ -1678,38 +2141,21 @@ export async function deleteListing(
     );
   }
 
-  const cleanupOperations = [
-    supabaseAdmin.from('favorites').delete().eq('listing_id', listingId),
-    supabaseAdmin.from('listing_images').delete().eq('listing_id', listingId),
-    supabaseAdmin.from('listing_daily_views').delete().eq('listing_id', listingId),
-  ];
-
-  const cleanupResults = await Promise.all(cleanupOperations);
-  for (const cleanupResult of cleanupResults) {
-    if (cleanupResult.error) {
-      console.error('[Listings] Failed during listing cleanup:', cleanupResult.error);
-      throw new ListingServiceError('Failed to clean up listing data before deletion', 500);
-    }
-  }
+  const deletedAt = new Date().toISOString();
 
   const { error: deleteError } = await supabaseAdmin
     .from('listings')
-    .delete()
+    .update({
+      deleted_at: deletedAt,
+      updated_at: deletedAt,
+    })
     .eq('id', listingId)
-    .eq('seller_id', sellerId);
+    .eq('seller_id', sellerId)
+    .is('deleted_at', null);
 
   if (deleteError) {
     console.error('[Listings] Failed to delete listing:', deleteError);
     throw new ListingServiceError('Failed to delete listing', 500);
-  }
-
-  try {
-    await removeStorageObjects(LISTING_IMAGE_BUCKET, [
-      existingListing.cover_image_path,
-      ...storedImagePaths,
-    ]);
-  } catch (storageError) {
-    console.error('[Listings] Failed to remove listing storage objects after delete:', storageError);
   }
 
   return {
@@ -1736,6 +2182,8 @@ export async function getMyListings(
       price,
       currency,
       negotiable,
+      auto_negotiate_enabled,
+      auto_negotiate_floor_price,
       status,
       cover_image_path,
       created_at,
@@ -1743,6 +2191,8 @@ export async function getMyListings(
       published_at,
       views_count,
       sold_to_user_id,
+      latitude,
+      longitude,
       categories!listings_category_id_fkey (
         id,
         name,
@@ -1766,7 +2216,8 @@ export async function getMyListings(
         avatar_path
       )
     `)
-    .eq('seller_id', sellerId);
+    .eq('seller_id', sellerId)
+    .is('deleted_at', null);
 
   if (filters.status !== 'all') {
     listingsQuery =
@@ -1782,7 +2233,8 @@ export async function getMyListings(
     supabaseAdmin
       .from('listings')
       .select('id, status, price')
-      .eq('seller_id', sellerId),
+      .eq('seller_id', sellerId)
+      .is('deleted_at', null),
     supabaseAdmin
       .from('reviews')
       .select('rating')
@@ -1902,7 +2354,8 @@ export async function getMyListings(
         favoriteCountMap,
         totalOfferCountMap,
         pendingOfferCountMap,
-        moderationSnapshots
+        moderationSnapshots,
+        { includeAutoNegotiationSettings: true }
       )
     ),
   };
@@ -1930,6 +2383,8 @@ export async function getPublicListings(
       updated_at,
       published_at,
       views_count,
+      latitude,
+      longitude,
       categories!listings_category_id_fkey (
         id,
         name,
@@ -1949,7 +2404,8 @@ export async function getPublicListings(
     `,
       { count: 'exact' }
     )
-    .eq('status', PUBLIC_BROWSE_LISTING_STATUS);
+    .eq('status', PUBLIC_BROWSE_LISTING_STATUS)
+    .is('deleted_at', null);
 
   if (filters.categoryIds && filters.categoryIds.length > 0) {
     listingsQuery = listingsQuery.in('category_id', filters.categoryIds);
@@ -2066,6 +2522,8 @@ export async function getPublicListingById(
       updated_at,
       published_at,
       views_count,
+      latitude,
+      longitude,
       categories!listings_category_id_fkey (
         id,
         name,
@@ -2085,6 +2543,7 @@ export async function getPublicListingById(
     `)
     .eq('id', listingId)
     .in('status', [...PUBLIC_DETAIL_VISIBLE_STATUSES])
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (error) {
@@ -2115,6 +2574,8 @@ export async function getPublicListingById(
       updated_at,
       published_at,
       views_count,
+      latitude,
+      longitude,
       categories!listings_category_id_fkey (
         id,
         name,
@@ -2133,6 +2594,7 @@ export async function getPublicListingById(
       )
     `)
     .eq('status', PUBLIC_BROWSE_LISTING_STATUS)
+    .is('deleted_at', null)
     .neq('id', listingId)
     .limit(4);
 
@@ -2194,6 +2656,28 @@ export async function getPublicListingById(
   };
 }
 
+async function tryIncrementListingViewAtomically(listingId: string): Promise<number | null> {
+  const { data, error } = await supabaseAdmin.rpc('increment_listing_view_counters_atomic', {
+    p_listing_id: listingId,
+  });
+
+  if (error) {
+    if (isMissingRpcFunction(error)) {
+      return null;
+    }
+
+    console.error('[Listings] Failed to increment listing views via RPC:', error);
+    throw new ListingServiceError('Unable to record listing view', 500);
+  }
+
+  const result = Array.isArray(data) ? data[0] : data;
+  if (!result || typeof result !== 'object') {
+    throw new ListingServiceError('Unable to record listing view', 500);
+  }
+
+  return toNumber((result as { views_count?: unknown }).views_count);
+}
+
 export async function incrementPublicListingView(
   listingId: string
 ): Promise<ListingViewResult> {
@@ -2202,6 +2686,7 @@ export async function incrementPublicListingView(
     .select('id, views_count, status')
     .eq('id', listingId)
     .in('status', [...PUBLIC_DETAIL_VISIBLE_STATUSES])
+    .is('deleted_at', null)
     .maybeSingle();
 
   if (error) {
@@ -2213,66 +2698,16 @@ export async function incrementPublicListingView(
     throw new ListingServiceError('Listing not found', 404);
   }
 
-  const nextViewsCount = toNumber(data.views_count) + 1;
-  const today = new Date().toISOString().slice(0, 10);
-
-  const [listingUpdateResult, dailyViewResult] = await Promise.all([
-    supabaseAdmin
-      .from('listings')
-      .update({
-        views_count: nextViewsCount,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', listingId),
-    supabaseAdmin
-      .from('listing_daily_views')
-      .select('id, views_count')
-      .eq('listing_id', listingId)
-      .eq('view_date', today)
-      .maybeSingle(),
-  ]);
-
-  if (listingUpdateResult.error) {
-    console.error('[Listings] Failed to increment listing views:', listingUpdateResult.error);
-    throw new ListingServiceError('Unable to record listing view', 500);
-  }
-
-  if (dailyViewResult.error) {
-    console.error('[Listings] Failed to inspect daily listing views:', dailyViewResult.error);
-    throw new ListingServiceError('Unable to record listing view', 500);
-  }
-
-  if (dailyViewResult.data) {
-    const currentDailyView = dailyViewResult.data as RawDailyView;
-    const { error: updateDailyError } = await supabaseAdmin
-      .from('listing_daily_views')
-      .update({
-        views_count: currentDailyView.views_count + 1,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', currentDailyView.id);
-
-    if (updateDailyError) {
-      console.error('[Listings] Failed to update daily listing views:', updateDailyError);
-      throw new ListingServiceError('Unable to record listing view', 500);
-    }
-  } else {
-    const { error: insertDailyError } = await supabaseAdmin
-      .from('listing_daily_views')
-      .insert({
-        listing_id: listingId,
-        view_date: today,
-        views_count: 1,
-      });
-
-    if (insertDailyError) {
-      console.error('[Listings] Failed to create daily listing view record:', insertDailyError);
-      throw new ListingServiceError('Unable to record listing view', 500);
-    }
+  const atomicViewsCount = await tryIncrementListingViewAtomically(listingId);
+  if (atomicViewsCount === null) {
+    throw new ListingServiceError(
+      'Listing view tracking is not configured. Deploy the atomic listing view SQL helper before recording views.',
+      503
+    );
   }
 
   return {
     id: listingId,
-    viewsCount: nextViewsCount,
+    viewsCount: atomicViewsCount,
   };
 }

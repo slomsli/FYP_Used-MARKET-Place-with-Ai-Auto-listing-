@@ -5,7 +5,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import ReportListingModal from '@/src/components/reports/ReportListingModal';
+import ListingLocationMap from '@/src/components/listings/ListingLocationMap';
+import ImageLightbox from '@/src/components/ui/ImageLightbox';
 import { ROUTES } from '@/src/config/routes';
+import { resolveSupabaseUserRole } from '@/src/utils/authHelpers';
 import { useAuth } from '@/src/hooks/useAuth';
 import { getProfile } from '@/src/services/profileService';
 import {
@@ -180,6 +183,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
   const [offerMessage, setOfferMessage] = useState('');
   const [offerSubmitting, setOfferSubmitting] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const recordedViewIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -264,12 +268,11 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
       }
 
       setViewerRole(
-        profileResponse.data?.role ||
-          (typeof user.user_metadata?.role === 'string' ? user.user_metadata.role : null)
+        resolveSupabaseUserRole(user, profileResponse.data?.role ?? null)
       );
     }).catch(() => {
       if (!cancelled) {
-        setViewerRole(typeof user.user_metadata?.role === 'string' ? user.user_metadata.role : null);
+        setViewerRole(resolveSupabaseUserRole(user));
       }
     });
 
@@ -278,12 +281,12 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
     };
   }, [session?.access_token, user]);
 
-  const resolvedViewerRole =
-    viewerRole || (typeof user?.user_metadata?.role === 'string' ? user.user_metadata.role : null);
+  const resolvedViewerRole = resolveSupabaseUserRole(user, viewerRole);
   const isAdminViewer = resolvedViewerRole === 'admin';
   const memberAccessResolved = !user || resolvedViewerRole !== null;
   const showMemberActions = !user || resolvedViewerRole === 'user';
   const accountHubRoute = isAdminViewer ? ROUTES.ADMIN : ROUTES.DASHBOARD;
+  const notificationRoute = isAdminViewer ? ROUTES.ADMIN_NOTIFICATIONS : ROUTES.NOTIFICATIONS;
   const inboxRoute = isAdminViewer ? ROUTES.ADMIN_MESSAGES : ROUTES.MESSAGES;
 
   // Check favorite status when user is authenticated
@@ -448,6 +451,13 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
   const sellerLocationLabel = getSellerLocationLabel(seller);
   const isSoldOut = listing.status === 'sold';
   const availabilityLabel = isSoldOut ? 'Sold Out' : listing.statusLabel;
+  const listingCoordinates =
+    listing.location.latitude !== null && listing.location.longitude !== null
+      ? {
+          latitude: listing.location.latitude,
+          longitude: listing.location.longitude,
+        }
+      : null;
   const breadcrumb = ['Marketplace', listing.category?.name ?? 'Listings', listing.locationLabel];
   const detailRows = [
     { label: 'Condition', value: listing.conditionLabel },
@@ -518,7 +528,11 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
             />
           </form>
 
-          <Link href={accountHubRoute} className={styles.iconButton} aria-label="Dashboard alerts">
+          <Link
+            href={notificationRoute}
+            className={styles.iconButton}
+            aria-label={isAdminViewer ? 'Admin notifications' : 'Notifications'}
+          >
             <BellIcon />
           </Link>
           {showMemberActions && (
@@ -566,7 +580,14 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
 
               <div className={styles.heroGlow} />
               {activeImage ? (
-                <img src={activeImage} alt={listing.title} className={styles.heroImage} />
+                <img
+                  src={activeImage}
+                  alt={listing.title}
+                  className={styles.heroImage}
+                  style={{ cursor: 'zoom-in' }}
+                  onClick={() => setLightboxSrc(activeImage)}
+                  title="Click to enlarge"
+                />
               ) : (
                 <div className={styles.heroPlaceholder}>
                   <span className={styles.heroPlaceholderGlyph}>{getPlaceholderLabel(listing)}</span>
@@ -638,10 +659,23 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
               ))}
             </div>
 
+            <ListingLocationMap
+              coordinates={listingCoordinates}
+              locationLabel={listing.locationLabel}
+            />
+
             <div className={styles.sellerCard}>
               <div className={styles.sellerTop}>
                 <div className={styles.sellerAvatar}>
-                  {seller.displayName.slice(0, 2).toUpperCase()}
+                  {seller.avatarPath ? (
+                    <img
+                      src={seller.avatarPath}
+                      alt={`${seller.displayName} profile photo`}
+                      className={styles.sellerAvatarImage}
+                    />
+                  ) : (
+                    seller.displayName.slice(0, 2).toUpperCase()
+                  )}
                 </div>
                 <div className={styles.sellerMeta}>
                   <div className={styles.sellerNameRow}>
@@ -986,6 +1020,17 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
           )}
         </div>
       )}
+
+      <ImageLightbox
+        src={lightboxSrc}
+        alt={listing?.title}
+        gallery={gallery}
+        onClose={() => setLightboxSrc(null)}
+        onNavigate={(index) => {
+          setActiveIndex(index);
+          setLightboxSrc(gallery[index] ?? null);
+        }}
+      />
     </div>
   );
 }

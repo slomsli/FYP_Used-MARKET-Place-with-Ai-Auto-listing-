@@ -1,17 +1,26 @@
+import type { PurchasePaymentStatus } from '@/src/types/purchase';
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 /* ── Types ─────────────────────────────────────────────── */
 
 export type OfferKind = 'purchase_request' | 'offer' | 'counter_offer';
-export type OfferStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
+export type OfferStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'withdrawn';
 
 export type DeliveryIssueStatus = 'pending' | 'reviewed' | 'resolved' | 'rejected';
+
+export interface OfferReviewSellerResponse {
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface OfferReviewSummary {
   id: string;
   rating: number;
   comment: string | null;
   createdAt: string;
+  sellerResponse: OfferReviewSellerResponse | null;
 }
 
 export interface OfferDeliveryIssueSummary {
@@ -26,11 +35,23 @@ export interface OfferDeliveryIssueSummary {
   buyerStatement: string;
 }
 
+export interface OfferPurchaseReceiptSummary {
+  id: string;
+  receiptNumber: string;
+  paymentStatus: PurchasePaymentStatus;
+  paymentStatusLabel: string;
+  totalAmount: number;
+  currency: string;
+  buyerMarkedPaidAt: string | null;
+  sellerConfirmedPaidAt: string | null;
+}
+
 export interface OfferSaleFollowUp {
   canBuyerConfirmReceived: boolean;
   canBuyerReportNotReceived: boolean;
   review: OfferReviewSummary | null;
   deliveryIssue: OfferDeliveryIssueSummary | null;
+  receipt: OfferPurchaseReceiptSummary | null;
 }
 
 export interface OfferSummary {
@@ -258,6 +279,21 @@ export async function submitBuyerReview(
     token,
     {
       method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+export async function submitSellerReviewResponse(
+  token: string,
+  offerId: string,
+  payload: { response: string }
+): Promise<ServiceResponse<OfferReviewSummary>> {
+  return authorizedRequest<OfferReviewSummary>(
+    `/api/dashboard/offers/${offerId}/review-response`,
+    token,
+    {
+      method: 'PATCH',
       body: JSON.stringify(payload),
     }
   );

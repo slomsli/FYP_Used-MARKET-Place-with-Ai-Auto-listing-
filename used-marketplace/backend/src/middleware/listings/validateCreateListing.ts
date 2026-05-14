@@ -31,6 +31,15 @@ function isNonNegativeNumberLike(value: unknown): boolean {
   return false;
 }
 
+function hasCoordinateValue(value: unknown): boolean {
+  return value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === '');
+}
+
+function isCoordinateLike(value: unknown, min: number, max: number): boolean {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= min && parsed <= max;
+}
+
 export function validateCreateListing(req: Request, res: Response, next: NextFunction): void {
   const body = req.body as Partial<CreateListingBody>;
 
@@ -118,6 +127,23 @@ export function validateCreateListing(req: Request, res: Response, next: NextFun
   }
 
   if (
+    body.autoNegotiationEnabled !== undefined &&
+    typeof body.autoNegotiationEnabled !== 'boolean'
+  ) {
+    sendError(res, 'Auto-negotiation must be a boolean value', 422);
+    return;
+  }
+
+  if (
+    body.autoNegotiationFloorPrice !== undefined &&
+    body.autoNegotiationFloorPrice !== null &&
+    !isNonNegativeNumberLike(body.autoNegotiationFloorPrice)
+  ) {
+    sendError(res, 'Auto-negotiation floor price must be a valid non-negative number', 422);
+    return;
+  }
+
+  if (
     !isDraft &&
     body.stateId !== undefined &&
     body.stateId !== null &&
@@ -134,6 +160,24 @@ export function validateCreateListing(req: Request, res: Response, next: NextFun
     !isPositiveIntegerLike(body.areaId)
   ) {
     sendError(res, 'areaId must be a positive integer', 422);
+    return;
+  }
+
+  const hasLatitude = hasCoordinateValue(body.latitude);
+  const hasLongitude = hasCoordinateValue(body.longitude);
+
+  if (hasLatitude !== hasLongitude) {
+    sendError(res, 'Latitude and longitude must be provided together', 422);
+    return;
+  }
+
+  if (hasLatitude && !isCoordinateLike(body.latitude, -90, 90)) {
+    sendError(res, 'latitude must be a valid number between -90 and 90', 422);
+    return;
+  }
+
+  if (hasLongitude && !isCoordinateLike(body.longitude, -180, 180)) {
+    sendError(res, 'longitude must be a valid number between -180 and 180', 422);
     return;
   }
 

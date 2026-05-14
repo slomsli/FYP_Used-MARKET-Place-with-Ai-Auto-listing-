@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ROUTES } from '@/src/config/routes';
+import { resolveSupabaseUserRole } from '@/src/utils/authHelpers';
 import ReportListingModal from '@/src/components/reports/ReportListingModal';
 import { useAuth } from '@/src/hooks/useAuth';
 import { getProfile } from '@/src/services/profileService';
@@ -229,12 +230,11 @@ export default function BrowsePage() {
       }
 
       setViewerRole(
-        response.data?.role ||
-          (typeof user.user_metadata?.role === 'string' ? user.user_metadata.role : null)
+        resolveSupabaseUserRole(user, response.data?.role ?? null)
       );
     }).catch(() => {
       if (!cancelled) {
-        setViewerRole(typeof user.user_metadata?.role === 'string' ? user.user_metadata.role : null);
+        setViewerRole(resolveSupabaseUserRole(user));
       }
     });
 
@@ -243,11 +243,11 @@ export default function BrowsePage() {
     };
   }, [session?.access_token, user]);
 
-  const resolvedViewerRole =
-    viewerRole || (typeof user?.user_metadata?.role === 'string' ? user.user_metadata.role : null);
+  const resolvedViewerRole = resolveSupabaseUserRole(user, viewerRole);
   const isAdminViewer = resolvedViewerRole === 'admin';
   const showMemberActions = !user || resolvedViewerRole === 'user';
   const accountHubRoute = isAdminViewer ? ROUTES.ADMIN : ROUTES.DASHBOARD;
+  const notificationRoute = isAdminViewer ? ROUTES.ADMIN_NOTIFICATIONS : ROUTES.NOTIFICATIONS;
   const inboxRoute = isAdminViewer ? ROUTES.ADMIN_MESSAGES : ROUTES.MESSAGES;
 
   // Check favorite status when listings load and user is authenticated
@@ -504,7 +504,11 @@ export default function BrowsePage() {
             />
           </label>
 
-          <Link href={accountHubRoute} className={styles.iconButton} aria-label="Dashboard alerts">
+          <Link
+            href={notificationRoute}
+            className={styles.iconButton}
+            aria-label={isAdminViewer ? 'Admin notifications' : 'Notifications'}
+          >
             <BellIcon />
           </Link>
           <Link href={inboxRoute} className={styles.iconButton} aria-label="Messages">

@@ -45,8 +45,8 @@
 }
 
 .title {
-  font-size: clamp(2.3rem, 5vw, 3.6rem);
-  line-height: 1.05;
+  font-size: clamp(1.6rem, 3.5vw, 2.4rem);
+  line-height: 1.1;
   letter-spacing: -0.03em;
   color: var(--admin-primary, #1A237E);
   font-family: var(--admin-font-head, 'Manrope', sans-serif);
@@ -199,8 +199,8 @@
 }
 
 .heroMedia {
-  height: clamp(1000px, 100vh, 440px);
-  min-height: 1000px;
+  height: 360px;
+  max-height: 420px;
   padding: 1rem;
   border-radius: 24px;
   background:
@@ -481,8 +481,8 @@
   }
 
   .heroMedia {
-    height: clamp(260px, 42vh, 320px);
-    min-height: 260px;
+    height: clamp(220px, 38vh, 300px);
+    max-height: 300px;
   }
 }
 

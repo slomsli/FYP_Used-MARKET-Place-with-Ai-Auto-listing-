@@ -6,6 +6,10 @@ import type {
   AssistantSendPersistedMessageRequestBody,
   CreateAssistantThreadRequestBody,
 } from '../types/assistant';
+import {
+  AI_ASSISTANT_SETTING_KEY,
+  isSettingEnabled,
+} from '../services/settingsService';
 import { chatWithAssistant } from '../services/assistantService';
 import {
   archiveAssistantThreadForUser,
@@ -29,6 +33,17 @@ function getAuthenticatedUserId(
   return req.user.id;
 }
 
+async function ensureAssistantEnabled(res: Response): Promise<boolean> {
+  const isAssistantEnabled = await isSettingEnabled(AI_ASSISTANT_SETTING_KEY, true);
+
+  if (!isAssistantEnabled) {
+    sendError(res, 'AI shopping assistant is disabled by an administrator', 403);
+    return false;
+  }
+
+  return true;
+}
+
 function handleAssistantError(
   res: Response,
   error: unknown,
@@ -49,6 +64,10 @@ export async function assistantChatHandler(
 ): Promise<void> {
   const userId = getAuthenticatedUserId(req, res);
   if (!userId) {
+    return;
+  }
+
+  if (!(await ensureAssistantEnabled(res))) {
     return;
   }
 
@@ -78,6 +97,10 @@ export async function createAssistantThreadHandler(
     return;
   }
 
+  if (!(await ensureAssistantEnabled(res))) {
+    return;
+  }
+
   try {
     const thread = await createAssistantThread({
       userId,
@@ -98,6 +121,10 @@ export async function getAssistantThreadsHandler(
     return;
   }
 
+  if (!(await ensureAssistantEnabled(res))) {
+    return;
+  }
+
   try {
     const threads = await listAssistantThreadsForUser(userId);
     sendSuccess(res, threads);
@@ -112,6 +139,10 @@ export async function getAssistantThreadMessagesHandler(
 ): Promise<void> {
   const userId = getAuthenticatedUserId(req, res);
   if (!userId) {
+    return;
+  }
+
+  if (!(await ensureAssistantEnabled(res))) {
     return;
   }
 
@@ -134,6 +165,10 @@ export async function deleteAssistantThreadHandler(
     return;
   }
 
+  if (!(await ensureAssistantEnabled(res))) {
+    return;
+  }
+
   const { threadId } = req.params;
 
   try {
@@ -150,6 +185,10 @@ export async function archiveAssistantThreadHandler(
 ): Promise<void> {
   const userId = getAuthenticatedUserId(req, res);
   if (!userId) {
+    return;
+  }
+
+  if (!(await ensureAssistantEnabled(res))) {
     return;
   }
 
@@ -172,6 +211,10 @@ export async function sendAssistantMessageHandler(
     return;
   }
 
+  if (!(await ensureAssistantEnabled(res))) {
+    return;
+  }
+
   try {
     const body = req.body as AssistantSendPersistedMessageRequestBody;
     const result = await sendAssistantMessage({
@@ -182,6 +225,8 @@ export async function sendAssistantMessageHandler(
       roleContext: body.roleContext,
       currentPageContext: body.currentPageContext,
       selectedEntityContext: body.selectedEntityContext,
+      imageBase64: typeof body.imageBase64 === 'string' ? body.imageBase64 : undefined,
+      imageMimeType: typeof body.imageMimeType === 'string' ? body.imageMimeType : undefined,
     });
 
     sendSuccess(res, result);

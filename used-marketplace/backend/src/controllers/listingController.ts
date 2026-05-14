@@ -6,12 +6,14 @@ import {
   type CreateListingBody,
   type ListingFilterStatus,
   type ListingSortOption,
+  type MarkListingSoldBody,
   type UploadListingImageBody,
 } from '../types/listing';
 import {
   createListing,
   deleteListing,
   getListingMetadata,
+  getListingSaleBuyerCandidates,
   getSellerListingById,
   getMyListings,
   ListingServiceError,
@@ -188,10 +190,36 @@ export async function markSellerListingSold(
 
   try {
     const listingId = parseListingId(req.params.listingId);
-    const listing = await markListingAsSold(req.user.id, listingId);
+    const buyerUserId =
+      typeof (req.body as MarkListingSoldBody | undefined)?.buyerUserId === 'string'
+        ? (req.body as MarkListingSoldBody).buyerUserId?.trim() || null
+        : null;
+    const listing = await markListingAsSold(req.user.id, listingId, buyerUserId);
     sendSuccess(res, listing);
   } catch (error) {
     handleListingError(res, error, 'Internal server error while marking listing as sold');
+  }
+}
+
+export async function getSellerListingSaleBuyerCandidates(
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> {
+  if (!req.user) {
+    sendError(res, 'Unauthorized', 401);
+    return;
+  }
+
+  try {
+    const listingId = parseListingId(req.params.listingId);
+    const candidates = await getListingSaleBuyerCandidates(req.user.id, listingId);
+    sendSuccess(res, candidates);
+  } catch (error) {
+    handleListingError(
+      res,
+      error,
+      'Internal server error while fetching sale buyer candidates'
+    );
   }
 }
 

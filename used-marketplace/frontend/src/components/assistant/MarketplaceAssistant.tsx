@@ -12,7 +12,9 @@ import {
   listAssistantThreads,
   sendAssistantMessage as sendAssistantMessageRequest,
 } from '@/src/services/assistantService';
+import { getPublicConfig } from '@/src/services/publicSettingsService';
 import { getProfile } from '@/src/services/profileService';
+import { resolveSupabaseUserRole } from '@/src/utils/authHelpers';
 import type {
   AssistantConversationMessage,
   AssistantCurrentPageContext,
@@ -98,6 +100,25 @@ function TrashIcon() {
       <path d="M19 6l-1 14H6L5 6" />
       <path d="M10 11v6" />
       <path d="M14 11v6" />
+    </svg>
+  );
+}
+
+function ImageIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <path d="m21 15-5-5L5 21" />
+    </svg>
+  );
+}
+
+function XSmallIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+      <path d="m18 6-12 12" />
+      <path d="m6 6 12 12" />
     </svg>
   );
 }
@@ -395,9 +416,16 @@ export default function MarketplaceAssistant() {
   const router = useRouter();
   const { user, session, loading } = useAuth();
   const token = session?.access_token;
+  const [assistantEnabled, setAssistantEnabled] = useState<boolean | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');
+  const [attachedImage, setAttachedImage] = useState<{
+    dataUrl: string;
+    base64: string;
+    mimeType: string;
+  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [pendingAutoSendMessage, setPendingAutoSendMessage] = useState<string | null>(null);
   const [assistantRole, setAssistantRole] = useState<AssistantRole | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
@@ -415,6 +443,32 @@ export default function MarketplaceAssistant() {
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
+    getPublicConfig()
+      .then((response) => {
+        if (!cancelled) {
+          setAssistantEnabled(response.data?.ai_assistant_enabled !== false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAssistantEnabled(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
+
+  useEffect(() => {
+    if (assistantEnabled === false) {
+      setAssistantRole(null);
+      setProfileLoading(false);
+      return;
+    }
+
     if (!token) {
       setAssistantRole(null);
       setProfileLoading(false);
@@ -430,12 +484,12 @@ export default function MarketplaceAssistant() {
           return;
         }
 
-        if (response.data?.role === 'admin') {
+        const resolvedRole = resolveSupabaseUserRole(user, response.data?.role ?? null);
+
+        if (resolvedRole === 'admin') {
           setAssistantRole('admin');
-        } else if (response.data?.role === 'user') {
+        } else if (resolvedRole === 'user') {
           setAssistantRole('user');
-        } else if (user?.user_metadata?.role === 'admin') {
-          setAssistantRole('admin');
         } else {
           setAssistantRole('user');
         }
@@ -447,7 +501,9 @@ export default function MarketplaceAssistant() {
           return;
         }
 
-        if (user?.user_metadata?.role === 'admin') {
+        const resolvedRole = resolveSupabaseUserRole(user);
+
+        if (resolvedRole === 'admin') {
           setAssistantRole('admin');
         } else if (user) {
           setAssistantRole('user');
@@ -461,7 +517,7 @@ export default function MarketplaceAssistant() {
     return () => {
       cancelled = true;
     };
-  }, [token, user]);
+  }, [assistantEnabled, token, user]);
 
   useEffect(() => {
     if (!assistantRole || !token) {
@@ -863,11 +919,13 @@ export default function MarketplaceAssistant() {
 
     const optimisticMessageId = createLocalId('assistant-user');
     const createdAt = new Date().toISOString();
+    const capturedImage = attachedImage;
     const optimisticUserMessage: AssistantConversationMessage = {
       id: optimisticMessageId,
       role: 'user',
       text: trimmedMessage,
       createdAt,
+      imageDataUrl: capturedImage?.dataUrl,
     };
 
     setMessagesByThreadId((current) => ({
@@ -879,6 +937,7 @@ export default function MarketplaceAssistant() {
       [resolvedThread.id]: null,
     }));
     setInputValue('');
+    setAttachedImage(null);
     setIsSending(true);
     setLoadingLabel(
       assistantRole === 'admin'
@@ -894,6 +953,8 @@ export default function MarketplaceAssistant() {
       roleContext: currentRoleContext,
       currentPageContext,
       selectedEntityContext,
+      imageBase64: capturedImage?.base64,
+      imageMimeType: capturedImage?.mimeType,
     });
 
     const sendResult = response.data;
@@ -916,7 +977,12 @@ export default function MarketplaceAssistant() {
     }
 
     const assistantMessage = mapPersistedMessage(sendResult.assistantMessage);
-    const userMessage = mapPersistedMessage(sendResult.userMessage);
+    const userMessage = {
+      ...mapPersistedMessage(sendResult.userMessage),
+      // Restore the image preview — the server doesn't return image data,
+      // so we carry it forward from the captured image reference.
+      imageDataUrl: capturedImage?.dataUrl,
+    };
 
     setMessagesByThreadId((current) => {
       const existingMessages = current[resolvedThread.id] ?? [];
@@ -973,6 +1039,10 @@ export default function MarketplaceAssistant() {
     token,
     user,
   ]);
+
+  if (assistantEnabled === false || assistantEnabled === null) {
+    return null;
+  }
 
   if (loading || profileLoading || !user || !token || !assistantRole) {
     return null;
@@ -1220,7 +1290,16 @@ export default function MarketplaceAssistant() {
               >
                 <div className={styles.messageBubble}>
                   {message.role === 'user' ? (
-                    <p className={styles.messageText}>{message.text}</p>
+                    <>
+                      {message.imageDataUrl && (
+                        <img
+                          src={message.imageDataUrl}
+                          alt="Attached image"
+                          className={styles.messageImage}
+                        />
+                      )}
+                      <p className={styles.messageText}>{message.text}</p>
+                    </>
                   ) : (
                     <>
                       {message.response?.blocks.map((block, index) => {
@@ -1440,23 +1519,117 @@ export default function MarketplaceAssistant() {
           </div>
 
           <form className={styles.inputBar} onSubmit={handleSubmit}>
-            <label className={styles.inputField}>
-              <textarea
-                value={inputValue}
-                onChange={(event) => setInputValue(event.target.value)}
-                placeholder={
-                  assistantRole === 'admin'
-                    ? 'Ask for sales today, active listings, pending reports, or top categories...'
-                    : 'Ask for purchases, sold items, report help, or listing guidance...'
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className={styles.hiddenFileInput}
+              disabled={isSending || isThreadActionBusy}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+
+                // Validate size (max 4 MB)
+                if (file.size > 4 * 1024 * 1024) {
+                  alert('Please choose an image smaller than 4 MB.');
+                  event.target.value = '';
+                  return;
                 }
-                rows={2}
-                disabled={isSending || isThreadActionBusy}
-              />
+
+                const reader = new FileReader();
+                reader.onload = (readerEvent) => {
+                  const dataUrl = readerEvent.target?.result as string;
+                  // dataUrl = "data:image/jpeg;base64,XXXX"
+                  const [prefix, base64] = dataUrl.split(',');
+                  const mimeType = prefix.replace('data:', '').replace(';base64', '');
+                  setAttachedImage({ dataUrl, base64, mimeType });
+                };
+                reader.readAsDataURL(file);
+                // Reset input so the same file can be re-selected
+                event.target.value = '';
+              }}
+            />
+
+            <label className={styles.inputField}>
+              {/* Image preview strip */}
+              {attachedImage && (
+                <div className={styles.imagePreviewStrip}>
+                  <div className={styles.imagePreviewThumb}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={attachedImage.dataUrl} alt="Preview" className={styles.imagePreviewImg} />
+                    <button
+                      type="button"
+                      className={styles.imagePreviewRemove}
+                      onClick={() => setAttachedImage(null)}
+                      aria-label="Remove attached image"
+                    >
+                      <XSmallIcon />
+                    </button>
+                  </div>
+                  <span className={styles.imagePreviewLabel}>Image attached</span>
+                </div>
+              )}
+              <div className={styles.inputRow}>
+                {/* Attach image button */}
+                <button
+                  type="button"
+                  className={`${styles.attachButton} ${attachedImage ? styles.attachButtonActive : ''}`}
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isSending || isThreadActionBusy}
+                  aria-label="Attach an image"
+                  title="Attach image"
+                >
+                  <ImageIcon />
+                </button>
+                <textarea
+                  value={inputValue}
+                  onChange={(event) => setInputValue(event.target.value)}
+                  onPaste={(event) => {
+                    // Check if the clipboard contains an image
+                    const items = event.clipboardData?.items;
+                    if (!items) return;
+
+                    for (const item of Array.from(items)) {
+                      if (!item.type.startsWith('image/')) continue;
+
+                      const file = item.getAsFile();
+                      if (!file) continue;
+
+                      // Validate size (max 4 MB)
+                      if (file.size > 4 * 1024 * 1024) {
+                        alert('Pasted image is larger than 4 MB. Please use a smaller image.');
+                        return;
+                      }
+
+                      // Prevent the default paste so only the image is handled
+                      event.preventDefault();
+
+                      const reader = new FileReader();
+                      reader.onload = (readerEvent) => {
+                        const dataUrl = readerEvent.target?.result as string;
+                        const [prefix, base64] = dataUrl.split(',');
+                        const mimeType = prefix.replace('data:', '').replace(';base64', '');
+                        setAttachedImage({ dataUrl, base64, mimeType });
+                      };
+                      reader.readAsDataURL(file);
+                      return; // Only handle the first image
+                    }
+                  }}
+                  placeholder={
+                    assistantRole === 'admin'
+                      ? 'Ask for sales today, active listings, pending reports, or top categories...'
+                      : 'Ask for purchases, sold items, report help, or listing guidance...'
+                  }
+                  rows={2}
+                  disabled={isSending || isThreadActionBusy}
+                />
+              </div>
             </label>
             <button
               type="submit"
               className={styles.sendButton}
-              disabled={isSending || isThreadActionBusy || !inputValue.trim()}
+              disabled={isSending || isThreadActionBusy || (!inputValue.trim() && !attachedImage)}
               aria-label="Send assistant message"
             >
               <SendIcon />

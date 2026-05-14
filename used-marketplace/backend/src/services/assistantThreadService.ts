@@ -99,6 +99,8 @@ interface SendAssistantMessageInput {
   roleContext?: AssistantRoleContext;
   currentPageContext?: AssistantCurrentPageContext;
   selectedEntityContext?: AssistantSelectedEntityContext;
+  imageBase64?: string;
+  imageMimeType?: string;
 }
 
 class AssistantThreadServiceError extends Error {
@@ -684,6 +686,8 @@ function buildAssistantRequestBody(params: {
   history: AssistantPersistedMessage[];
   currentPageContext?: AssistantCurrentPageContext;
   selectedEntityContext?: AssistantSelectedEntityContext;
+  imageBase64?: string;
+  imageMimeType?: string;
 }): AssistantChatRequestBody {
   const userRole: AssistantRole = params.roleContext === 'admin' ? 'admin' : 'user';
 
@@ -696,6 +700,8 @@ function buildAssistantRequestBody(params: {
     currentPageContext: params.currentPageContext,
     selectedEntityContext: params.selectedEntityContext,
     history: buildHistory(params.history),
+    imageBase64: params.imageBase64,
+    imageMimeType: params.imageMimeType,
   };
 }
 
@@ -844,6 +850,8 @@ export async function sendAssistantMessage(
       roleContext: nextRoleContext,
       currentPageContext: input.currentPageContext ?? null,
       selectedEntityContext: input.selectedEntityContext ?? null,
+      hasImage: Boolean(input.imageBase64),
+      imageMimeType: input.imageBase64 ? (input.imageMimeType ?? 'image/jpeg') : null,
     },
   });
 
@@ -866,6 +874,8 @@ export async function sendAssistantMessage(
       history: [...existingMessages, userMessage],
       currentPageContext: input.currentPageContext,
       selectedEntityContext: input.selectedEntityContext,
+      imageBase64: input.imageBase64,
+      imageMimeType: input.imageMimeType,
     }),
   });
 

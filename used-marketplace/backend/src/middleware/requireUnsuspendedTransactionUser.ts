@@ -40,16 +40,16 @@ export async function requireMarketplaceUser(
     return;
   }
 
-  if (!isAccountSuspended(req.user)) {
-    next();
+  if (isAccountSuspended(req.user)) {
+    sendError(
+      res,
+      'Your account is suspended. You can still browse the marketplace, but new listings, offers, and other transactional actions are disabled until an admin reactivates your account.',
+      403
+    );
     return;
   }
 
-  sendError(
-    res,
-    'Your account is suspended. You can still browse the marketplace, but new listings, offers, and other transactional actions are disabled until an admin reactivates your account.',
-    403
-  );
+  next();
 }
 
 export const requireUnsuspendedTransactionUser = requireMarketplaceUser;
