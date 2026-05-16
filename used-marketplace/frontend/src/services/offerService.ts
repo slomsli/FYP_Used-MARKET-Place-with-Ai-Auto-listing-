@@ -81,11 +81,13 @@ export interface OfferSummary {
     id: string;
     displayName: string;
     avatarPath: string | null;
+    identityVerificationBadge: boolean;
   };
   seller: {
     id: string;
     displayName: string;
     avatarPath: string | null;
+    identityVerificationBadge: boolean;
   };
   saleFollowUp: OfferSaleFollowUp | null;
 }

@@ -16,6 +16,16 @@ import {
   type StateLookup,
   type AreaLookup,
 } from '@/src/services/profileService';
+import {
+  applyIdentityVerification,
+  getMyVerification,
+} from '@/src/services/verificationService';
+import ReMarketVerifiedBadge from '@/src/components/identity/ReMarketVerifiedBadge';
+import type {
+  IdentityDocumentType,
+  IdentityVerificationStatus,
+  UserVerificationResponse,
+} from '@/src/types/verification';
 import { ROUTES } from '@/src/config/routes';
 import OriginMapPicker, {
   type ListingCoordinates,
@@ -28,7 +38,9 @@ import {
 import styles from './settings.module.css';
 
 const ACCEPTED_AVATAR_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const ACCEPTED_IDENTITY_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_AVATAR_SIZE_BYTES = 8 * 1024 * 1024;
+const MAX_IDENTITY_FILE_SIZE_BYTES = 8 * 1024 * 1024;
 
 type ToastState = {
   type: 'success' | 'error';
@@ -53,6 +65,21 @@ const EMPTY_FORM_VALUES: ProfileFormValues = {
   areaId: null,
   latitude: null,
   longitude: null,
+};
+
+const DOCUMENT_TYPE_OPTIONS: Array<{ value: IdentityDocumentType; label: string }> = [
+  { value: 'passport', label: 'Passport' },
+  { value: 'national_id', label: 'National ID' },
+  { value: 'driving_license', label: 'Driving License' },
+  { value: 'other', label: 'Other Government Document' },
+];
+
+const VERIFICATION_STATUS_LABELS: Record<IdentityVerificationStatus, string> = {
+  unverified: 'Not verified',
+  pending: 'Pending review',
+  verified: 'Verified',
+  rejected: 'Rejected',
+  resubmission_required: 'Resubmission required',
 };
 
 const MailIcon = () => (
@@ -167,6 +194,17 @@ export default function SettingsPage() {
   const [areas, setAreas] = useState<AreaLookup[]>([]);
   const [toast, setToast] = useState<ToastState>(null);
   const [originalValues, setOriginalValues] = useState<ProfileFormValues>(EMPTY_FORM_VALUES);
+  const [verification, setVerification] = useState<UserVerificationResponse | null>(null);
+  const [verificationLoading, setVerificationLoading] = useState(true);
+  const [verificationSubmitting, setVerificationSubmitting] = useState(false);
+  const [verificationReloadKey, setVerificationReloadKey] = useState(0);
+  const [documentType, setDocumentType] = useState<IdentityDocumentType>('national_id');
+  const [documentCountry, setDocumentCountry] = useState('');
+  const [documentNumberLast4, setDocumentNumberLast4] = useState('');
+  const [selfieFile, setSelfieFile] = useState<File | null>(null);
+  const [documentFrontFile, setDocumentFrontFile] = useState<File | null>(null);
+  const [verificationConsent, setVerificationConsent] = useState(false);
+  const [verificationNotes, setVerificationNotes] = useState('');
 
   const currentValues = useMemo<ProfileFormValues>(() => ({
     fullName,
@@ -245,6 +283,30 @@ export default function SettingsPage() {
       cancelled = true;
     };
   }, [profileReloadKey, token]);
+
+  useEffect(() => {
+    if (!token) return;
+
+    let cancelled = false;
+    setVerificationLoading(true);
+
+    getMyVerification(token).then((res) => {
+      if (cancelled) return;
+
+      if (res.data) {
+        setVerification(res.data);
+      } else {
+        setVerification(null);
+        showToast('error', res.error || 'Unable to load identity verification status.');
+      }
+
+      setVerificationLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showToast, token, verificationReloadKey]);
 
   useEffect(() => {
     if (!token) return;
@@ -508,6 +570,97 @@ export default function SettingsPage() {
     setAreas([]);
   };
 
+  const validateIdentityFile = (file: File, label: string) => {
+    if (!ACCEPTED_IDENTITY_MIME_TYPES.includes(file.type)) {
+      return `${label} must be a JPG, PNG, or WEBP image.`;
+    }
+
+    if (file.size > MAX_IDENTITY_FILE_SIZE_BYTES) {
+      return `${label} must be 8MB or smaller.`;
+    }
+
+    return null;
+  };
+
+  const handleIdentityFileChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+    kind: 'selfie' | 'document'
+  ) => {
+    const file = event.target.files?.[0] ?? null;
+
+    if (!file) {
+      if (kind === 'selfie') setSelfieFile(null);
+      if (kind === 'document') setDocumentFrontFile(null);
+      return;
+    }
+
+    const validationError = validateIdentityFile(
+      file,
+      kind === 'selfie' ? 'Selfie image' : 'Document front image'
+    );
+
+    if (validationError) {
+      showToast('error', validationError);
+      event.target.value = '';
+      return;
+    }
+
+    if (kind === 'selfie') {
+      setSelfieFile(file);
+    } else {
+      setDocumentFrontFile(file);
+    }
+  };
+
+  const handleVerificationSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!token || verificationSubmitting) {
+      return;
+    }
+
+    if (!selfieFile || !documentFrontFile) {
+      showToast('error', 'Please upload both your selfie and document front image.');
+      return;
+    }
+
+    if (!verificationConsent) {
+      showToast('error', 'Please confirm your consent before submitting.');
+      return;
+    }
+
+    if (documentNumberLast4.trim() && !/^[0-9]{4}$/.test(documentNumberLast4.trim())) {
+      showToast('error', 'Use exactly the last 4 digits of your document number.');
+      return;
+    }
+
+    setVerificationSubmitting(true);
+    const res = await applyIdentityVerification(token, {
+      documentType,
+      documentCountry,
+      documentNumberLast4,
+      userNotes: verificationNotes,
+      consent: verificationConsent,
+      selfie: selfieFile,
+      documentFront: documentFrontFile,
+    });
+    setVerificationSubmitting(false);
+
+    if (res.data) {
+      setVerification(res.data);
+      setSelfieFile(null);
+      setDocumentFrontFile(null);
+      setDocumentCountry('');
+      setDocumentNumberLast4('');
+      setVerificationNotes('');
+      setVerificationConsent(false);
+      showToast('success', 'Identity verification request submitted for admin review.');
+      setVerificationReloadKey((key) => key + 1);
+    } else {
+      showToast('error', res.error || 'Unable to submit verification request.');
+    }
+  };
+
   if (loading) {
     return (
       <div className={styles.container}>
@@ -563,6 +716,25 @@ export default function SettingsPage() {
       ? 'Verify your email to unlock the strongest trust signals across the marketplace.'
       : 'Your account is active. Keep your profile and location details up to date so buyers can trust your listings.';
   const StatusIcon = profile.isSuspended ? AlertIcon : isPendingVerification ? MailIcon : ShieldIcon;
+  const verificationStatus =
+    verification?.profile.identityVerificationStatus ?? profile.identityVerificationStatus ?? 'unverified';
+  const latestVerificationRequest = verification?.latestRequest ?? null;
+  const verificationLabel = VERIFICATION_STATUS_LABELS[verificationStatus];
+  const canSubmitVerification =
+    !profile.isSuspended &&
+    (verificationStatus === 'unverified' ||
+      verificationStatus === 'rejected' ||
+      verificationStatus === 'resubmission_required');
+  const verificationStatusBadgeClass =
+    verificationStatus === 'verified'
+      ? styles.badgeSuccess
+      : verificationStatus === 'pending'
+        ? styles.badgeWarning
+        : verificationStatus === 'rejected' || verificationStatus === 'resubmission_required'
+          ? styles.badgeDanger
+          : styles.badgeNeutral;
+  const identityApprovedAt =
+    verification?.profile.identityVerifiedAt ?? profile.identityVerifiedAt ?? null;
 
   return (
     <div className={styles.container}>
@@ -761,6 +933,205 @@ export default function SettingsPage() {
           </div>
         </section>
       </div>
+
+      <section className={styles.verificationCard}>
+        <div className={styles.verificationHeader}>
+          <div>
+            <h2 className={styles.sectionTitle}>Identity Verification</h2>
+            <p className={styles.accountAccessText}>
+              Apply for ReMarket Verified by submitting a selfie and a government document for manual admin review.
+            </p>
+          </div>
+          <div className={styles.verificationStatusWrap}>
+            {verificationStatus === 'verified' && <ReMarketVerifiedBadge />}
+            <span className={`${styles.badge} ${verificationStatusBadgeClass}`}>
+              {verificationLabel}
+            </span>
+          </div>
+        </div>
+
+        {verificationLoading ? (
+          <div className={styles.verificationState}>Loading verification status...</div>
+        ) : (
+          <>
+            <div className={styles.verificationSummaryGrid}>
+              <div className={styles.verificationSummaryItem}>
+                <span>Latest request</span>
+                <strong>
+                  {latestVerificationRequest
+                    ? VERIFICATION_STATUS_LABELS[
+                        latestVerificationRequest.status === 'approved'
+                          ? 'verified'
+                          : latestVerificationRequest.status
+                      ]
+                    : 'No request yet'}
+                </strong>
+                <p>
+                  {latestVerificationRequest
+                    ? `Submitted ${new Date(latestVerificationRequest.submittedAt).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}`
+                    : 'You can submit documents when you are ready.'}
+                </p>
+              </div>
+              <div className={styles.verificationSummaryItem}>
+                <span>Review result</span>
+                <strong>
+                  {identityApprovedAt
+                    ? `Approved ${new Date(identityApprovedAt).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}`
+                    : latestVerificationRequest?.reviewedAt
+                      ? `Reviewed ${new Date(latestVerificationRequest.reviewedAt).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })}`
+                      : 'Awaiting review'}
+                </strong>
+                <p>
+                  {latestVerificationRequest?.rejectionReason ||
+                    (verificationStatus === 'verified'
+                      ? 'Your ReMarket Verified badge is active.'
+                      : 'Admin notes are private; user-facing decisions appear here.')}
+                </p>
+              </div>
+            </div>
+
+            <ul className={styles.verificationTips}>
+              <li>Use a clear photo of yourself.</li>
+              <li>Make sure the document is readable and not covered.</li>
+              <li>The information is only used for verification.</li>
+            </ul>
+
+            {profile.isSuspended && (
+              <div className={styles.verificationNotice}>
+                Suspended accounts cannot submit identity verification requests.
+              </div>
+            )}
+
+            {verificationStatus === 'pending' && (
+              <div className={styles.verificationNotice}>
+                Your request is pending admin review. New submissions are disabled until a decision is made.
+              </div>
+            )}
+
+            {verificationStatus === 'verified' ? (
+              <div className={styles.verificationNotice}>
+                Your approved badge is shown on listings, offers, messages, and your seller card.
+              </div>
+            ) : (
+              <form className={styles.verificationForm} onSubmit={handleVerificationSubmit}>
+                <div className={styles.formGrid}>
+                  <div className={styles.fieldGroup}>
+                    <label className={styles.fieldLabel} htmlFor="identity-document-type">Document Type</label>
+                    <select
+                      id="identity-document-type"
+                      className={styles.fieldSelect}
+                      value={documentType}
+                      onChange={(event) => setDocumentType(event.target.value as IdentityDocumentType)}
+                      disabled={!canSubmitVerification || verificationSubmitting}
+                    >
+                      {DOCUMENT_TYPE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className={styles.fieldGroup}>
+                    <label className={styles.fieldLabel} htmlFor="identity-country">Document Country</label>
+                    <input
+                      id="identity-country"
+                      className={styles.fieldInput}
+                      value={documentCountry}
+                      onChange={(event) => setDocumentCountry(event.target.value)}
+                      placeholder="Malaysia"
+                      disabled={!canSubmitVerification || verificationSubmitting}
+                    />
+                  </div>
+
+                  <div className={styles.fieldGroup}>
+                    <label className={styles.fieldLabel} htmlFor="identity-last4">Last 4 Digits</label>
+                    <input
+                      id="identity-last4"
+                      className={styles.fieldInput}
+                      value={documentNumberLast4}
+                      onChange={(event) => setDocumentNumberLast4(event.target.value.replace(/\D/g, '').slice(0, 4))}
+                      inputMode="numeric"
+                      maxLength={4}
+                      placeholder="1234"
+                      disabled={!canSubmitVerification || verificationSubmitting}
+                    />
+                  </div>
+
+                  <div className={styles.fieldGroup}>
+                    <label className={styles.fieldLabel} htmlFor="identity-selfie">Selfie Photo</label>
+                    <input
+                      id="identity-selfie"
+                      type="file"
+                      className={styles.fileInput}
+                      accept={ACCEPTED_IDENTITY_MIME_TYPES.join(',')}
+                      onChange={(event) => handleIdentityFileChange(event, 'selfie')}
+                      disabled={!canSubmitVerification || verificationSubmitting}
+                    />
+                    <p className={styles.fileHint}>{selfieFile?.name || 'JPG, PNG, or WEBP up to 8MB'}</p>
+                  </div>
+
+                  <div className={styles.fieldGroup}>
+                    <label className={styles.fieldLabel} htmlFor="identity-document-front">Document Front</label>
+                    <input
+                      id="identity-document-front"
+                      type="file"
+                      className={styles.fileInput}
+                      accept={ACCEPTED_IDENTITY_MIME_TYPES.join(',')}
+                      onChange={(event) => handleIdentityFileChange(event, 'document')}
+                      disabled={!canSubmitVerification || verificationSubmitting}
+                    />
+                    <p className={styles.fileHint}>{documentFrontFile?.name || 'Front image only, private storage'}</p>
+                  </div>
+
+                  <div className={styles.fieldGroupFull}>
+                    <label className={styles.fieldLabel} htmlFor="identity-notes">Notes for Admin</label>
+                    <textarea
+                      id="identity-notes"
+                      className={styles.fieldTextarea}
+                      value={verificationNotes}
+                      onChange={(event) => setVerificationNotes(event.target.value)}
+                      placeholder="Optional context for the reviewer"
+                      rows={3}
+                      disabled={!canSubmitVerification || verificationSubmitting}
+                    />
+                  </div>
+                </div>
+
+                <label className={styles.consentRow}>
+                  <input
+                    type="checkbox"
+                    checked={verificationConsent}
+                    onChange={(event) => setVerificationConsent(event.target.checked)}
+                    disabled={!canSubmitVerification || verificationSubmitting}
+                  />
+                  <span>I consent to ReMarket using these documents only for identity verification review.</span>
+                </label>
+
+                <div className={styles.verificationActions}>
+                  <button
+                    type="submit"
+                    className={styles.saveBtn}
+                    disabled={!canSubmitVerification || verificationSubmitting}
+                  >
+                    {verificationSubmitting ? 'Submitting...' : verificationStatus === 'resubmission_required' ? 'Resubmit for Review' : 'Submit for Review'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </>
+        )}
+      </section>
 
       <section className={styles.logoutCard}>
         <h2 className={styles.sectionTitle}>Account Access</h2>

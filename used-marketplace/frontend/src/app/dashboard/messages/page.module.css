@@ -215,6 +215,10 @@
 }
 
 .conversationName {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 100%;
   font-weight: 700;
   font-size: 0.9375rem;
   color: var(--dash-primary);
@@ -310,9 +314,17 @@
 }
 
 .chatHeaderName {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
   font-size: 0.9375rem;
   font-weight: 700;
   color: var(--dash-primary);
+}
+
+.verifiedBadgeInline {
+  flex-shrink: 0;
 }
 
 .chatHeaderSubline {

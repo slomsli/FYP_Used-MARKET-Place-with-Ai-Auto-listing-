@@ -156,6 +156,7 @@ function getAdminNavItems(pathname: string): SidebarNavItem[] {
   return [
     { label: 'Overview', href: ROUTES.ADMIN, icon: <DashboardIcon />, active: pathname === ROUTES.ADMIN },
     { label: 'Reports', href: ROUTES.ADMIN_REPORTS, icon: <AlertIcon />, active: pathname === ROUTES.ADMIN_REPORTS },
+    { label: 'Verification', href: ROUTES.ADMIN_VERIFICATION, icon: <ShieldIcon />, active: pathname === ROUTES.ADMIN_VERIFICATION },
     { label: 'Listings', href: ROUTES.ADMIN_LISTINGS, icon: <ListingsIcon />, active: isListingsRoute },
     { label: 'Users', href: ROUTES.ADMIN_USERS, icon: <UsersIcon />, active: pathname === ROUTES.ADMIN_USERS },
     { label: 'Messages', href: ROUTES.ADMIN_MESSAGES, icon: <MessagesIcon />, active: pathname === ROUTES.ADMIN_MESSAGES },

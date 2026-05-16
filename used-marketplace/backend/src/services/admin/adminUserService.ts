@@ -51,6 +51,7 @@ function buildAdminUserListItem(
 ): AdminUserListItem {
   const state = unwrapRelation(profile.states);
   const area = unwrapRelation(profile.areas);
+  const identityVerificationStatus = profile.identity_verification_status ?? 'unverified';
 
   return {
     id: profile.id,
@@ -63,6 +64,10 @@ function buildAdminUserListItem(
     status: deriveUserStatus(authUser),
     locationLabel: buildLocationLabel(state?.name ?? null, area?.name ?? null),
     listingCount: listingCountMap.get(profile.id) ?? 0,
+    identityVerificationStatus,
+    identityVerificationBadge:
+      identityVerificationStatus === 'verified' && profile.identity_verification_badge === true,
+    identityVerifiedAt: profile.identity_verified_at ?? null,
   };
 }
 
@@ -170,6 +175,7 @@ export async function getAdminUsers(query: AdminUsersQuery): Promise<AdminUsersR
         .from('profiles')
         .select(`
           id, username, full_name, avatar_path, role, created_at, updated_at, state_id, area_id,
+          identity_verification_status, identity_verification_badge, identity_verified_at,
           states!profiles_state_id_fkey ( id, name ),
           areas!profiles_area_id_fkey ( id, name )
         `)
@@ -219,7 +225,7 @@ export async function getAdminUsers(query: AdminUsersQuery): Promise<AdminUsersR
   monthStart.setUTCDate(1);
   monthStart.setUTCHours(0, 0, 0, 0);
 
-  const verifiedUsers = allUsers.filter((user) => user.status !== 'pending_verification').length;
+  const verifiedUsers = allUsers.filter((user) => user.identityVerificationBadge).length;
   const verificationRate = allUsers.length
     ? Math.round((verifiedUsers / allUsers.length) * 100)
     : 0;
@@ -361,6 +367,9 @@ export async function createAdminUser(input: CreateAdminUserInput): Promise<Admi
       status: 'active',
       locationLabel: buildLocationLabel(location.stateName, location.areaName),
       listingCount: 0,
+      identityVerificationStatus: 'unverified',
+      identityVerificationBadge: false,
+      identityVerifiedAt: null,
     };
   } catch (error) {
     await supabaseAdmin.auth.admin.deleteUser(createdAuthUser.user.id);

@@ -51,6 +51,7 @@ export interface ConversationDetail {
     display_name: string;
     username: string | null;
     avatar_path: string | null;
+    identity_verification_badge: boolean;
   } | null;
   listing_details: {
     title: string;

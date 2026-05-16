@@ -25,6 +25,9 @@ export interface AdminUserListItem {
   status: AdminUserStatus;
   locationLabel: string;
   listingCount: number;
+  identityVerificationStatus: 'unverified' | 'pending' | 'verified' | 'rejected' | 'resubmission_required';
+  identityVerificationBadge: boolean;
+  identityVerifiedAt: string | null;
 }
 
 export interface AdminUsersResponse {
@@ -409,6 +412,11 @@ export interface AdminOverviewResponse {
   health: {
     verificationRate: number;
     pendingVerificationUsers: number;
+    identityVerificationRate: number;
+    pendingIdentityVerifications: number;
+    verifiedIdentityUsers: number;
+    emailVerificationRate: number;
+    pendingEmailVerificationUsers: number;
     suspendedUsers: number;
     activeRegions: number;
     moderationThreads: number;

@@ -104,6 +104,8 @@ interface RawProfile {
   created_at: string;
   state_id: number | null;
   area_id: number | null;
+  identity_verification_status?: string | null;
+  identity_verification_badge?: boolean | null;
 }
 
 interface RawSellerStatsListing {
@@ -580,6 +582,12 @@ function buildBuyerDisplayName(profile: Pick<RawProfile, 'full_name' | 'username
   return buildSellerDisplayName(profile);
 }
 
+function hasIdentityVerificationBadge(
+  profile: Pick<RawProfile, 'identity_verification_status' | 'identity_verification_badge'> | null | undefined
+): boolean {
+  return profile?.identity_verification_status === 'verified' && profile.identity_verification_badge === true;
+}
+
 function getOfferCandidatePriority(status: string | null): number {
   switch (status) {
     case 'accepted':
@@ -653,6 +661,7 @@ function buildPublicListingSummary(
         id: listing.seller_id ?? '',
         displayName: 'Seller',
         avatarPath: null,
+        identityVerificationBadge: false,
       },
   };
 }
@@ -1193,7 +1202,7 @@ async function getSellerPreviewMap(
   const uniqueSellerIds = Array.from(new Set(sellerIds));
   const { data, error } = await supabaseAdmin
     .from('profiles')
-    .select('id, username, full_name, avatar_path')
+    .select('id, username, full_name, avatar_path, identity_verification_status, identity_verification_badge')
     .in('id', uniqueSellerIds);
 
   if (error) {
@@ -1203,12 +1212,13 @@ async function getSellerPreviewMap(
 
   for (const profile of (data ?? []) as Pick<
     RawProfile,
-    'id' | 'username' | 'full_name' | 'avatar_path'
+    'id' | 'username' | 'full_name' | 'avatar_path' | 'identity_verification_status' | 'identity_verification_badge'
   >[]) {
     previewMap.set(profile.id, {
       id: profile.id,
       displayName: buildSellerDisplayName(profile),
       avatarPath: getPublicStorageUrl(AVATAR_BUCKET, profile.avatar_path ?? null),
+      identityVerificationBadge: hasIdentityVerificationBadge(profile),
     });
   }
 
@@ -1423,7 +1433,17 @@ async function getPublicSellerSummary(
   const [profileResult, reviewsResult, listingsResult] = await Promise.all([
     supabaseAdmin
       .from('profiles')
-      .select('id, username, full_name, avatar_path, created_at, state_id, area_id')
+      .select(`
+        id,
+        username,
+        full_name,
+        avatar_path,
+        created_at,
+        state_id,
+        area_id,
+        identity_verification_status,
+        identity_verification_badge
+      `)
       .eq('id', sellerId)
       .maybeSingle(),
     supabaseAdmin.from('reviews').select('rating').eq('seller_id', sellerId),
@@ -1513,6 +1533,8 @@ async function getPublicSellerSummary(
       displayName: 'Seller',
       username: `seller_${shortSellerId}`.slice(0, 20),
       avatarPath: null,
+      identityVerificationBadge: false,
+      identityVerificationStatus: 'unverified',
       memberSince: new Date().getFullYear().toString(),
       averageRating,
       totalReviews,
@@ -1534,6 +1556,10 @@ async function getPublicSellerSummary(
     displayName: buildSellerDisplayName(profile),
     username: profile.username,
     avatarPath: getPublicStorageUrl(AVATAR_BUCKET, profile.avatar_path ?? null),
+    identityVerificationBadge: hasIdentityVerificationBadge(profile),
+    identityVerificationStatus:
+      (profile.identity_verification_status as PublicSellerSummary['identityVerificationStatus']) ??
+      'unverified',
     memberSince: new Date(profile.created_at).getFullYear().toString(),
     averageRating,
     totalReviews,

@@ -200,6 +200,7 @@ export interface PublicSellerPreview {
   id: string;
   displayName: string;
   avatarPath: string | null;
+  identityVerificationBadge: boolean;
 }
 
 export interface PublicListingSummary extends ListingSummary {
@@ -257,6 +258,8 @@ export interface PublicSellerSummary {
   displayName: string;
   username: string;
   avatarPath: string | null;
+  identityVerificationBadge: boolean;
+  identityVerificationStatus: 'unverified' | 'pending' | 'verified' | 'rejected' | 'resubmission_required';
   memberSince: string;
   averageRating: number | null;
   totalReviews: number;

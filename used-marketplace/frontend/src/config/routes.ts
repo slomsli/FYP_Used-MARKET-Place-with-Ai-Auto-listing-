@@ -13,6 +13,7 @@ export const ROUTES = {
   ADMIN: '/admin',
   ADMIN_GUIDE: '/admin/guide',
   ADMIN_REPORTS: '/admin/reports',
+  ADMIN_VERIFICATION: '/admin/verification',
   ADMIN_LISTINGS: '/admin/listings',
   ADMIN_MESSAGES: '/admin/messages',
   ADMIN_SUPPORT: '/admin/support',

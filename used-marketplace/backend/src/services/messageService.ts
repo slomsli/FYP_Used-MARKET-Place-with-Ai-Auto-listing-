@@ -70,6 +70,7 @@ export interface ConversationDetail {
     display_name: string;
     username: string | null;
     avatar_path: string | null;
+    identity_verification_badge: boolean;
   } | null;
   listing_details: {
     title: string;
@@ -106,10 +107,16 @@ interface RawProfile {
   full_name: string | null;
   username: string | null;
   avatar_path: string | null;
+  identity_verification_status?: string | null;
+  identity_verification_badge?: boolean | null;
 }
 
 interface RawAdminProfile extends RawProfile {
   role: string;
+}
+
+function hasIdentityVerificationBadge(profile: RawProfile | null | undefined): boolean {
+  return profile?.identity_verification_status === 'verified' && profile.identity_verification_badge === true;
 }
 
 interface RawListing {
@@ -924,13 +931,17 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
         id,
         full_name,
         username,
-        avatar_path
+        avatar_path,
+        identity_verification_status,
+        identity_verification_badge
       ),
       seller_profile:profiles!conversations_seller_id_fkey (
         id,
         full_name,
         username,
-        avatar_path
+        avatar_path,
+        identity_verification_status,
+        identity_verification_badge
       )
     `)
     .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
@@ -1038,6 +1049,7 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
             display_name: buildDisplayName(otherProfile, 'Marketplace User'),
             username: otherProfile.username ?? null,
             avatar_path: getPublicStorageUrl(AVATAR_BUCKET, otherProfile.avatar_path ?? null),
+            identity_verification_badge: hasIdentityVerificationBadge(otherProfile),
           }
         : null,
       listing_details: listingDetails,

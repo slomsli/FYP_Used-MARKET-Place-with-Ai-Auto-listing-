@@ -22,6 +22,10 @@ export interface ProfileData {
   areaName: string | null;
   accountStatus: 'active' | 'pending_verification' | 'suspended';
   isSuspended: boolean;
+  identityVerificationStatus: 'unverified' | 'pending' | 'verified' | 'rejected' | 'resubmission_required';
+  identityVerificationBadge: boolean;
+  identityVerifiedAt: string | null;
+  identityVerifiedBy: string | null;
 }
 
 export interface UpdateProfileInput {
@@ -231,6 +235,8 @@ export async function getProfile(userId: string): Promise<ProfileData> {
     .select(`
       id, username, full_name, phone, avatar_path, role,
       created_at, updated_at, state_id, area_id, latitude, longitude,
+      identity_verification_status, identity_verification_badge,
+      identity_verified_at, identity_verified_by,
       states!profiles_state_id_fkey ( id, name ),
       areas!profiles_area_id_fkey ( id, name )
     `)
@@ -268,6 +274,12 @@ export async function getProfile(userId: string): Promise<ProfileData> {
     areaName: area?.name ?? null,
     accountStatus,
     isSuspended: accountStatus === 'suspended',
+    identityVerificationStatus: data.identity_verification_status ?? 'unverified',
+    identityVerificationBadge:
+      data.identity_verification_status === 'verified' &&
+      data.identity_verification_badge === true,
+    identityVerifiedAt: data.identity_verified_at ?? null,
+    identityVerifiedBy: data.identity_verified_by ?? null,
   };
 }
 

@@ -257,8 +257,13 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+  flex-wrap: wrap;
   font-weight: 600;
   color: #334155;
+}
+
+.verifiedBadgeInline {
+  flex-shrink: 0;
 }
 
 .avatar {

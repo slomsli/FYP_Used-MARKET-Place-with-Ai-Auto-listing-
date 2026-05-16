@@ -30,6 +30,8 @@ interface RawProfile {
   username: string;
   full_name: string | null;
   avatar_path: string | null;
+  identity_verification_status?: string | null;
+  identity_verification_badge?: boolean | null;
 }
 
 interface RawCategory {
@@ -213,11 +215,13 @@ export interface OfferSummary {
     id: string;
     displayName: string;
     avatarPath: string | null;
+    identityVerificationBadge: boolean;
   };
   seller: {
     id: string;
     displayName: string;
     avatarPath: string | null;
+    identityVerificationBadge: boolean;
   };
   saleFollowUp: OfferSaleFollowUp | null;
 }
@@ -316,6 +320,10 @@ function toSingleLineNotificationText(value: string | null | undefined, fallback
   }
 
   return normalized.length > 180 ? `${normalized.slice(0, 177)}...` : normalized;
+}
+
+function hasIdentityVerificationBadge(profile: RawProfile | null | undefined): boolean {
+  return profile?.identity_verification_status === 'verified' && profile.identity_verification_badge === true;
 }
 
 function getOfferKindLabel(offerKind: OfferKind): string {
@@ -939,11 +947,13 @@ function mapOffer(raw: RawOffer): OfferSummary {
       id: raw.buyer_id,
       displayName: buildDisplayName(buyer),
       avatarPath: getPublicStorageUrl(AVATAR_BUCKET, buyer?.avatar_path ?? null),
+      identityVerificationBadge: hasIdentityVerificationBadge(buyer),
     },
     seller: {
       id: raw.seller_id,
       displayName: buildDisplayName(seller),
       avatarPath: getPublicStorageUrl(AVATAR_BUCKET, seller?.avatar_path ?? null),
+      identityVerificationBadge: hasIdentityVerificationBadge(seller),
     },
     saleFollowUp: null,
   };
@@ -967,10 +977,10 @@ const OFFER_SELECT = `
     categories!listings_category_id_fkey ( id, name, slug )
   ),
   buyer_profile:profiles!offers_buyer_id_fkey (
-    id, username, full_name, avatar_path
+    id, username, full_name, avatar_path, identity_verification_status, identity_verification_badge
   ),
   seller_profile:profiles!offers_seller_id_fkey (
-    id, username, full_name, avatar_path
+    id, username, full_name, avatar_path, identity_verification_status, identity_verification_badge
   )
 `;
 

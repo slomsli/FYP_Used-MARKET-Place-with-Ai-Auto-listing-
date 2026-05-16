@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import ReportListingModal from '@/src/components/reports/ReportListingModal';
 import ListingLocationMap from '@/src/components/listings/ListingLocationMap';
 import ImageLightbox from '@/src/components/ui/ImageLightbox';
+import ReMarketVerifiedBadge from '@/src/components/identity/ReMarketVerifiedBadge';
 import { ROUTES } from '@/src/config/routes';
 import { resolveSupabaseUserRole } from '@/src/utils/authHelpers';
 import { useAuth } from '@/src/hooks/useAuth';
@@ -67,14 +68,6 @@ function ChevronRightIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="m9 18 6-6-6-6" />
-    </svg>
-  );
-}
-
-function ShieldIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 2 4 5v6c0 5.25 3.44 9.74 8 11 4.56-1.26 8-5.75 8-11V5l-8-3Z" />
     </svg>
   );
 }
@@ -680,9 +673,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
                 <div className={styles.sellerMeta}>
                   <div className={styles.sellerNameRow}>
                     <h2 className={styles.sellerName}>{seller.displayName}</h2>
-                    <span className={styles.verifiedMark}>
-                      <ShieldIcon />
-                    </span>
+                    {seller.identityVerificationBadge && <ReMarketVerifiedBadge />}
                   </div>
                   <p className={styles.sellerTitle}>@{seller.username || 'seller'}</p>
                   <div className={styles.sellerStats}>

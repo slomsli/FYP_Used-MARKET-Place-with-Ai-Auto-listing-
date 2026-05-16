@@ -17,3 +17,7 @@ export const MESSAGE_ATTACHMENT_BUCKET =
   process.env.SUPABASE_MESSAGE_ATTACHMENTS_BUCKET?.trim() ||
   process.env.NEXT_PUBLIC_SUPABASE_MESSAGE_ATTACHMENTS_BUCKET?.trim() ||
   'message-attachments';
+
+export const IDENTITY_VERIFICATION_BUCKET =
+  process.env.SUPABASE_IDENTITY_VERIFICATION_BUCKET?.trim() ||
+  'identity-verification';

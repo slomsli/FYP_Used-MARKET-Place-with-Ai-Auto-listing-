@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { ROUTES } from '@/src/config/routes';
 import { resolveSupabaseUserRole } from '@/src/utils/authHelpers';
 import ReportListingModal from '@/src/components/reports/ReportListingModal';
+import ReMarketVerifiedBadge from '@/src/components/identity/ReMarketVerifiedBadge';
 import { useAuth } from '@/src/hooks/useAuth';
 import { getProfile } from '@/src/services/profileService';
 import { getPublicListings } from '@/src/services/listingService';
@@ -772,6 +773,9 @@ export default function BrowsePage() {
                               <h2 className={styles.cardTitle}>{listing.title}</h2>
                               <p className={styles.cardMeta}>
                                 {listing.locationLabel} | {listing.seller.displayName}
+                                {listing.seller.identityVerificationBadge && (
+                                  <ReMarketVerifiedBadge compact className={styles.inlineVerifiedBadge} />
+                                )}
                               </p>
                             </div>
                             <span className={styles.cardPrice}>

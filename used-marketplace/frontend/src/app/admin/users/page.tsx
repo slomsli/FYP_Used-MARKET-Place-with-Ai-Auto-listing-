@@ -18,6 +18,7 @@ import {
   type AreaLookup,
   type StateLookup,
 } from '@/src/services/profileService';
+import ReMarketVerifiedBadge from '@/src/components/identity/ReMarketVerifiedBadge';
 import type {
   AdminUserDetailResponse,
   AdminUserListItem,
@@ -626,7 +627,7 @@ export default function AdminUsersPage() {
           <article className={`${styles.statCard} ${styles.statCardMint}`}>
             <p className={styles.statLabel}>Identity Verified</p>
             <h3 className={styles.statValue}>{data.stats.verificationRate}%</h3>
-            <p className={styles.statDetail}>Users with confirmed email access.</p>
+            <p className={styles.statDetail}>Users approved for ReMarket Verified.</p>
           </article>
 
           <article className={styles.statCard}>
@@ -789,6 +790,7 @@ export default function AdminUsersPage() {
 
                     <div className={styles.detailCopy}>
                       <p className={styles.detailTitle}>{detailTarget?.fullName}</p>
+                      {detailTarget?.identityVerificationBadge && <ReMarketVerifiedBadge />}
                       <p className={styles.detailMeta}>
                         @{detailTarget?.username} - {detailTarget?.email || 'No email on record'}
                       </p>
@@ -799,6 +801,9 @@ export default function AdminUsersPage() {
                         <span className={styles.detailStatusPill}>{detailTarget ? getStatusLabel(detailTarget.status) : 'Unknown'}</span>
                         <span className={styles.detailStatusPill}>
                           {detailTarget?.emailVerified ? 'Email Verified' : 'Email Pending'}
+                        </span>
+                        <span className={styles.detailStatusPill}>
+                          {detailTarget?.identityVerificationBadge ? 'ReMarket Verified' : 'Identity Not Verified'}
                         </span>
                       </div>
                     </div>

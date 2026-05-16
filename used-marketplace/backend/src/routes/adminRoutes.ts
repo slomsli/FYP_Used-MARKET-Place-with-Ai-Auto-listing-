@@ -19,6 +19,13 @@ import {
   updateAdminReportStatusHandler,
   updateAdminUserStatusHandler,
 } from '../controllers/adminController';
+import {
+  approveVerificationRequestHandler,
+  getAdminVerificationRequestDetailHandler,
+  getAdminVerificationRequestsHandler,
+  rejectVerificationRequestHandler,
+  requestVerificationResubmissionHandler,
+} from '../controllers/verificationController';
 
 import {
   getPlatformSettings,
@@ -32,6 +39,11 @@ router.use(requireAdmin);
 
 router.get('/overview', getAdminOverviewHandler);
 router.get('/users', getAdminUsersHandler);
+router.get('/verification/requests', getAdminVerificationRequestsHandler);
+router.get('/verification/requests/:id', getAdminVerificationRequestDetailHandler);
+router.patch('/verification/requests/:id/approve', approveVerificationRequestHandler);
+router.patch('/verification/requests/:id/reject', rejectVerificationRequestHandler);
+router.patch('/verification/requests/:id/resubmission', requestVerificationResubmissionHandler);
 router.get('/listings', getAdminListingsHandler);
 router.get('/listings/:listingId', getAdminListingDetailsHandler);
 router.get('/reports', getAdminReportsHandler);

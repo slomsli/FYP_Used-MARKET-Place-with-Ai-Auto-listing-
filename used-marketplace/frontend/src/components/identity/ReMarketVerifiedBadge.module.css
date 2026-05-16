@@ -1,0 +1,30 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: max-content;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 0.26rem 0.55rem;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid rgba(4, 120, 87, 0.18);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.badge svg {
+  flex: 0 0 auto;
+}
+
+.compact {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  justify-content: center;
+  padding: 0;
+}

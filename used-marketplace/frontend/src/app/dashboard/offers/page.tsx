@@ -15,6 +15,7 @@ import {
   type OfferSummary,
 } from '@/src/services/offerService';
 import { ROUTES } from '@/src/config/routes';
+import ReMarketVerifiedBadge from '@/src/components/identity/ReMarketVerifiedBadge';
 import styles from './offers.module.css';
 
 function formatCurrency(amount: number, currency = 'MYR') {
@@ -553,6 +554,9 @@ export default function OffersPage() {
                             </span>
                           )}
                           {participantRoleLabel}: {participant.displayName}
+                          {participant.identityVerificationBadge && (
+                            <ReMarketVerifiedBadge compact className={styles.verifiedBadgeInline} />
+                          )}
                         </span>
                         {offer.offerKind === 'counter_offer' && (
                           <span className={styles.kindPill}>Counter Offer</span>

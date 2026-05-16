@@ -20,6 +20,10 @@ export interface ProfileData {
   areaName: string | null;
   accountStatus: 'active' | 'pending_verification' | 'suspended';
   isSuspended: boolean;
+  identityVerificationStatus: 'unverified' | 'pending' | 'verified' | 'rejected' | 'resubmission_required';
+  identityVerificationBadge: boolean;
+  identityVerifiedAt: string | null;
+  identityVerifiedBy: string | null;
 }
 
 export interface UpdateProfilePayload {

@@ -33,7 +33,7 @@ export async function getAdminOverview(
   ] = await Promise.all([
     supabaseAdmin
       .from('profiles')
-      .select('id, username, full_name, created_at')
+      .select('id, username, full_name, created_at, identity_verification_status, identity_verification_badge')
       .order('created_at', { ascending: false }),
     listAllAuthUsers(),
     supabaseAdmin
@@ -141,15 +141,26 @@ export async function getAdminOverview(
     ? buildYearMonthBuckets(selectedYear)
     : buildRecentMonthBuckets();
   const monthBucketMap = new Map(monthBuckets.map((bucket) => [bucket.value, bucket]));
-  const pendingVerificationUsers = profileRows.filter(
+  const pendingEmailVerificationUsers = profileRows.filter(
     (profile) => !authUserMap.get(profile.id)?.email_confirmed_at
   ).length;
   const suspendedUsers = profileRows.filter((profile) =>
     isAccountSuspended(authUserMap.get(profile.id))
   ).length;
-  const verifiedUsers = profileRows.length - pendingVerificationUsers;
-  const verificationRate = profileRows.length
-    ? Math.round((verifiedUsers / profileRows.length) * 100)
+  const emailVerifiedUsers = profileRows.length - pendingEmailVerificationUsers;
+  const emailVerificationRate = profileRows.length
+    ? Math.round((emailVerifiedUsers / profileRows.length) * 100)
+    : 0;
+  const pendingIdentityVerifications = profileRows.filter(
+    (profile) => profile.identity_verification_status === 'pending'
+  ).length;
+  const verifiedIdentityUsers = profileRows.filter(
+    (profile) =>
+      profile.identity_verification_status === 'verified' &&
+      profile.identity_verification_badge === true
+  ).length;
+  const identityVerificationRate = profileRows.length
+    ? Math.round((verifiedIdentityUsers / profileRows.length) * 100)
     : 0;
   const activeListings = listingRows.filter((listing) => listing.status === 'active').length;
   const soldItems = listingRows.filter((listing) => listing.status === 'sold').length;
@@ -286,8 +297,13 @@ export async function getAdminOverview(
       pendingOffers: pendingOffersResult.count ?? 0,
     },
     health: {
-      verificationRate,
-      pendingVerificationUsers,
+      verificationRate: identityVerificationRate,
+      pendingVerificationUsers: pendingIdentityVerifications,
+      identityVerificationRate,
+      pendingIdentityVerifications,
+      verifiedIdentityUsers,
+      emailVerificationRate,
+      pendingEmailVerificationUsers,
       suspendedUsers,
       activeRegions,
       moderationThreads,

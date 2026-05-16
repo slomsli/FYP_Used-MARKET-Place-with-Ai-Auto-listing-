@@ -9,6 +9,7 @@ import { getPublicListingById } from '@/src/services/listingService';
 import * as messageService from '@/src/services/messageService';
 import type { ChatMessage, ConversationDetail } from '@/src/services/messageService';
 import ImageLightbox from '@/src/components/ui/ImageLightbox';
+import ReMarketVerifiedBadge from '@/src/components/identity/ReMarketVerifiedBadge';
 import styles from './page.module.css';
 
 const SearchIcon = () => (
@@ -1149,7 +1150,12 @@ export default function MessagesPage() {
 
                     <div className={styles.conversationContent}>
                       <div className={styles.conversationTop}>
-                        <span className={styles.conversationName}>{name}</span>
+                        <span className={styles.conversationName}>
+                          {name}
+                          {conversation.other_user?.identity_verification_badge && (
+                            <ReMarketVerifiedBadge compact className={styles.verifiedBadgeInline} />
+                          )}
+                        </span>
                         <span className={styles.conversationTime}>
                           {formatTime(conversation.last_message?.created_at || conversation.created_at)}
                         </span>
@@ -1211,7 +1217,12 @@ export default function MessagesPage() {
                 </div>
 
                 <div className={styles.chatHeaderInfo}>
-                  <span className={styles.chatHeaderName}>{activeOtherUserName}</span>
+                  <span className={styles.chatHeaderName}>
+                    {activeOtherUserName}
+                    {activeConversation?.other_user?.identity_verification_badge && (
+                      <ReMarketVerifiedBadge className={styles.verifiedBadgeInline} />
+                    )}
+                  </span>
                   <span className={styles.chatHeaderSubline}>
                     {activeOtherUserUsername ? `@${activeOtherUserUsername} | ` : ''}
                     {draftTarget

@@ -56,6 +56,15 @@ function OfferIcon() {
   );
 }
 
+function ShieldIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
+  );
+}
+
 function MessageIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -180,16 +189,25 @@ export default function AdminPage() {
   }
 
   const totalSoldThisPeriod = overview.activity.months.reduce((sum, m) => sum + m.soldItems, 0);
+  const identityVerificationRate =
+    overview.health.identityVerificationRate ?? overview.health.verificationRate;
+  const pendingIdentityVerifications =
+    overview.health.pendingIdentityVerifications ?? overview.health.pendingVerificationUsers;
+  const verifiedIdentityUsers =
+    overview.health.verifiedIdentityUsers ?? Math.round((overview.stats.totalUsers * identityVerificationRate) / 100);
 
   const statCards = [
     {
       label: 'Total Users',
       value: overview.stats.totalUsers,
-      detail: `${overview.health.verificationRate}% verified`,
+      detail: `${identityVerificationRate}% ReMarket Verified`,
       icon: <UsersIcon />,
       tone: styles.statCardInk,
-      trend: overview.health.verificationRate === 100 ? 'All verified' : `${overview.health.pendingVerificationUsers} pending`,
-      trendUp: overview.health.verificationRate >= 80,
+      trend:
+        pendingIdentityVerifications > 0
+          ? `${pendingIdentityVerifications} pending review`
+          : `${verifiedIdentityUsers} verified`,
+      trendUp: pendingIdentityVerifications === 0,
     },
     {
       label: 'Active Listings',
@@ -221,7 +239,7 @@ export default function AdminPage() {
     {
       label: 'Open Offers',
       value: overview.stats.pendingOffers,
-      detail: `${overview.health.pendingVerificationUsers} users awaiting verification`,
+      detail: 'Active buyer-seller negotiations',
       icon: <OfferIcon />,
       tone: styles.statCardNavy,
       trend: overview.stats.pendingOffers === 0 ? 'None pending' : `${overview.stats.pendingOffers} active`,
@@ -231,13 +249,13 @@ export default function AdminPage() {
   const focusItems = [
     {
       key: 'verification',
-      label: 'Email verification',
-      value: `${overview.health.verificationRate}%`,
-      description: `${overview.health.verificationRate}% of registered users have verified their email. ${overview.health.pendingVerificationUsers.toLocaleString()} user(s) are still waiting for verification.`,
-      actionLabel: 'Review users',
-      actionHref: ROUTES.ADMIN_USERS,
+      label: 'Identity verification',
+      value: pendingIdentityVerifications.toLocaleString(),
+      description: `${identityVerificationRate}% of users are ReMarket Verified. ${pendingIdentityVerifications.toLocaleString()} request(s) are waiting for admin review.`,
+      actionLabel: 'Open verification',
+      actionHref: ROUTES.ADMIN_VERIFICATION,
       hasProgress: true,
-      progress: overview.health.verificationRate,
+      progress: identityVerificationRate,
     },
     {
       key: 'suspended',
@@ -441,8 +459,8 @@ export default function AdminPage() {
 
               <div className={styles.chartFooter}>
                 <div className={styles.chartFooterItem}>
-                  <span className={styles.chartFooterLabel}>Pending verification</span>
-                  <strong className={styles.chartFooterValue}>{overview.health.pendingVerificationUsers.toLocaleString()}</strong>
+                  <span className={styles.chartFooterLabel}>Pending identity reviews</span>
+                  <strong className={styles.chartFooterValue}>{pendingIdentityVerifications.toLocaleString()}</strong>
                 </div>
                 <div className={styles.chartFooterItem}>
                   <span className={styles.chartFooterLabel}>Suspended users</span>
@@ -639,6 +657,7 @@ export default function AdminPage() {
             <p className={styles.sectionEyebrow}>Quick Actions</p>
             <div className={styles.quickActions}>
               <Link href={ROUTES.ADMIN_LISTINGS} className={styles.quickAction}><ListingIcon /><span>Listings</span></Link>
+              <Link href={ROUTES.ADMIN_VERIFICATION} className={styles.quickAction}><ShieldIcon /><span>Verification</span></Link>
               <Link href={ROUTES.ADMIN_REPORTS} className={styles.quickAction}><AlertIcon /><span>Reports</span></Link>
               <Link href={ROUTES.ADMIN_USERS} className={styles.quickAction}><UsersIcon /><span>Users</span></Link>
               <Link href={ROUTES.ADMIN_MESSAGES} className={styles.quickAction}><MessageIcon /><span>Inbox</span></Link>

@@ -52,6 +52,10 @@ export interface RawProfile {
   updated_at: string;
   state_id: number | null;
   area_id: number | null;
+  identity_verification_status?: 'unverified' | 'pending' | 'verified' | 'rejected' | 'resubmission_required' | null;
+  identity_verification_badge?: boolean | null;
+  identity_verified_at?: string | null;
+  identity_verified_by?: string | null;
   states: Relation<{ id: number; name: string }>;
   areas: Relation<{ id: number; name: string }>;
 }
@@ -164,6 +168,8 @@ export interface RawAdminOverviewProfile {
   username: string;
   full_name: string | null;
   created_at: string;
+  identity_verification_status?: 'unverified' | 'pending' | 'verified' | 'rejected' | 'resubmission_required' | null;
+  identity_verification_badge?: boolean | null;
 }
 
 export interface RawAdminOverviewListing {
@@ -302,6 +308,9 @@ export interface AdminUserListItem {
   status: AdminUserStatus;
   locationLabel: string;
   listingCount: number;
+  identityVerificationStatus: 'unverified' | 'pending' | 'verified' | 'rejected' | 'resubmission_required';
+  identityVerificationBadge: boolean;
+  identityVerifiedAt: string | null;
 }
 
 export interface AdminUsersResponse {
@@ -704,6 +713,11 @@ export interface AdminOverviewResponse {
   health: {
     verificationRate: number;
     pendingVerificationUsers: number;
+    identityVerificationRate: number;
+    pendingIdentityVerifications: number;
+    verifiedIdentityUsers: number;
+    emailVerificationRate: number;
+    pendingEmailVerificationUsers: number;
     suspendedUsers: number;
     activeRegions: number;
     moderationThreads: number;
@@ -1102,6 +1116,7 @@ export async function getProfileById(userId: string): Promise<RawProfile> {
     .from('profiles')
     .select(`
       id, username, full_name, avatar_path, role, created_at, updated_at, state_id, area_id,
+      identity_verification_status, identity_verification_badge, identity_verified_at, identity_verified_by,
       states!profiles_state_id_fkey ( id, name ),
       areas!profiles_area_id_fkey ( id, name )
     `)

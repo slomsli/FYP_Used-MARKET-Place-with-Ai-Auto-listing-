@@ -55,6 +55,7 @@
 .card,
 .avatarCard,
 .provenanceCard,
+.verificationCard,
 .logoutCard,
 .stateCard {
   border: 1px solid rgba(0, 0, 0, 0.04);
@@ -63,6 +64,7 @@
 }
 
 .card,
+.verificationCard,
 .logoutCard,
 .stateCard {
   background: #ffffff;
@@ -87,6 +89,13 @@
 }
 
 .logoutCard {
+  padding: 2rem;
+}
+
+.verificationCard {
+  display: grid;
+  gap: 1.25rem;
+  margin-bottom: 2rem;
   padding: 2rem;
 }
 
@@ -247,6 +256,10 @@
   background: var(--dash-tertiary);
 }
 
+.badgeNeutral {
+  background: #64748b;
+}
+
 .provenanceText {
   margin: 0;
   color: var(--dash-neutral);
@@ -282,6 +295,8 @@
 
 .fieldInput,
 .fieldSelect,
+.fieldTextarea,
+.fileInput,
 .fieldInputReadonly {
   min-height: 44px;
   border: 1.5px solid #e2e5ec;
@@ -291,7 +306,9 @@
 }
 
 .fieldInput,
-.fieldSelect {
+.fieldSelect,
+.fieldTextarea,
+.fileInput {
   width: 100%;
   padding: 0.7rem 0.9rem;
   background: #f9fafb;
@@ -301,10 +318,28 @@
 }
 
 .fieldInput:focus,
-.fieldSelect:focus {
+.fieldSelect:focus,
+.fieldTextarea:focus,
+.fileInput:focus {
   border-color: #1e40af;
   background: #ffffff;
   box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.08);
+}
+
+.fieldTextarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.fileInput {
+  color: var(--dash-neutral);
+}
+
+.fileHint {
+  margin: 0;
+  color: #7c8799;
+  font-size: 0.78rem;
+  line-height: 1.4;
 }
 
 .fieldInput::placeholder {
@@ -349,7 +384,10 @@
   cursor: pointer;
 }
 
-.fieldSelect:disabled {
+.fieldSelect:disabled,
+.fieldInput:disabled,
+.fieldTextarea:disabled,
+.fileInput:disabled {
   cursor: not-allowed;
   opacity: 0.72;
 }
@@ -400,6 +438,118 @@
   margin-top: 1rem;
   padding-top: 1.5rem;
   border-top: 1px solid #f1f5f9;
+}
+
+.verificationHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.verificationStatusWrap {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.verificationState,
+.verificationNotice {
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: var(--dash-neutral);
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.verificationSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.verificationSummaryItem {
+  min-width: 0;
+  padding: 1rem;
+  border-radius: 14px;
+  background: #f8fafc;
+  border: 1px solid #edf2f7;
+}
+
+.verificationSummaryItem span {
+  display: block;
+  color: #7c8799;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.verificationSummaryItem strong {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--dash-primary);
+  font-family: var(--dash-font-head, 'Manrope', sans-serif);
+  font-size: 1rem;
+}
+
+.verificationSummaryItem p {
+  margin: 0.35rem 0 0;
+  color: var(--dash-neutral);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.verificationTips {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.verificationTips li {
+  min-height: 56px;
+  padding: 0.85rem;
+  border-radius: 12px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.verificationForm {
+  display: grid;
+  gap: 1rem;
+}
+
+.consentRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: var(--dash-neutral);
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.consentRow input {
+  margin-top: 0.16rem;
+  flex: 0 0 auto;
+}
+
+.verificationActions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .logoutBtn {
@@ -524,6 +674,7 @@
   .card,
   .avatarCard,
   .provenanceCard,
+  .verificationCard,
   .logoutCard,
   .stateCard {
     padding: 1.25rem;
@@ -531,6 +682,20 @@
   }
 
   .formGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .verificationHeader {
+    flex-direction: column;
+  }
+
+  .verificationStatusWrap,
+  .verificationActions {
+    justify-content: flex-start;
+  }
+
+  .verificationSummaryGrid,
+  .verificationTips {
     grid-template-columns: 1fr;
   }
 
