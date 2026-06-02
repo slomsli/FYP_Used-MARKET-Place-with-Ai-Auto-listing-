@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ROUTES } from '@/src/config/routes';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import { getPublicListingById } from '@/src/services/listingService';
@@ -91,6 +91,18 @@ interface DraftConversationTarget {
   isModeration: boolean;
 }
 
+interface ConversationThread {
+  key: string;
+  conversations: ConversationDetail[];
+}
+
+interface VisibleConversationThread {
+  thread: ConversationThread;
+  contexts: ConversationDetail[];
+  previewConversation: ConversationDetail;
+  unreadCount: number;
+}
+
 const getRole = (convo: ConversationDetail, userId?: string) =>
   convo.buyer_id === userId ? 'buying' : 'seller';
 
@@ -103,16 +115,77 @@ const isSupportTicketConversation = (convo: ConversationDetail | null | undefine
       convo.listing_details.title.startsWith(SUPPORT_TICKET_TITLE_PREFIX)
   );
 
-const getRoleLabel = (convo: ConversationDetail, userId?: string) => {
-  if (isModerationConversation(convo)) {
+const getConversationName = (convo: ConversationDetail) =>
+  convo.other_user?.display_name || convo.other_user?.username || 'Marketplace User';
+
+const getConversationActivityTime = (convo: ConversationDetail) =>
+  new Date(convo.last_message?.created_at || convo.created_at).getTime();
+
+const sortConversationsByActivity = (conversations: ConversationDetail[]) =>
+  [...conversations].sort((left, right) => getConversationActivityTime(right) - getConversationActivityTime(left));
+
+const getConversationThreadKey = (conversation: ConversationDetail) => {
+  if (isModerationConversation(conversation) || !conversation.other_user?.id) {
+    return `conversation:${conversation.id}`;
+  }
+
+  return `user:${conversation.other_user.id}`;
+};
+
+function buildConversationThreads(conversations: ConversationDetail[]): ConversationThread[] {
+  const threadMap = new Map<string, ConversationDetail[]>();
+
+  for (const conversation of conversations) {
+    const key = getConversationThreadKey(conversation);
+    threadMap.set(key, [...(threadMap.get(key) ?? []), conversation]);
+  }
+
+  return Array.from(threadMap.entries())
+    .map(([key, threadConversations]) => ({
+      key,
+      conversations: sortConversationsByActivity(threadConversations),
+    }))
+    .sort((left, right) => {
+      const leftLatest = left.conversations[0];
+      const rightLatest = right.conversations[0];
+      return getConversationActivityTime(rightLatest) - getConversationActivityTime(leftLatest);
+    });
+}
+
+function getThreadRoleLabel(contexts: ConversationDetail[], userId?: string) {
+  if (contexts.some(isModerationConversation)) {
     return 'Moderation';
   }
 
-  return getRole(convo, userId) === 'buying' ? 'Buying' : 'Selling';
-};
+  const hasBuying = contexts.some((conversation) => getRole(conversation, userId) === 'buying');
+  const hasSelling = contexts.some((conversation) => getRole(conversation, userId) === 'seller');
 
-const getConversationName = (convo: ConversationDetail) =>
-  convo.other_user?.display_name || convo.other_user?.username || 'Marketplace User';
+  if (hasBuying && hasSelling) {
+    return 'Buying & Selling';
+  }
+
+  return hasBuying ? 'Buying' : 'Selling';
+}
+
+function getThreadProductSummary(contexts: ConversationDetail[]) {
+  const titles = Array.from(
+    new Set(
+      contexts
+        .map((conversation) => conversation.listing_details?.title?.trim())
+        .filter((title): title is string => Boolean(title))
+    )
+  );
+
+  if (titles.length === 0) {
+    return 'Listing unavailable';
+  }
+
+  if (titles.length === 1) {
+    return titles[0];
+  }
+
+  return `${titles[0]} + ${titles.length - 1} more`;
+}
 
 const conversationMatchesRequest = (
   conversation: ConversationDetail,
@@ -230,7 +303,10 @@ export default function MessagesPage() {
   const conversationRequestIdRef = useRef(0);
   const messageRequestIdRef = useRef(0);
   const handledRequestKeyRef = useRef<string | null>(null);
-  const archivedConversationIdSet = new Set(archivedConversationIds);
+  const archivedConversationIdSet = useMemo(
+    () => new Set(archivedConversationIds),
+    [archivedConversationIds]
+  );
   const requestKey =
     requestedConversationId ||
     requestedListingId ||
@@ -363,15 +439,15 @@ export default function MessagesPage() {
       return null;
     }
 
-    const visibleConversations = isAdminWorkspace
-      ? data.filter((conversation) => !isSupportTicketConversation(conversation))
-      : data;
+    const visibleConversations = data.filter((conversation) =>
+      !isSupportTicketConversation(conversation)
+    );
 
     setConversations(visibleConversations);
     setPageError(null);
     setLoadingConversations(false);
     return visibleConversations;
-  }, [isAdminWorkspace, token]);
+  }, [token]);
 
   const loadMessages = useCallback(
     async (
@@ -548,7 +624,7 @@ export default function MessagesPage() {
       requestKey !== null && handledRequestKeyRef.current !== requestKey;
 
     async function resolveDraftTarget() {
-      if (!requestedListingId || !hasPendingRequest) {
+      if (!requestedListingId || !hasPendingRequest || loadingConversations || loadingArchives) {
         return;
       }
 
@@ -562,6 +638,8 @@ export default function MessagesPage() {
           void persistArchiveState(matchingConversation.id, false);
         }
         setDraftTarget(null);
+        setSelectedConversation(matchingConversation.id);
+        setMobileChatOpen(true);
         completeInboxRequest();
         return;
       }
@@ -571,6 +649,11 @@ export default function MessagesPage() {
       if (cancelled) {
         return;
       }
+
+      setSelectedConversation(null);
+      setMessages([]);
+      setFilterTab('all');
+      setMobileChatOpen(true);
 
       if (result.data) {
         const inferredName =
@@ -606,9 +689,11 @@ export default function MessagesPage() {
       cancelled = true;
     };
   }, [
-    archivedConversationIds,
+    archivedConversationIdSet,
     completeInboxRequest,
     conversations,
+    loadingArchives,
+    loadingConversations,
     persistArchiveState,
     requestKey,
     removeArchivedConversationId,
@@ -677,7 +762,7 @@ export default function MessagesPage() {
     } else if (hasPendingRequest && requestedListingId) {
       nextConversationId = null;
       shouldOpenChat = true;
-    } else if (!activeStillExists || (activeConversationArchived && filterTab !== 'archived')) {
+    } else if (!draftTarget && (!activeStillExists || (activeConversationArchived && filterTab !== 'archived'))) {
       nextConversationId = isDesktopViewport()
         ? activeConversations[0]?.id ?? null
         : null;
@@ -703,7 +788,7 @@ export default function MessagesPage() {
   }, [
     filterTab,
     completeInboxRequest,
-    archivedConversationIds,
+    archivedConversationIdSet,
     conversations,
     requestKey,
     persistArchiveState,
@@ -712,6 +797,7 @@ export default function MessagesPage() {
     requestedListingId,
     requestedRecipientId,
     selectedConversation,
+    draftTarget,
   ]);
 
   useEffect(() => {
@@ -735,41 +821,101 @@ export default function MessagesPage() {
       setMessages([]);
     }
   }, [
-    archivedConversationIds,
+    archivedConversationIdSet,
     conversations,
     filterTab,
     selectedConversation,
   ]);
 
-  const filteredConversations = conversations.filter((conversation) => {
-    const isArchived = archivedConversationIdSet.has(conversation.id);
+  const conversationThreads = useMemo(
+    () => buildConversationThreads(conversations),
+    [conversations]
+  );
 
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      const matchesName = getConversationName(conversation).toLowerCase().includes(query);
-      const matchesProduct = (conversation.listing_details?.title || '').toLowerCase().includes(query);
-      const matchesMessage = (conversation.last_message?.content || '').toLowerCase().includes(query);
+  const filteredConversationThreads = useMemo<VisibleConversationThread[]>(() => {
+    const query = searchQuery.trim().toLowerCase();
 
-      if (!matchesName && !matchesProduct && !matchesMessage) {
-        return false;
-      }
-    }
+    return conversationThreads
+      .map((thread) => {
+        const contexts = thread.conversations.filter((conversation) => {
+          const isArchived = archivedConversationIdSet.has(conversation.id);
 
-    if (filterTab === 'archived') return isArchived;
-    if (isArchived) return false;
+          if (filterTab === 'archived') {
+            return isArchived;
+          }
 
-    const role = getRole(conversation, user?.id);
-    if (filterTab === 'unread') return conversation.unread_count > 0;
-    if (filterTab === 'buying') return role === 'buying';
-    if (filterTab === 'selling') return role === 'seller';
-    return true;
-  });
+          if (isArchived) {
+            return false;
+          }
+
+          const role = getRole(conversation, user?.id);
+          if (filterTab === 'unread') return conversation.unread_count > 0;
+          if (filterTab === 'buying') return role === 'buying';
+          if (filterTab === 'selling') return role === 'seller';
+          return true;
+        });
+
+        if (contexts.length === 0) {
+          return null;
+        }
+
+        if (query) {
+          const matchesName = thread.conversations.some((conversation) =>
+            getConversationName(conversation).toLowerCase().includes(query)
+          );
+          const matchesProduct = contexts.some((conversation) =>
+            (conversation.listing_details?.title || '').toLowerCase().includes(query)
+          );
+          const matchesMessage = contexts.some((conversation) =>
+            (conversation.last_message?.content || '').toLowerCase().includes(query)
+          );
+
+          if (!matchesName && !matchesProduct && !matchesMessage) {
+            return null;
+          }
+        }
+
+        const sortedContexts = sortConversationsByActivity(contexts);
+        return {
+          thread,
+          contexts: sortedContexts,
+          previewConversation: sortedContexts[0],
+          unreadCount: sortedContexts.reduce(
+            (total, conversation) => total + conversation.unread_count,
+            0
+          ),
+        };
+      })
+      .filter((thread): thread is VisibleConversationThread => Boolean(thread));
+  }, [archivedConversationIdSet, conversationThreads, filterTab, searchQuery, user?.id]);
 
   const activeConversation =
     conversations.find((conversation) => conversation.id === selectedConversation) ?? null;
+  const activeThread = activeConversation
+    ? conversationThreads.find((thread) =>
+        thread.conversations.some((conversation) => conversation.id === activeConversation.id)
+      ) ?? null
+    : draftTarget?.recipientId
+      ? conversationThreads.find((thread) =>
+          thread.conversations.some(
+            (conversation) => conversation.other_user?.id === draftTarget.recipientId
+          )
+        ) ?? null
+      : null;
   const isActiveConversationArchived = activeConversation
     ? archivedConversationIdSet.has(activeConversation.id)
     : false;
+  const activeContextOptions = activeThread
+    ? activeThread.conversations.filter((conversation) => {
+        if (conversation.id === activeConversation?.id) {
+          return true;
+        }
+
+        return isActiveConversationArchived
+          ? archivedConversationIdSet.has(conversation.id)
+          : !archivedConversationIdSet.has(conversation.id);
+      })
+    : [];
   const isActiveModerationThread =
     isModerationConversation(activeConversation) || Boolean(draftTarget?.isModeration);
   const activeListingId = activeConversation?.listing_id ?? draftTarget?.listingId ?? null;
@@ -792,12 +938,24 @@ export default function MessagesPage() {
 
   const handleArchiveConversation = useCallback(
     (conversationId: string) => {
-      const nextConversationId =
+      const currentConversation =
+        conversations.find((conversation) => conversation.id === conversationId) ?? null;
+      const sameThreadNextConversationId =
+        currentConversation?.other_user?.id
+          ? conversations.find(
+              (conversation) =>
+                conversation.id !== conversationId &&
+                conversation.other_user?.id === currentConversation.other_user?.id &&
+                !archivedConversationIdSet.has(conversation.id)
+            )?.id ?? null
+          : null;
+      const nextAvailableConversationId =
         conversations.find(
           (conversation) =>
             conversation.id !== conversationId &&
             !archivedConversationIdSet.has(conversation.id)
         )?.id ?? null;
+      const nextConversationId = sameThreadNextConversationId ?? nextAvailableConversationId;
 
       setArchivedConversationIds((current) => {
         if (current.includes(conversationId)) {
@@ -819,7 +977,12 @@ export default function MessagesPage() {
         }
       }
     },
-    [archivedConversationIdSet, conversations, persistArchiveState, selectedConversation]
+    [
+      archivedConversationIdSet,
+      conversations,
+      persistArchiveState,
+      selectedConversation,
+    ]
   );
 
   const handleRestoreConversation = useCallback((conversationId: string) => {
@@ -1027,6 +1190,7 @@ export default function MessagesPage() {
   };
 
   const handleConversationSelect = (conversationId: string) => {
+    setDraftTarget(null);
     setSelectedConversation(conversationId);
     setMobileChatOpen(true);
   };
@@ -1095,7 +1259,7 @@ export default function MessagesPage() {
           {pageError && <div className={styles.pageError}>{pageError}</div>}
 
           <div className={styles.conversationList}>
-            {filteredConversations.length === 0 ? (
+            {filteredConversationThreads.length === 0 ? (
               <div className={styles.emptyConversations}>
                 <div className={styles.emptyConversationsIcon}>Chat</div>
                 <div className={styles.emptyConversationsTitle}>
@@ -1112,18 +1276,27 @@ export default function MessagesPage() {
                 </div>
               </div>
             ) : (
-              filteredConversations.map((conversation) => {
-                const isUnread = conversation.unread_count > 0;
+              filteredConversationThreads.map(({ thread, contexts, previewConversation, unreadCount }) => {
+                const conversation = previewConversation;
+                const isUnread = unreadCount > 0;
+                const isThreadActive = activeConversation
+                  ? thread.conversations.some((item) => item.id === activeConversation.id)
+                  : draftTarget?.recipientId
+                    ? thread.conversations.some(
+                        (item) => item.other_user?.id === draftTarget.recipientId
+                      )
+                    : false;
                 const name = getConversationName(conversation);
                 const avatarColor = getAvatarColor(conversation.other_user?.id || conversation.id);
                 const initials = getInitials(name);
-                const roleLabel = getRoleLabel(conversation, user?.id);
+                const roleLabel = getThreadRoleLabel(contexts, user?.id);
+                const productSummary = getThreadProductSummary(contexts);
 
                 return (
                   <div
-                    key={conversation.id}
+                    key={thread.key}
                     className={`${styles.conversationItem} ${
-                      selectedConversation === conversation.id ? styles.conversationItemActive : ''
+                      isThreadActive ? styles.conversationItemActive : ''
                     }`}
                     onClick={() => handleConversationSelect(conversation.id)}
                     onKeyDown={(event) => {
@@ -1134,7 +1307,7 @@ export default function MessagesPage() {
                     }}
                     role="button"
                     tabIndex={0}
-                    id={`conversation-${conversation.id}`}
+                    id={`conversation-thread-${thread.key.replace(/[^a-zA-Z0-9_-]/g, '-')}`}
                   >
                     <div className={`${styles.conversationAvatar} ${styles[avatarColor]}`}>
                       {conversation.other_user?.avatar_path ? (
@@ -1163,13 +1336,18 @@ export default function MessagesPage() {
 
                       <div className={styles.conversationMetaRow}>
                         <span className={styles.rolePill}>{roleLabel}</span>
+                        {contexts.length > 1 && (
+                          <span className={styles.contextPill}>
+                            {contexts.length} products
+                          </span>
+                        )}
                         {conversation.other_user?.username && (
                           <span className={styles.usernameLabel}>@{conversation.other_user.username}</span>
                         )}
                       </div>
 
                       <div className={styles.conversationProduct}>
-                        {conversation.listing_details?.title || 'Listing unavailable'}
+                        {productSummary}
                       </div>
                       <div className={styles.conversationPreview}>
                         {conversation.last_message ? conversation.last_message.content : 'No messages yet'}
@@ -1178,7 +1356,7 @@ export default function MessagesPage() {
 
                     {isUnread && (
                       <span className={styles.unreadBadge}>
-                        {conversation.unread_count > 9 ? '9+' : conversation.unread_count}
+                        {unreadCount > 9 ? '9+' : unreadCount}
                       </span>
                     )}
                   </div>
@@ -1252,7 +1430,27 @@ export default function MessagesPage() {
                     <span className={styles.productDiscussLabel}>
                       {isActiveModerationThread ? 'Topic' : 'Discussing'}
                     </span>
-                    <span className={styles.productDiscussName}>{activeListingTitle}</span>
+                    {activeConversation && activeContextOptions.length > 1 ? (
+                      <select
+                        className={styles.productContextSelect}
+                        value={activeConversation.id}
+                        onChange={(event) => {
+                          setSelectedConversation(event.target.value);
+                          setDraftTarget(null);
+                          setMobileChatOpen(true);
+                        }}
+                        aria-label="Choose product context"
+                      >
+                        {activeContextOptions.map((conversation) => (
+                          <option key={conversation.id} value={conversation.id}>
+                            {conversation.listing_details?.title || 'Listing unavailable'}
+                            {archivedConversationIdSet.has(conversation.id) ? ' (archived)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className={styles.productDiscussName}>{activeListingTitle}</span>
+                    )}
                   </div>
                 </div>
               </div>

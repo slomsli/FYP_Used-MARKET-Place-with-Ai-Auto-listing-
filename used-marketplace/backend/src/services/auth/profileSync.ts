@@ -109,7 +109,8 @@ function buildProfilePatch(
   const metadata = user.user_metadata ?? {};
   const fullName = trimOptional(overrides?.fullName) ?? trimOptional(metadata.full_name);
   const avatarPath = trimOptional(metadata.avatar_path);
-  const desiredRole = normalizeRole(overrides?.role ?? metadata.role);
+  const desiredRole =
+    overrides && overrides.role !== undefined ? normalizeRole(overrides.role) : null;
   const patch: Partial<SyncedProfile> = {};
 
   if (!existing.full_name && fullName) {
@@ -120,7 +121,7 @@ function buildProfilePatch(
     patch.avatar_path = avatarPath;
   }
 
-  if (existing.role !== desiredRole) {
+  if (desiredRole && existing.role !== desiredRole) {
     patch.role = desiredRole;
   }
 
@@ -171,7 +172,7 @@ export async function ensureProfileForUser(
   const username = await resolveAvailableUsername(user, overrides);
   const fullName = trimOptional(overrides?.fullName) ?? trimOptional(metadata.full_name);
   const avatarPath = trimOptional(metadata.avatar_path);
-  const role = normalizeRole(overrides?.role ?? metadata.role);
+  const role = normalizeRole(overrides?.role);
 
   const { data: createdProfile, error: createError } = await supabaseAdmin
     .from('profiles')
