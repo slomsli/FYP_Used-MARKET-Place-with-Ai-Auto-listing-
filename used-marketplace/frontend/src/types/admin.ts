@@ -86,6 +86,7 @@ export interface AdminUserDetailResponse {
 }
 
 export interface AdminModerationThreadResponse {
+  conversationId: string | null;
   listingId: string;
   listingTitle: string;
   recipientId: string;

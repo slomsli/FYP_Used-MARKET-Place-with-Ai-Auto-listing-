@@ -124,19 +124,26 @@ const getConversationActivityTime = (convo: ConversationDetail) =>
 const sortConversationsByActivity = (conversations: ConversationDetail[]) =>
   [...conversations].sort((left, right) => getConversationActivityTime(right) - getConversationActivityTime(left));
 
-const getConversationThreadKey = (conversation: ConversationDetail) => {
-  if (isModerationConversation(conversation) || !conversation.other_user?.id) {
+const getConversationThreadKey = (conversation: ConversationDetail, groupModerationByUser: boolean) => {
+  if (!conversation.other_user?.id) {
+    return `conversation:${conversation.id}`;
+  }
+
+  if (isModerationConversation(conversation) && !groupModerationByUser) {
     return `conversation:${conversation.id}`;
   }
 
   return `user:${conversation.other_user.id}`;
 };
 
-function buildConversationThreads(conversations: ConversationDetail[]): ConversationThread[] {
+function buildConversationThreads(
+  conversations: ConversationDetail[],
+  groupModerationByUser: boolean
+): ConversationThread[] {
   const threadMap = new Map<string, ConversationDetail[]>();
 
   for (const conversation of conversations) {
-    const key = getConversationThreadKey(conversation);
+    const key = getConversationThreadKey(conversation, groupModerationByUser);
     threadMap.set(key, [...(threadMap.get(key) ?? []), conversation]);
   }
 
@@ -187,6 +194,19 @@ function getThreadProductSummary(contexts: ConversationDetail[]) {
   return `${titles[0]} + ${titles.length - 1} more`;
 }
 
+function getContextCountLabel(contexts: ConversationDetail[]) {
+  return contexts.some(isModerationConversation) ? `${contexts.length} threads` : `${contexts.length} products`;
+}
+
+function getContextOptionLabel(conversation: ConversationDetail) {
+  const title = conversation.listing_details?.title || (
+    isModerationConversation(conversation) ? 'Account moderation thread' : 'Listing unavailable'
+  );
+  const activityTime = formatTime(conversation.last_message?.created_at || conversation.created_at);
+
+  return activityTime ? `${title} - ${activityTime}` : title;
+}
+
 const conversationMatchesRequest = (
   conversation: ConversationDetail,
   listingId: string | null,
@@ -200,7 +220,11 @@ const conversationMatchesRequest = (
     return true;
   }
 
-  return conversation.other_user?.id === recipientId;
+  return (
+    conversation.other_user?.id === recipientId ||
+    conversation.buyer_id === recipientId ||
+    conversation.seller_id === recipientId
+  );
 };
 
 const getInitials = (name?: string | null) => {
@@ -705,6 +729,10 @@ export default function MessagesPage() {
   ]);
 
   useEffect(() => {
+    if (draftTarget && selectedConversation) {
+      return;
+    }
+
     const activeConversations = conversations.filter(
       (conversation) => !archivedConversationIdSet.has(conversation.id)
     );
@@ -712,6 +740,10 @@ export default function MessagesPage() {
       requestKey !== null && handledRequestKeyRef.current !== requestKey;
 
     if (conversations.length === 0) {
+      if (draftTarget) {
+        return;
+      }
+
       if (!requestedListingId) {
         setSelectedConversation(null);
       }
@@ -801,6 +833,20 @@ export default function MessagesPage() {
   ]);
 
   useEffect(() => {
+    if (!draftTarget || !selectedConversation) {
+      return;
+    }
+
+    const selectedConversationExists = conversations.some(
+      (conversation) => conversation.id === selectedConversation
+    );
+
+    if (selectedConversationExists) {
+      setDraftTarget(null);
+    }
+  }, [conversations, draftTarget, selectedConversation]);
+
+  useEffect(() => {
     if (filterTab === 'archived') {
       if (selectedConversation && archivedConversationIdSet.has(selectedConversation)) {
         return;
@@ -828,7 +874,7 @@ export default function MessagesPage() {
   ]);
 
   const conversationThreads = useMemo(
-    () => buildConversationThreads(conversations),
+    () => buildConversationThreads(conversations, true),
     [conversations]
   );
 
@@ -1142,9 +1188,11 @@ export default function MessagesPage() {
     messageService.revokePendingAttachmentPreviews(attachmentsToSend);
     setMessages([data]);
     setSelectedConversation(data.conversation_id);
-    setDraftTarget(null);
     setMobileChatOpen(true);
-    await loadConversations();
+    const nextConversations = await loadConversations();
+    if (nextConversations?.some((conversation) => conversation.id === data.conversation_id)) {
+      setDraftTarget(null);
+    }
     window.setTimeout(() => {
       void loadMessages(data.conversation_id);
       void loadConversations();
@@ -1338,7 +1386,7 @@ export default function MessagesPage() {
                         <span className={styles.rolePill}>{roleLabel}</span>
                         {contexts.length > 1 && (
                           <span className={styles.contextPill}>
-                            {contexts.length} products
+                            {getContextCountLabel(contexts)}
                           </span>
                         )}
                         {conversation.other_user?.username && (
@@ -1443,7 +1491,7 @@ export default function MessagesPage() {
                       >
                         {activeContextOptions.map((conversation) => (
                           <option key={conversation.id} value={conversation.id}>
-                            {conversation.listing_details?.title || 'Listing unavailable'}
+                            {getContextOptionLabel(conversation)}
                             {archivedConversationIdSet.has(conversation.id) ? ' (archived)' : ''}
                           </option>
                         ))}

@@ -232,7 +232,8 @@ export async function ensureAdminModerationThreadHandler(
   }
 
   try {
-    const data = await ensureAdminModerationThread(req.user.id, req.params.userId);
+    const topic = typeof req.body?.topic === 'string' ? req.body.topic : undefined;
+    const data = await ensureAdminModerationThread(req.user.id, req.params.userId, topic);
     sendSuccess(res, data, 201);
   } catch (error) {
     handleAdminError(res, error, 'Internal server error while preparing a moderation thread');

@@ -479,11 +479,13 @@
   display: grid;
   place-items: center;
   padding: 2rem;
+  overflow-y: auto;
 }
 
 .modal {
   width: 100%;
   max-width: 520px;
+  max-height: calc(100dvh - 4rem);
   background: var(--admin-surface, #ffffff);
   border-radius: 28px;
   box-shadow: 0 24px 64px rgba(26, 35, 126, 0.15);
@@ -495,6 +497,10 @@
 
 .detailModal {
   max-width: 860px;
+}
+
+.messageThreadModal {
+  max-width: 620px;
 }
 
 @keyframes slideUp {
@@ -599,6 +605,160 @@
   border-top: 1px solid rgba(0, 0, 0, 0.05);
 }
 
+.messageThreadBody {
+  padding: 2rem 2.5rem 2.5rem;
+  display: grid;
+  gap: 1.25rem;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.messageTargetCard {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 16px;
+  background: var(--admin-bg, #F0F2F6);
+  color: var(--admin-neutral, #45474F);
+}
+
+.messageTargetCard strong,
+.messageTargetCard span {
+  display: block;
+}
+
+.messageTargetCard strong {
+  color: var(--admin-primary, #1A237E);
+  font-family: var(--admin-font-head, 'Manrope', sans-serif);
+}
+
+.messageTargetCard span {
+  margin-top: 0.25rem;
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+.threadChoiceSection,
+.newThreadForm {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.threadChoiceHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  color: var(--admin-neutral, #45474F);
+}
+
+.threadChoiceHeader span,
+.messageTopicField span {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.threadChoiceHeader small {
+  font-size: 0.8rem;
+  opacity: 0.65;
+}
+
+.threadList {
+  display: grid;
+  gap: 0.65rem;
+  max-height: 240px;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
+.threadOption {
+  width: 100%;
+  display: grid;
+  gap: 0.35rem;
+  text-align: left;
+  padding: 0.95rem 1rem;
+  border-radius: 14px;
+  border: 1px solid rgba(26, 35, 126, 0.1);
+  background: var(--admin-surface, #ffffff);
+  color: var(--admin-neutral, #45474F);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.threadOption:hover {
+  border-color: rgba(26, 35, 126, 0.35);
+  background: #f8fafc;
+  transform: translateY(-1px);
+}
+
+.threadOption strong {
+  color: var(--admin-primary, #1A237E);
+  font-family: var(--admin-font-head, 'Manrope', sans-serif);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.threadOption span {
+  font-size: 0.85rem;
+  opacity: 0.75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.threadOption time {
+  font-size: 0.75rem;
+  opacity: 0.6;
+}
+
+.threadEmptyState {
+  padding: 1rem;
+  border-radius: 14px;
+  background: var(--admin-bg, #F0F2F6);
+  color: var(--admin-neutral, #45474F);
+  font-size: 0.9rem;
+  opacity: 0.75;
+}
+
+.messageTopicField {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.messageTopicField span {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--admin-neutral, #45474F);
+}
+
+.messageTopicField input {
+  width: 100%;
+  padding: 1rem 1.1rem;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: var(--admin-bg, #F0F2F6);
+  color: var(--admin-primary, #1A237E);
+  font-family: var(--admin-font-body, 'Inter', sans-serif);
+  line-height: 1.6;
+}
+
+.messageTopicField input:focus {
+  outline: none;
+  background: var(--admin-surface, #ffffff);
+  border-color: var(--admin-primary, #1A237E);
+  box-shadow: 0 0 0 3px rgba(26, 35, 126, 0.1);
+}
+
+.messageTopicMeta {
+  display: flex;
+  justify-content: flex-end;
+  color: var(--admin-neutral, #45474F);
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+
 .detailLoading {
   padding: 4rem 2.5rem;
   text-align: center;
@@ -610,6 +770,8 @@
   display: grid;
   gap: 2rem;
   padding: 2.5rem;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .detailHero {

@@ -1,12 +1,17 @@
 import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../types/auth';
-import type { MarkPurchasePaidInput } from '../types/purchase';
+import type {
+  MarkPurchasePaidInput,
+  ReportPurchaseDeliveryIssueInput,
+} from '../types/purchase';
 import {
   confirmPurchaseReceiptPayment,
   getPurchaseReceiptDetailForUser,
   getPurchaseReceiptsForUser,
+  markPurchaseReceiptReceived,
   markPurchaseReceiptPaid,
   PurchaseServiceError,
+  reportPurchaseReceiptNotReceived,
 } from '../services/purchaseService';
 import { sendError, sendSuccess } from '../utils/apiResponse';
 
@@ -104,6 +109,78 @@ export async function confirmPurchaseReceiptPaymentHandler(
       res,
       error,
       'Internal server error while confirming purchase payment'
+    );
+  }
+}
+
+export async function markPurchaseReceiptReceivedHandler(
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> {
+  if (!req.user) {
+    sendError(res, 'Unauthorized', 401);
+    return;
+  }
+
+  try {
+    const receiptId = parseReceiptId(req.params.receiptId);
+    const receipt = await markPurchaseReceiptReceived(req.user.id, receiptId);
+    sendSuccess(res, receipt);
+  } catch (error) {
+    handlePurchaseError(
+      res,
+      error,
+      'Internal server error while confirming purchase delivery'
+    );
+  }
+}
+
+export async function reportPurchaseReceiptNotReceivedHandler(
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> {
+  if (!req.user) {
+    sendError(res, 'Unauthorized', 401);
+    return;
+  }
+
+  try {
+    const receiptId = parseReceiptId(req.params.receiptId);
+    const { buyerStatement, paymentReference, proofs } =
+      req.body as ReportPurchaseDeliveryIssueInput;
+
+    if (!buyerStatement || typeof buyerStatement !== 'string') {
+      sendError(res, 'buyerStatement is required', 422);
+      return;
+    }
+
+    if (paymentReference !== undefined && typeof paymentReference !== 'string') {
+      sendError(res, 'paymentReference must be a string when provided', 422);
+      return;
+    }
+
+    if (proofs !== undefined && !Array.isArray(proofs)) {
+      sendError(res, 'proofs must be an array when provided', 422);
+      return;
+    }
+
+    const normalizedProofs = (proofs ?? []).map((proof) => ({
+      fileName: typeof proof.fileName === 'string' ? proof.fileName : '',
+      contentType: typeof proof.contentType === 'string' ? proof.contentType : '',
+      base64Data: typeof proof.base64Data === 'string' ? proof.base64Data : '',
+    }));
+
+    const receipt = await reportPurchaseReceiptNotReceived(req.user.id, receiptId, {
+      buyerStatement,
+      paymentReference,
+      proofs: normalizedProofs,
+    });
+    sendSuccess(res, receipt, 201);
+  } catch (error) {
+    handlePurchaseError(
+      res,
+      error,
+      'Internal server error while reporting purchase delivery'
     );
   }
 }

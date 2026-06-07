@@ -8,6 +8,7 @@ import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import {
   confirmPurchaseReceiptPayment,
   getPurchaseReceipt,
+  markPurchaseReceiptReceived,
   markPurchaseReceiptPaid,
 } from '@/src/services/purchaseService';
 import type { PurchaseReceiptDetail } from '@/src/types/purchase';
@@ -51,6 +52,29 @@ function buildMessageHref(
   return `${ROUTES.MESSAGES}?${params.toString()}`;
 }
 
+function buildDeliveryIssueHref(receipt: PurchaseReceiptDetail) {
+  const params = new URLSearchParams({
+    listingId: receipt.listing.id,
+    receiptId: receipt.id,
+    orderId: receipt.receiptNumber,
+    title: receipt.listing.title,
+    amount: formatCurrency(receipt.totalAmount, receipt.currency),
+    seller: receipt.seller.displayName,
+    scope: 'delivery',
+    source: 'purchases',
+  });
+
+  if (receipt.offerId) {
+    params.set('offerId', receipt.offerId);
+  }
+
+  if (receipt.paymentReference) {
+    params.set('paymentReference', receipt.paymentReference);
+  }
+
+  return `${ROUTES.REPORT}?${params.toString()}`;
+}
+
 function getStatusClass(status: PurchaseReceiptDetail['paymentStatus']) {
   switch (status) {
     case 'seller_confirmed_paid':
@@ -60,6 +84,18 @@ function getStatusClass(status: PurchaseReceiptDetail['paymentStatus']) {
     case 'pending':
     default:
       return styles.statusPending;
+  }
+}
+
+function getDeliveryStatusClass(status: PurchaseReceiptDetail['deliveryStatus']) {
+  switch (status) {
+    case 'received':
+      return styles.deliveryReceived;
+    case 'not_received':
+      return styles.deliveryIssue;
+    case 'pending':
+    default:
+      return styles.deliveryPending;
   }
 }
 
@@ -76,9 +112,9 @@ export default function PurchaseReceiptDetailPage() {
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(
     null
   );
-  const [actionLoading, setActionLoading] = useState<'mark-paid' | 'confirm-payment' | null>(
-    null
-  );
+  const [actionLoading, setActionLoading] = useState<
+    'mark-paid' | 'confirm-payment' | 'mark-received' | null
+  >(null);
   const [paymentMethod, setPaymentMethod] = useState('');
   const [paymentReference, setPaymentReference] = useState('');
   const [buyerNote, setBuyerNote] = useState('');
@@ -145,6 +181,7 @@ export default function PurchaseReceiptDetailPage() {
     counterparty.id,
     counterparty.displayName
   );
+  const deliveryIssueHref = buildDeliveryIssueHref(receipt);
 
   async function handleMarkPaid() {
     const authToken = token;
@@ -206,6 +243,34 @@ export default function PurchaseReceiptDetailPage() {
     }
   }
 
+  async function handleMarkReceived() {
+    const authToken = token;
+    const currentReceipt = receipt;
+
+    if (!authToken || !currentReceipt) {
+      setNotice({ type: 'error', message: 'No auth session found. Please sign in again.' });
+      return;
+    }
+
+    setActionLoading('mark-received');
+    const response = await markPurchaseReceiptReceived(authToken, currentReceipt.id);
+    setActionLoading(null);
+
+    if (response.data) {
+      setReceipt(response.data.receipt);
+      setNotice({
+        type: 'success',
+        message: 'Thanks. This purchase is now marked as received.',
+      });
+      setErrorMsg(null);
+    } else {
+      setNotice({
+        type: 'error',
+        message: response.error || 'Failed to update the delivery status.',
+      });
+    }
+  }
+
   return (
     <div className={styles.page}>
       {notice && (
@@ -249,6 +314,13 @@ export default function PurchaseReceiptDetailPage() {
           <span className={`${styles.statusBadge} ${getStatusClass(receipt.paymentStatus)}`}>
             {receipt.paymentStatusLabel}
           </span>
+          <span
+            className={`${styles.deliveryBadge} ${getDeliveryStatusClass(
+              receipt.deliveryStatus
+            )}`}
+          >
+            {receipt.deliveryStatusLabel}
+          </span>
           <span className={styles.heroDate}>
             Issued {formatDateTime(receipt.listing.soldAt || receipt.createdAt)}
           </span>
@@ -268,6 +340,7 @@ export default function PurchaseReceiptDetailPage() {
             <div className={styles.sheetMeta}>
               <span>Source: {receipt.sourceLabel}</span>
               <span>Status: {receipt.paymentStatusLabel}</span>
+              <span>Delivery: {receipt.deliveryStatusLabel}</span>
               <span>Receipt No: {receipt.receiptNumber}</span>
             </div>
           </header>
@@ -311,6 +384,14 @@ export default function PurchaseReceiptDetailPage() {
             <div className={styles.detailItem}>
               <span className={styles.detailLabel}>Seller confirmed paid</span>
               <strong>{formatDateTime(receipt.sellerConfirmedPaidAt)}</strong>
+            </div>
+            <div className={styles.detailItem}>
+              <span className={styles.detailLabel}>Delivery status</span>
+              <strong>{receipt.deliveryStatusLabel}</strong>
+            </div>
+            <div className={styles.detailItem}>
+              <span className={styles.detailLabel}>Delivery marked</span>
+              <strong>{formatDateTime(receipt.deliveryMarkedAt)}</strong>
             </div>
             <div className={styles.detailItem}>
               <span className={styles.detailLabel}>Payment method</span>
@@ -371,10 +452,33 @@ export default function PurchaseReceiptDetailPage() {
             </section>
           )}
 
+          {receipt.deliveryReport && (
+            <section className={styles.deliveryReportBlock}>
+              <div className={styles.deliveryReportHeader}>
+                <div>
+                  <span className={styles.noteLabel}>Delivery issue report</span>
+                  <strong>{receipt.deliveryReport.statusLabel}</strong>
+                </div>
+                <span>{formatDateTime(receipt.deliveryReport.createdAt)}</span>
+              </div>
+              <p>{receipt.deliveryReport.buyerStatement}</p>
+              <div className={styles.deliveryReportMeta}>
+                {receipt.deliveryReport.paymentReference && (
+                  <span>Payment ref: {receipt.deliveryReport.paymentReference}</span>
+                )}
+                <span>{receipt.deliveryReport.proofUrls.length} proof file(s)</span>
+              </div>
+            </section>
+          )}
+
           <footer className={styles.footer}>
             <div>
               <span className={styles.footerLabel}>Paid status</span>
               <strong>{receipt.paymentStatusLabel}</strong>
+            </div>
+            <div>
+              <span className={styles.footerLabel}>Delivery</span>
+              <strong>{receipt.deliveryStatusLabel}</strong>
             </div>
             <div>
               <span className={styles.footerLabel}>Total</span>
@@ -389,8 +493,8 @@ export default function PurchaseReceiptDetailPage() {
             <strong>{isBuyer ? 'Buyer view' : 'Seller view'}</strong>
             <p className={styles.sideText}>
               {isBuyer
-                ? 'You can mark this receipt as paid once you have transferred the agreed amount.'
-                : 'You can verify the buyer payment after they mark the receipt as paid.'}
+                ? 'After you mark payment as sent, confirm whether the item arrived or report it for customer-service review.'
+                : 'You can verify the buyer payment after they mark the receipt as paid, then watch the delivery status.'}
             </p>
           </div>
 
@@ -458,6 +562,51 @@ export default function PurchaseReceiptDetailPage() {
             </div>
           )}
 
+          {isBuyer &&
+            (receipt.canBuyerMarkReceived || receipt.canBuyerReportNotReceived) && (
+              <div className={styles.sideSection}>
+                <h3 className={styles.sideTitle}>Confirm delivery</h3>
+                <p className={styles.sideText}>
+                  Choose the final delivery result after payment. If the item has not arrived,
+                  send the issue to customer service with the receipt details.
+                </p>
+                <div className={styles.deliveryActions}>
+                  {receipt.canBuyerMarkReceived && (
+                    <button
+                      type="button"
+                      className={styles.confirmButton}
+                      onClick={handleMarkReceived}
+                      disabled={actionLoading === 'mark-received'}
+                    >
+                      {actionLoading === 'mark-received' ? 'Saving...' : 'Item Received'}
+                    </button>
+                  )}
+                  {receipt.canBuyerReportNotReceived && (
+                    <Link href={deliveryIssueHref} className={styles.dangerButton}>
+                      Item Not Received
+                    </Link>
+                  )}
+                </div>
+              </div>
+            )}
+
+          {receipt.deliveryStatus !== 'pending' && (
+            <div className={styles.sideSection}>
+              <span className={styles.sideLabel}>Delivery result</span>
+              <strong>{receipt.deliveryStatusLabel}</strong>
+              <p className={styles.sideText}>
+                {receipt.deliveryStatus === 'received'
+                  ? `${isBuyer ? 'You' : 'The buyer'} confirmed the item arrived.`
+                  : `${isBuyer ? 'You reported' : 'The buyer reported'} that the item was not received. Customer service can review the report.`}
+              </p>
+              {receipt.deliveryMarkedAt && (
+                <span className={styles.sideMuted}>
+                  Marked {formatDateTime(receipt.deliveryMarkedAt)}
+                </span>
+              )}
+            </div>
+          )}
+
           {!receipt.canBuyerMarkPaid && !receipt.canSellerConfirmPaid && (
             <div className={styles.sideSection}>
               <h3 className={styles.sideTitle}>Receipt progress</h3>
@@ -473,6 +622,10 @@ export default function PurchaseReceiptDetailPage() {
                 <div className={styles.timelineItem}>
                   <strong>Seller confirmed</strong>
                   <span>{formatDateTime(receipt.sellerConfirmedPaidAt)}</span>
+                </div>
+                <div className={styles.timelineItem}>
+                  <strong>Buyer delivery status</strong>
+                  <span>{receipt.deliveryStatusLabel}</span>
                 </div>
               </div>
             </div>

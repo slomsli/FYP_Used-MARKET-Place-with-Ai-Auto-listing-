@@ -110,3 +110,37 @@ export async function confirmPurchaseReceiptPayment(
     { method: 'PATCH' }
   );
 }
+
+export async function markPurchaseReceiptReceived(
+  token: string,
+  receiptId: string
+): Promise<ServiceResponse<PurchaseReceiptDetailResponse>> {
+  return authorizedRequest<PurchaseReceiptDetailResponse>(
+    `/api/dashboard/purchases/${encodeURIComponent(receiptId)}/mark-received`,
+    token,
+    { method: 'PATCH' }
+  );
+}
+
+export async function reportPurchaseReceiptNotReceived(
+  token: string,
+  receiptId: string,
+  payload: {
+    buyerStatement: string;
+    paymentReference?: string;
+    proofs?: Array<{
+      fileName: string;
+      contentType: string;
+      base64Data: string;
+    }>;
+  }
+): Promise<ServiceResponse<PurchaseReceiptDetailResponse>> {
+  return authorizedRequest<PurchaseReceiptDetailResponse>(
+    `/api/dashboard/purchases/${encodeURIComponent(receiptId)}/not-received`,
+    token,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
+}

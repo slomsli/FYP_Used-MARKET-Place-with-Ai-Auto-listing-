@@ -241,11 +241,21 @@ export interface AdminListingModerationSnapshot {
 export interface AuthAdminUser {
   id: string;
   email?: string;
+  created_at?: string;
   email_confirmed_at?: string | null;
   banned_until?: string | null;
   last_sign_in_at?: string | null;
+  user_metadata?: {
+    full_name?: unknown;
+    name?: unknown;
+    username?: unknown;
+    avatar_path?: unknown;
+    role?: unknown;
+    [key: string]: unknown;
+  } | null;
   app_metadata?: {
     account_status?: unknown;
+    role?: unknown;
     [key: string]: unknown;
   } | null;
 }
@@ -382,6 +392,7 @@ export interface UpdateAdminListingStatusInput {
 }
 
 export interface AdminModerationThreadResponse {
+  conversationId: string | null;
   listingId: string;
   listingTitle: string;
   recipientId: string;

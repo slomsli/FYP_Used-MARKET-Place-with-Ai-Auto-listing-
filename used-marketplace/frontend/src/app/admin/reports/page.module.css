@@ -1,20 +1,20 @@
 .page {
   display: grid;
-  gap: 2rem;
+  gap: clamp(1rem, 1.8vw, 2rem);
 }
 
 .hero {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 1.5rem;
+  gap: clamp(0.85rem, 1.5vw, 1.5rem);
 }
 
 .eyebrow,
 .detailLabel,
 .metricLabel,
 .personLabel {
-  font-size: 0.78rem;
+  font-size: clamp(0.65rem, 0.82vw, 0.78rem);
   font-weight: 800;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -33,8 +33,8 @@
 }
 
 .title {
-  margin-top: 0.4rem;
-  font-size: clamp(2.5rem, 5vw, 3.6rem);
+  margin-top: 0.35rem;
+  font-size: clamp(1.25rem, 2.5vw, 2.4rem);
   line-height: 1.05;
   letter-spacing: -0.04em;
   color: var(--admin-primary, #1a237e);
@@ -43,17 +43,17 @@
 
 .subtitle {
   max-width: 760px;
-  margin-top: 1rem;
+  margin-top: clamp(0.5rem, 0.85vw, 1rem);
   color: var(--admin-neutral, #45474f);
-  line-height: 1.7;
-  font-size: 1.02rem;
+  line-height: 1.65;
+  font-size: clamp(0.82rem, 1vw, 1rem);
   opacity: 0.85;
 }
 
 .heroActions {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: clamp(0.55rem, 0.85vw, 1rem);
   flex-wrap: wrap;
   justify-content: flex-end;
 }
@@ -62,7 +62,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.95rem 1.25rem;
+  padding: clamp(0.65rem, 0.95vw, 0.95rem) clamp(0.85rem, 1.2vw, 1.25rem);
   border-radius: 14px;
   background: var(--admin-surface, #ffffff);
   border: 1px solid rgba(0, 0, 0, 0.06);
@@ -104,8 +104,8 @@
 
 .primaryButton,
 .secondaryButton {
-  padding: 1rem 1.35rem;
-  border-radius: 14px;
+  padding: clamp(0.65rem, 1vw, 1rem) clamp(0.85rem, 1.3vw, 1.35rem);
+  border-radius: clamp(10px, 1.2vw, 14px);
 }
 
 .primaryButton {
@@ -134,8 +134,8 @@
 }
 
 .noticeBanner {
-  padding: 1rem 1.35rem;
-  border-radius: 14px;
+  padding: clamp(0.65rem, 1vw, 1rem) clamp(0.85rem, 1.3vw, 1.35rem);
+  border-radius: clamp(10px, 1.2vw, 14px);
   font-weight: 700;
 }
 
@@ -153,14 +153,14 @@
 
 .statsGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: clamp(0.65rem, 1.1vw, 1.25rem);
 }
 
 .statCard {
-  min-height: 220px;
-  padding: 1.5rem;
-  border-radius: 24px;
+  min-height: clamp(130px, 15vw, 180px);
+  padding: clamp(0.85rem, 1.2vw, 1.25rem);
+  border-radius: clamp(16px, 2vw, 24px);
   border: 1px solid rgba(0, 0, 0, 0.04);
   background: var(--admin-surface, #ffffff);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04);
@@ -193,13 +193,18 @@
 }
 
 .statIcon {
-  width: 54px;
-  height: 54px;
-  border-radius: 14px;
+  width: clamp(32px, 3.5vw, 42px);
+  height: clamp(32px, 3.5vw, 42px);
+  border-radius: clamp(8px, 1vw, 12px);
   display: grid;
   place-items: center;
   background: rgba(0, 0, 0, 0.05);
   margin-bottom: auto;
+}
+
+.statIcon svg {
+  width: clamp(13px, 1.4vw, 16px);
+  height: clamp(13px, 1.4vw, 16px);
 }
 
 .statCardInk .statIcon {
@@ -207,25 +212,25 @@
 }
 
 .statLabel {
-  margin-top: 1.4rem;
+  margin-top: clamp(0.8rem, 1.2vw, 1.4rem);
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  font-size: 0.8rem;
+  font-size: clamp(0.65rem, 0.82vw, 0.8rem);
   font-weight: 700;
   opacity: 0.85;
 }
 
 .statValue {
-  margin-top: 0.75rem;
-  font-size: clamp(2rem, 3.5vw, 2.8rem);
+  margin-top: clamp(0.35rem, 0.6vw, 0.6rem);
+  font-size: clamp(1.2rem, 2.2vw, 2.2rem);
   font-family: var(--admin-font-head, 'Manrope', sans-serif);
   line-height: 1;
 }
 
 .statDetail {
-  margin-top: 0.75rem;
+  margin-top: clamp(0.4rem, 0.72vw, 0.75rem);
   line-height: 1.6;
-  font-size: 0.92rem;
+  font-size: clamp(0.76rem, 0.92vw, 0.92rem);
   opacity: 0.82;
 }
 
@@ -233,10 +238,10 @@
 .tabBar {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: clamp(0.28rem, 0.5vw, 0.5rem);
   flex-wrap: wrap;
-  padding: 0.4rem;
-  border-radius: 20px;
+  padding: clamp(0.25rem, 0.42vw, 0.4rem);
+  border-radius: clamp(14px, 1.7vw, 20px);
   background: var(--admin-surface, #ffffff);
   border: 1px solid rgba(0, 0, 0, 0.05);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
@@ -245,15 +250,15 @@
 .tabItem {
   display: inline-flex;
   align-items: center;
-  gap: 0.55rem;
-  padding: 0.72rem 1.15rem;
-  border-radius: 14px;
+  gap: clamp(0.32rem, 0.55vw, 0.55rem);
+  padding: clamp(0.48rem, 0.75vw, 0.72rem) clamp(0.65rem, 1.1vw, 1.15rem);
+  border-radius: clamp(10px, 1.2vw, 14px);
   border: none;
   background: transparent;
   color: var(--admin-neutral, #45474f);
   font-weight: 600;
   font-family: var(--admin-font-body, 'Inter', sans-serif);
-  font-size: 0.9rem;
+  font-size: clamp(0.72rem, 0.92vw, 0.9rem);
   cursor: pointer;
   transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
   white-space: nowrap;
@@ -284,11 +289,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 0.42rem;
+  min-width: clamp(18px, 1.8vw, 22px);
+  height: clamp(18px, 1.8vw, 22px);
+  padding: 0 0.35rem;
   border-radius: 999px;
-  font-size: 0.72rem;
+  font-size: clamp(0.58rem, 0.75vw, 0.72rem);
   font-weight: 800;
   background: rgba(0, 0, 0, 0.08);
   color: inherit;
@@ -307,7 +312,7 @@
 
 /* ── Queue ── */
 .queue {
-  border-radius: 28px;
+  border-radius: clamp(16px, 2.5vw, 28px);
   background: var(--admin-surface, #ffffff);
   border: 1px solid rgba(0, 0, 0, 0.04);
   box-shadow: 0 16px 52px rgba(0, 0, 0, 0.06);
@@ -316,10 +321,9 @@
 
 .reportGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 360px));
-  gap: 1.15rem;
-  padding: 1.4rem;
-  justify-content: start;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  gap: clamp(0.65rem, 1.1vw, 1.15rem);
+  padding: clamp(0.85rem, 1.3vw, 1.4rem);
   align-items: start;
 }
 
@@ -327,8 +331,7 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-width: 360px;
-  border-radius: 22px;
+  border-radius: clamp(14px, 1.8vw, 22px);
   background: #ffffff;
   border: 1px solid rgba(0, 0, 0, 0.05);
   overflow: hidden;
@@ -355,7 +358,7 @@
 
 .mediaShell {
   position: relative;
-  height: 120px;
+  height: clamp(85px, 10vw, 120px);
   background: linear-gradient(180deg, #eef2ff, #f8fafc);
 }
 
@@ -397,9 +400,9 @@
 .statusBadge {
   display: inline-flex;
   align-items: center;
-  padding: 0.45rem 0.78rem;
+  padding: clamp(0.3rem, 0.48vw, 0.45rem) clamp(0.45rem, 0.78vw, 0.78rem);
   border-radius: 999px;
-  font-size: 0.72rem;
+  font-size: clamp(0.58rem, 0.75vw, 0.72rem);
   font-weight: 800;
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -446,10 +449,10 @@
 }
 
 .cardBody {
-  padding: 1rem;
+  padding: clamp(0.65rem, 1vw, 1rem);
   display: flex;
   flex-direction: column;
-  gap: 0.82rem;
+  gap: clamp(0.55rem, 0.82vw, 0.82rem);
   flex: 1;
 }
 
@@ -464,27 +467,27 @@
   margin: 0;
   color: var(--admin-primary, #1a237e);
   font-family: var(--admin-font-head, 'Manrope', sans-serif);
-  font-size: 1.05rem;
+  font-size: clamp(0.82rem, 1.05vw, 1.05rem);
   line-height: 1.2;
 }
 
 .listingMeta {
-  margin-top: 0.3rem;
+  margin-top: 0.25rem;
   color: var(--admin-neutral, #45474f);
   line-height: 1.45;
-  font-size: 0.84rem;
+  font-size: clamp(0.7rem, 0.85vw, 0.84rem);
   opacity: 0.82;
 }
 
 .timePill {
-  min-width: 96px;
-  padding: 0.55rem 0.68rem;
-  border-radius: 14px;
+  min-width: clamp(72px, 8vw, 96px);
+  padding: clamp(0.35rem, 0.55vw, 0.55rem) clamp(0.42rem, 0.68vw, 0.68rem);
+  border-radius: clamp(10px, 1.2vw, 14px);
   background: #f8fafc;
   border: 1px solid rgba(0, 0, 0, 0.05);
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.15rem;
 }
 
 .timePill span {
@@ -508,18 +511,18 @@
 }
 
 .metricCard {
-  padding: 0.68rem 0.74rem;
-  border-radius: 14px;
+  padding: clamp(0.45rem, 0.72vw, 0.68rem) clamp(0.5rem, 0.78vw, 0.74rem);
+  border-radius: clamp(10px, 1.2vw, 14px);
   background: #f8fafc;
   border: 1px solid rgba(0, 0, 0, 0.04);
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.2rem;
 }
 
 .metricCard strong {
   color: var(--admin-primary, #1a237e);
-  font-size: 0.88rem;
+  font-size: clamp(0.72rem, 0.88vw, 0.88rem);
 }
 
 .previewPanel {
@@ -571,11 +574,11 @@
 }
 
 .avatarShell {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
+  width: clamp(36px, 4vw, 48px);
+  height: clamp(36px, 4vw, 48px);
+  border-radius: clamp(10px, 1.2vw, 14px);
   overflow: hidden;
-  font-size: 1rem;
+  font-size: clamp(0.78rem, 0.95vw, 1rem);
 }
 
 .personChip strong {
@@ -616,13 +619,21 @@
 }
 
 .openArrow {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   border-radius: 999px;
   display: grid;
   place-items: center;
   background: #eef2ff;
   color: var(--admin-primary, #1a237e);
+}
+
+.openArrow svg,
+.primaryButton svg,
+.secondaryButton svg,
+.ghostButton svg {
+  width: 15px;
+  height: 15px;
 }
 
 .expandButton,
@@ -632,8 +643,9 @@
 .resolveButton,
 .dismissButton,
 .pauseButton {
-  padding: 0.72rem 0.88rem;
-  border-radius: 13px;
+  padding: clamp(0.48rem, 0.75vw, 0.72rem) clamp(0.58rem, 0.88vw, 0.88rem);
+  border-radius: clamp(9px, 1.1vw, 13px);
+  font-size: clamp(0.72rem, 0.88vw, 0.85rem);
 }
 
 .expandButton {
@@ -681,8 +693,8 @@
 
 .detailGrid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+  gap: clamp(0.45rem, 0.75vw, 0.75rem);
 }
 
 .detailCard,
@@ -799,6 +811,45 @@
   opacity: 0.55;
   cursor: not-allowed;
   transform: none;
+}
+
+@media (max-width: 1366px) {
+  .statsGrid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+  }
+
+  .statCard {
+    min-height: 160px;
+    padding: 1.1rem;
+  }
+
+  .statValue {
+    font-size: clamp(1.5rem, 2.5vw, 2rem);
+  }
+
+  .statLabel {
+    margin-top: 1rem;
+    font-size: 0.75rem;
+  }
+
+  .reportGrid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1rem;
+    padding: 1.1rem;
+  }
+
+  .hero {
+    gap: 1rem;
+  }
+
+  .title {
+    font-size: clamp(1.5rem, 2.8vw, 2.2rem);
+  }
+
+  .subtitle {
+    font-size: 0.92rem;
+  }
 }
 
 @media (max-width: 1280px) {

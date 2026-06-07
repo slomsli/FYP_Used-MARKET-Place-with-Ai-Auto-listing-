@@ -8,7 +8,10 @@ import { buildDisplayName } from '../utils/profile';
 import { type Relation, unwrapRelation } from '../utils/relation';
 import { sanitizeStorageFileName } from '../utils/storageFile';
 import { REPORT_STATUS_LABELS, type ReportStatus } from '../types/report';
-import type { PurchasePaymentStatus } from '../types/purchase';
+import type {
+  PurchaseDeliveryStatus,
+  PurchasePaymentStatus,
+} from '../types/purchase';
 import { getPublicStorageUrl, removeStorageObjects } from '../utils/storage';
 import {
   AVATAR_BUCKET,
@@ -134,6 +137,8 @@ interface RawPurchaseReceipt {
   offer_id: string | null;
   receipt_number: string;
   payment_status: PurchasePaymentStatus;
+  delivery_status: PurchaseDeliveryStatus | null;
+  delivery_marked_at: string | null;
   total_amount: unknown;
   currency: string;
   buyer_marked_paid_at: string | null;
@@ -174,6 +179,9 @@ export interface OfferPurchaseReceiptSummary {
   receiptNumber: string;
   paymentStatus: PurchasePaymentStatus;
   paymentStatusLabel: string;
+  deliveryStatus: PurchaseDeliveryStatus;
+  deliveryStatusLabel: string;
+  deliveryMarkedAt: string | null;
   totalAmount: number;
   currency: string;
   buyerMarkedPaidAt: string | null;
@@ -423,6 +431,35 @@ async function notifyDeliveryIssueReported(
   });
 }
 
+async function updateOfferReceiptDeliveryStatus(input: {
+  offerId: string;
+  buyerId: string;
+  deliveryStatus: PurchaseDeliveryStatus;
+  deliveryMarkedAt: string;
+  deliveryReportId?: string | null;
+}): Promise<void> {
+  const updatePayload: Record<string, string | null> = {
+    delivery_status: input.deliveryStatus,
+    delivery_marked_at: input.deliveryMarkedAt,
+    updated_at: input.deliveryMarkedAt,
+  };
+
+  if (input.deliveryStatus === 'not_received') {
+    updatePayload.delivery_report_id = input.deliveryReportId ?? null;
+  }
+
+  const { error } = await supabaseAdmin
+    .from('purchase_receipts')
+    .update(updatePayload)
+    .eq('offer_id', input.offerId)
+    .eq('buyer_id', input.buyerId)
+    .eq('delivery_status', 'pending');
+
+  if (error && !isPurchaseReceiptsTableMissingError(error)) {
+    console.error('[Offers] Failed to sync receipt delivery status:', error);
+  }
+}
+
 async function ensureDeliveryProofBucket(): Promise<void> {
   if (!deliveryProofBucketPromise) {
     deliveryProofBucketPromise = (async () => {
@@ -578,6 +615,19 @@ function mapDeliveryIssue(report: RawReport): OfferDeliveryIssueSummary | null {
   };
 }
 
+function buildDeliveryIssueBuyerStatement(
+  buyerStatement: string,
+  existingReportDetails: string | null | undefined
+): string {
+  const previousDetails = trimOptional(existingReportDetails);
+
+  if (!previousDetails || parseDeliveryDisputeDetails(previousDetails)) {
+    return buyerStatement;
+  }
+
+  return `${buyerStatement}\n\nPrevious report details:\n${previousDetails}`;
+}
+
 function getPurchasePaymentStatusLabel(status: PurchasePaymentStatus): string {
   switch (status) {
     case 'buyer_marked_paid':
@@ -590,12 +640,29 @@ function getPurchasePaymentStatusLabel(status: PurchasePaymentStatus): string {
   }
 }
 
+function getPurchaseDeliveryStatusLabel(status: PurchaseDeliveryStatus): string {
+  switch (status) {
+    case 'received':
+      return 'Item received';
+    case 'not_received':
+      return 'Item not received';
+    case 'pending':
+    default:
+      return 'Waiting for buyer confirmation';
+  }
+}
+
 function mapOfferReceipt(receipt: RawPurchaseReceipt): OfferPurchaseReceiptSummary {
+  const deliveryStatus = receipt.delivery_status ?? 'pending';
+
   return {
     id: receipt.id,
     receiptNumber: receipt.receipt_number,
     paymentStatus: receipt.payment_status,
     paymentStatusLabel: getPurchasePaymentStatusLabel(receipt.payment_status),
+    deliveryStatus,
+    deliveryStatusLabel: getPurchaseDeliveryStatusLabel(deliveryStatus),
+    deliveryMarkedAt: receipt.delivery_marked_at,
     totalAmount: toNumber(receipt.total_amount),
     currency: receipt.currency || 'MYR',
     buyerMarkedPaidAt: receipt.buyer_marked_paid_at,
@@ -746,6 +813,8 @@ async function attachSaleFollowUp(
         offer_id,
         receipt_number,
         payment_status,
+        delivery_status,
+        delivery_marked_at,
         total_amount,
         currency,
         buyer_marked_paid_at,
@@ -806,6 +875,8 @@ async function attachSaleFollowUp(
     const deliveryIssue = deliveryIssueMap.get(saleKey) ?? null;
     const isCompletedSale = completedSaleOfferIdSet.has(offer.id);
     const receipt = receiptMap.get(offer.id) ?? null;
+    const hasReceiptDeliveryDecision =
+      receipt?.deliveryStatus === 'received' || receipt?.deliveryStatus === 'not_received';
 
     if (!isCompletedSale) {
       return offer;
@@ -814,8 +885,16 @@ async function attachSaleFollowUp(
     return {
       ...offer,
       saleFollowUp: {
-        canBuyerConfirmReceived: currentUserId === offer.buyerId && !review && !deliveryIssue,
-        canBuyerReportNotReceived: currentUserId === offer.buyerId && !review && !deliveryIssue,
+        canBuyerConfirmReceived:
+          currentUserId === offer.buyerId &&
+          !review &&
+          !deliveryIssue &&
+          !hasReceiptDeliveryDecision,
+        canBuyerReportNotReceived:
+          currentUserId === offer.buyerId &&
+          !review &&
+          !deliveryIssue &&
+          !hasReceiptDeliveryDecision,
         review,
         deliveryIssue,
         receipt,
@@ -1661,6 +1740,13 @@ export async function createBuyerReview(
     );
   }
 
+  await updateOfferReceiptDeliveryStatus({
+    offerId: input.offerId,
+    buyerId: userId,
+    deliveryStatus: 'received',
+    deliveryMarkedAt: (createdReview as RawReview).created_at,
+  });
+
   return mapOfferReview(createdReview as RawReview);
 }
 
@@ -1803,13 +1889,15 @@ export async function reportDeliveryIssue(
     throw new OfferServiceError('Unable to inspect existing delivery issues', 500);
   }
 
-  const existingDeliveryIssue = ((existingReportsResult.data ?? []) as RawReport[])
+  const existingReports = (existingReportsResult.data ?? []) as RawReport[];
+  const existingDeliveryIssue = existingReports
     .map(mapDeliveryIssue)
     .find((report) => report !== null);
 
   if (existingDeliveryIssue) {
-    throw new OfferServiceError('You already reported this purchase as not received', 409);
+    return existingDeliveryIssue;
   }
+  const existingReport = existingReports[0] ?? null;
 
   const agreedPriceLabel = formatCurrency(
     toNumber(offer.offer_price),
@@ -1821,26 +1909,44 @@ export async function reportDeliveryIssue(
     agreedPriceLabel,
     paymentReference,
     proofUrls: uploadedProofs.map((proof) => proof.publicUrl),
-    buyerStatement,
+    buyerStatement: buildDeliveryIssueBuyerStatement(
+      buyerStatement,
+      existingReport?.details
+    ),
   });
   const timestamp = new Date().toISOString();
 
-  const { data: createdReport, error: insertError } = await supabaseAdmin
-    .from('reports')
-    .insert({
-      listing_id: offer.listing_id,
-      reporter_id: userId,
-      reason: 'other',
-      details: reportDetails,
-      status: 'pending',
-      created_at: timestamp,
-      updated_at: timestamp,
-    })
-    .select('id, listing_id, reporter_id, status, details, created_at, updated_at')
-    .single();
+  const reportWrite = existingReport
+    ? await supabaseAdmin
+        .from('reports')
+        .update({
+          reason: 'other',
+          details: reportDetails,
+          status: 'pending',
+          updated_at: timestamp,
+        })
+        .eq('id', existingReport.id)
+        .select('id, listing_id, reporter_id, status, details, created_at, updated_at')
+        .single()
+    : await supabaseAdmin
+        .from('reports')
+        .insert({
+          listing_id: offer.listing_id,
+          reporter_id: userId,
+          reason: 'other',
+          details: reportDetails,
+          status: 'pending',
+          created_at: timestamp,
+          updated_at: timestamp,
+        })
+        .select('id, listing_id, reporter_id, status, details, created_at, updated_at')
+        .single();
 
-  if (insertError || !createdReport) {
-    console.error('[Offers] Failed to create delivery issue report:', insertError);
+  const deliveryReport = reportWrite.data as RawReport | null;
+  const reportWriteError = reportWrite.error;
+
+  if (reportWriteError || !deliveryReport) {
+    console.error('[Offers] Failed to save delivery issue report:', reportWriteError);
 
     if (uploadedProofs.length > 0) {
       try {
@@ -1859,10 +1965,18 @@ export async function reportDeliveryIssue(
     );
   }
 
-  const mappedIssue = mapDeliveryIssue(createdReport as RawReport);
+  const mappedIssue = mapDeliveryIssue(deliveryReport);
   if (!mappedIssue) {
     throw new OfferServiceError('Delivery issue saved but could not be mapped correctly', 500);
   }
+
+  await updateOfferReceiptDeliveryStatus({
+    offerId: input.offerId,
+    buyerId: userId,
+    deliveryStatus: 'not_received',
+    deliveryMarkedAt: timestamp,
+    deliveryReportId: deliveryReport.id,
+  });
 
   try {
     await notifyDeliveryIssueReported(offer.seller_id, listing.title, buyerStatement);

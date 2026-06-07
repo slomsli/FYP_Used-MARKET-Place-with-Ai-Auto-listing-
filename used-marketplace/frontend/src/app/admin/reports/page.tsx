@@ -176,7 +176,18 @@ function truncateText(value: string, maxLength = 150) {
     return value;
   }
 
-  return `${value.slice(0, maxLength).trimEnd()}...`;
+  if (maxLength <= 3) {
+    return value.slice(0, maxLength);
+  }
+
+  return `${value.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+function buildReportModerationTopic(report: AdminReportListItem) {
+  const issueLabel = report.reportType === 'delivery_issue' ? 'Delivery dispute' : report.reasonLabel;
+  const rawTopic = `Report ${report.id.slice(0, 8)}: ${issueLabel} - ${report.listing.title}`;
+
+  return truncateText(rawTopic, 80);
 }
 
 export default function AdminReportsPage() {
@@ -262,7 +273,9 @@ export default function AdminReportsPage() {
     }
 
     setMessageSellerId(report.seller.id);
-    const response = await ensureAdminModerationThread(token, report.seller.id);
+    const response = await ensureAdminModerationThread(token, report.seller.id, {
+      topic: buildReportModerationTopic(report),
+    });
     setMessageSellerId(null);
 
     if (!response.data) {
@@ -270,6 +283,11 @@ export default function AdminReportsPage() {
         type: 'error',
         message: response.error || 'Failed to prepare a moderation chat with the seller',
       });
+      return;
+    }
+
+    if (response.data.conversationId) {
+      router.push(`${ROUTES.ADMIN_MESSAGES}?conversationId=${encodeURIComponent(response.data.conversationId)}`);
       return;
     }
 

@@ -18,6 +18,7 @@ import {
   type AreaLookup,
   type StateLookup,
 } from '@/src/services/profileService';
+import { fetchConversations, type ConversationDetail } from '@/src/services/messageService';
 import ReMarketVerifiedBadge from '@/src/components/identity/ReMarketVerifiedBadge';
 import type {
   AdminUserDetailResponse,
@@ -35,6 +36,8 @@ const EMPTY_FORM = {
   stateId: '',
   areaId: '',
 };
+
+const SUPPORT_TICKET_TITLE_PREFIX = 'Support request:';
 
 function FilterIcon() {
   return (
@@ -169,6 +172,46 @@ function canMessageUser(target: AdminUserListItem, currentUserId?: string) {
   return target.id !== currentUserId;
 }
 
+function isModerationConversation(conversation: ConversationDetail) {
+  return Boolean(conversation.listing_details?.is_moderation);
+}
+
+function isSupportTicketConversation(conversation: ConversationDetail) {
+  return Boolean(
+    conversation.listing_details?.is_moderation &&
+      conversation.listing_details.title.startsWith(SUPPORT_TICKET_TITLE_PREFIX)
+  );
+}
+
+function getOtherParticipantId(conversation: ConversationDetail, currentUserId?: string) {
+  if (conversation.other_user?.id) {
+    return conversation.other_user.id;
+  }
+
+  if (conversation.buyer_id === currentUserId) {
+    return conversation.seller_id;
+  }
+
+  if (conversation.seller_id === currentUserId) {
+    return conversation.buyer_id;
+  }
+
+  return null;
+}
+
+function formatThreadTime(value?: string) {
+  if (!value) {
+    return 'No activity';
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
 export default function AdminUsersPage() {
   const router = useRouter();
   const { user, token } = useRequireAuth();
@@ -196,6 +239,11 @@ export default function AdminUsersPage() {
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const [statusUserId, setStatusUserId] = useState<string | null>(null);
   const [messageUserId, setMessageUserId] = useState<string | null>(null);
+  const [messageTarget, setMessageTarget] = useState<AdminUserListItem | null>(null);
+  const [messageTopic, setMessageTopic] = useState('');
+  const [messageThreads, setMessageThreads] = useState<ConversationDetail[]>([]);
+  const [loadingMessageThreads, setLoadingMessageThreads] = useState(false);
+  const [messageError, setMessageError] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
@@ -392,11 +440,7 @@ export default function AdminUsersPage() {
     }
   }
 
-  async function handleMessageUser(target: AdminUserListItem) {
-    if (!token) {
-      return;
-    }
-
+  async function openMessageThreadPicker(target: AdminUserListItem) {
     if (!canMessageUser(target, user?.id)) {
       setNotice({
         type: 'error',
@@ -405,24 +449,96 @@ export default function AdminUsersPage() {
       return;
     }
 
-    setMessageUserId(target.id);
-    const response = await ensureAdminModerationThread(token, target.id);
-    setMessageUserId(null);
+    setMessageTarget(target);
+    setMessageTopic('');
+    setMessageThreads([]);
+    setMessageError(null);
+    setShowDetailsModal(false);
+
+    if (!token) {
+      return;
+    }
+
+    setLoadingMessageThreads(true);
+    const response = await fetchConversations(token);
+    setLoadingMessageThreads(false);
 
     if (!response.data) {
-      setNotice({
-        type: 'error',
-        message: response.error || 'Failed to prepare the moderation conversation.',
+      setMessageError(response.error || 'Failed to load previous moderation threads.');
+      return;
+    }
+
+    const targetThreads = response.data
+      .filter((conversation) => {
+        const otherParticipantId = getOtherParticipantId(conversation, user?.id);
+
+        return (
+          otherParticipantId === target.id &&
+          isModerationConversation(conversation) &&
+          !isSupportTicketConversation(conversation)
+        );
+      })
+      .sort((left, right) => {
+        const leftTime = new Date(left.last_message?.created_at || left.created_at).getTime();
+        const rightTime = new Date(right.last_message?.created_at || right.created_at).getTime();
+        return rightTime - leftTime;
       });
+
+    setMessageThreads(targetThreads);
+  }
+
+  function openExistingThread(conversationId: string) {
+    setMessageTarget(null);
+    setMessageTopic('');
+    setMessageThreads([]);
+    router.push(`${ROUTES.ADMIN_MESSAGES}?conversationId=${encodeURIComponent(conversationId)}`);
+  }
+
+  async function handleStartNewTopic(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!token || !messageTarget) {
+      return;
+    }
+
+    const topic = messageTopic.trim().replace(/\s+/g, ' ');
+
+    if (!topic) {
+      setMessageError('Write a topic name before starting a new moderation thread.');
+      return;
+    }
+
+    if (topic.length > 80) {
+      setMessageError('Topic name must be 80 characters or fewer.');
+      return;
+    }
+
+    const target = messageTarget;
+    setMessageUserId(target.id);
+    setMessageError(null);
+    const threadResponse = await ensureAdminModerationThread(token, target.id, { topic });
+    setMessageUserId(null);
+
+    if (!threadResponse.data) {
+      setMessageError(threadResponse.error || 'Failed to prepare the moderation conversation.');
+      return;
+    }
+
+    setMessageTarget(null);
+    setMessageTopic('');
+    setMessageThreads([]);
+
+    if (threadResponse.data.conversationId) {
+      router.push(`${ROUTES.ADMIN_MESSAGES}?conversationId=${encodeURIComponent(threadResponse.data.conversationId)}`);
       return;
     }
 
     const params = new URLSearchParams({
-      listingId: response.data.listingId,
-      listingTitle: response.data.listingTitle,
-      recipientId: response.data.recipientId,
-      recipientName: response.data.recipientName,
-      topicType: response.data.topicType,
+      listingId: threadResponse.data.listingId,
+      listingTitle: threadResponse.data.listingTitle,
+      recipientId: threadResponse.data.recipientId,
+      recipientName: threadResponse.data.recipientName,
+      topicType: threadResponse.data.topicType,
     });
 
     router.push(`${ROUTES.ADMIN_MESSAGES}?${params.toString()}`);
@@ -553,7 +669,7 @@ export default function AdminUsersPage() {
                   <button
                     type="button"
                     className={styles.iconAction}
-                    onClick={() => void handleMessageUser(listedUser)}
+                    onClick={() => void openMessageThreadPicker(listedUser)}
                     disabled={rowBusy || !canMessageUser(listedUser, user?.id)}
                     aria-label={`Open moderation chat with ${listedUser.fullName}`}
                   >
@@ -813,7 +929,7 @@ export default function AdminUsersPage() {
                     <button
                       type="button"
                       className={styles.secondaryButton}
-                      onClick={() => detailTarget && void handleMessageUser(detailTarget)}
+                      onClick={() => detailTarget && void openMessageThreadPicker(detailTarget)}
                       disabled={!detailTarget || messageUserId === detailTarget.id || !canMessageUser(detailTarget, user?.id)}
                     >
                       <MessageIcon />
@@ -943,6 +1059,115 @@ export default function AdminUsersPage() {
                 </section>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {messageTarget && (
+        <div
+          className={styles.modalBackdrop}
+          onClick={() => {
+            if (messageUserId !== messageTarget.id) {
+              setMessageTarget(null);
+            }
+          }}
+        >
+          <div className={`${styles.modal} ${styles.messageThreadModal}`} onClick={(event) => event.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div>
+                <p className={styles.modalEyebrow}>Moderation Thread</p>
+                <h2>{messageTarget.fullName}</h2>
+              </div>
+              <button
+                type="button"
+                className={styles.closeButton}
+                onClick={() => setMessageTarget(null)}
+                disabled={messageUserId === messageTarget.id}
+              >
+                x
+              </button>
+            </div>
+
+            <div className={styles.messageThreadBody}>
+              <div className={styles.messageTargetCard}>
+                <div className={styles.avatar}>
+                  {messageTarget.avatarPath ? (
+                    <img src={messageTarget.avatarPath} alt={messageTarget.fullName} className={styles.avatarImage} />
+                  ) : (
+                    getInitials(messageTarget.fullName)
+                  )}
+                </div>
+                <div>
+                  <strong>{messageTarget.email || `@${messageTarget.username}`}</strong>
+                  <span>{messageTarget.locationLabel}</span>
+                </div>
+              </div>
+
+              <section className={styles.threadChoiceSection}>
+                <div className={styles.threadChoiceHeader}>
+                  <span>Previous threads</span>
+                  <small>{loadingMessageThreads ? 'Loading...' : `${messageThreads.length} found`}</small>
+                </div>
+
+                {loadingMessageThreads ? (
+                  <div className={styles.threadEmptyState}>Loading previous moderation threads...</div>
+                ) : messageThreads.length === 0 ? (
+                  <div className={styles.threadEmptyState}>No previous moderation thread with this user.</div>
+                ) : (
+                  <div className={styles.threadList}>
+                    {messageThreads.map((thread) => (
+                      <button
+                        key={thread.id}
+                        type="button"
+                        className={styles.threadOption}
+                        onClick={() => openExistingThread(thread.id)}
+                      >
+                        <strong>{thread.listing_details?.title || 'Account moderation thread'}</strong>
+                        <span>{thread.last_message?.content || 'No messages yet'}</span>
+                        <time>{formatThreadTime(thread.last_message?.created_at || thread.created_at)}</time>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <form className={styles.newThreadForm} onSubmit={handleStartNewTopic}>
+                <label className={styles.messageTopicField}>
+                  <span>Start new topic</span>
+                  <input
+                    value={messageTopic}
+                    onChange={(event) => setMessageTopic(event.target.value)}
+                    placeholder="Example: Office chair listing review"
+                    maxLength={80}
+                    autoFocus
+                  />
+                </label>
+
+                <div className={styles.messageTopicMeta}>
+                  <span>{messageTopic.trim().length}/80</span>
+                </div>
+
+                {messageError && <p className={styles.formError}>{messageError}</p>}
+
+                <div className={styles.formActions}>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => setMessageTarget(null)}
+                    disabled={messageUserId === messageTarget.id}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className={styles.primaryButton}
+                    disabled={messageUserId === messageTarget.id || !messageTopic.trim()}
+                  >
+                    {messageUserId === messageTarget.id ? 'Opening...' : 'Start New Topic'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}

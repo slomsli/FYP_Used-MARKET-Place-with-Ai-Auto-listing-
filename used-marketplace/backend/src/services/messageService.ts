@@ -1433,17 +1433,20 @@ export async function sendMessage(
        throw new MessageServiceError('You cannot start a conversation with yourself', 422);
      }
 
-     const { data: existingConvo, error: existingConvoError } = await supabaseAdmin
+     const { data: existingConvos, error: existingConvoError } = await supabaseAdmin
        .from('conversations')
-       .select('id')
+       .select('id, created_at')
        .eq('listing_id', payload.listing_id)
        .eq('buyer_id', recipientId)
        .eq('seller_id', sender.id)
-       .maybeSingle();
+       .order('created_at', { ascending: false })
+       .limit(1);
 
      if (existingConvoError) {
        throw new MessageServiceError('Unable to prepare this conversation', 500);
      }
+
+     const existingConvo = existingConvos?.[0] ?? null;
 
      if (existingConvo) {
        conversationId = existingConvo.id;
@@ -1465,17 +1468,20 @@ export async function sendMessage(
        conversationId = newConvo.id;
      }
   } else {
-     const { data: existingConvo, error: existingConvoError } = await supabaseAdmin
+     const { data: existingConvos, error: existingConvoError } = await supabaseAdmin
        .from('conversations')
-       .select('id')
+       .select('id, created_at')
        .eq('listing_id', payload.listing_id)
        .eq('buyer_id', sender.id)
        .eq('seller_id', listing.seller_id)
-       .maybeSingle();
+       .order('created_at', { ascending: false })
+       .limit(1);
 
      if (existingConvoError) {
        throw new MessageServiceError('Unable to prepare this conversation', 500);
      }
+
+     const existingConvo = existingConvos?.[0] ?? null;
 
      if (existingConvo) {
        conversationId = existingConvo.id;

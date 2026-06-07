@@ -43,6 +43,153 @@ import {
 
 const MIN_ADMIN_USER_PASSWORD_LENGTH = 8;
 const MAX_ADMIN_USER_PASSWORD_LENGTH = 72;
+const MAX_MODERATION_TOPIC_LENGTH = 80;
+
+function getMetadataString(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function getAuthUserRole(authUser: AuthAdminUser): 'user' | 'admin' {
+  return authUser.app_metadata?.role === 'admin' || authUser.user_metadata?.role === 'admin'
+    ? 'admin'
+    : 'user';
+}
+
+function normalizeModerationTopic(value: string | null | undefined): string | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  const normalized = value.trim().replace(/\s+/g, ' ');
+
+  if (!normalized) {
+    throw new AdminServiceError('Topic name is required to start a new moderation thread', 422);
+  }
+
+  if (normalized.length > MAX_MODERATION_TOPIC_LENGTH) {
+    throw new AdminServiceError(
+      `Topic name must be ${MAX_MODERATION_TOPIC_LENGTH} characters or fewer`,
+      422
+    );
+  }
+
+  return normalized;
+}
+
+function buildRawProfileFromSyncedProfile(profile: {
+  id: string;
+  username: string;
+  full_name: string | null;
+  avatar_path: string | null;
+  role: 'user' | 'admin';
+  created_at: string;
+  state_id: number | null;
+  area_id: number | null;
+}): RawProfile {
+  return {
+    id: profile.id,
+    username: profile.username,
+    full_name: profile.full_name,
+    avatar_path: profile.avatar_path,
+    role: profile.role,
+    created_at: profile.created_at,
+    updated_at: profile.created_at,
+    state_id: profile.state_id,
+    area_id: profile.area_id,
+    identity_verification_status: 'unverified',
+    identity_verification_badge: false,
+    identity_verified_at: null,
+    states: null,
+    areas: null,
+  };
+}
+
+function buildRawProfileFromAuthUser(authUser: AuthAdminUser): RawProfile {
+  const metadata = authUser.user_metadata ?? {};
+  const emailPrefix = authUser.email?.split('@')[0] ?? '';
+  const fallbackUsername = sanitizeUsername(emailPrefix || `user_${authUser.id.replace(/-/g, '').slice(0, 8)}`);
+  const fullName =
+    getMetadataString(metadata.full_name) ??
+    getMetadataString(metadata.name) ??
+    authUser.email ??
+    null;
+  const createdAt = authUser.created_at ?? new Date().toISOString();
+
+  return {
+    id: authUser.id,
+    username: sanitizeUsername(getMetadataString(metadata.username) ?? fallbackUsername),
+    full_name: fullName,
+    avatar_path: getMetadataString(metadata.avatar_path),
+    role: getAuthUserRole(authUser),
+    created_at: createdAt,
+    updated_at: createdAt,
+    state_id: null,
+    area_id: null,
+    identity_verification_status: 'unverified',
+    identity_verification_badge: false,
+    identity_verified_at: null,
+    states: null,
+    areas: null,
+  };
+}
+
+async function syncMissingProfilesForAuthUsers(
+  authUsers: AuthAdminUser[],
+  existingProfiles: RawProfile[]
+): Promise<RawProfile[]> {
+  const existingProfileIds = new Set(existingProfiles.map((profile) => profile.id));
+  const missingAuthUsers = authUsers.filter((authUser) => authUser.id && !existingProfileIds.has(authUser.id));
+
+  if (missingAuthUsers.length === 0) {
+    return [];
+  }
+
+  return Promise.all(
+    missingAuthUsers.map(async (authUser) => {
+      const metadata = authUser.user_metadata ?? {};
+
+      try {
+        const syncedProfile = await ensureProfileForUserId(authUser.id, {
+          fullName: getMetadataString(metadata.full_name) ?? getMetadataString(metadata.name),
+          username: getMetadataString(metadata.username),
+          role: getAuthUserRole(authUser),
+        });
+
+        return buildRawProfileFromSyncedProfile(syncedProfile);
+      } catch (error) {
+        console.error('[Admin] Failed to sync missing profile for auth user:', authUser.id, error);
+        return buildRawProfileFromAuthUser(authUser);
+      }
+    })
+  );
+}
+
+async function getExistingModerationConversationId(
+  listingId: string,
+  adminUserId: string,
+  targetUserId: string
+): Promise<string | null> {
+  const { data, error } = await supabaseAdmin
+    .from('conversations')
+    .select('id, created_at')
+    .eq('listing_id', listingId)
+    .eq('buyer_id', targetUserId)
+    .eq('seller_id', adminUserId)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (error) {
+    console.error('[Admin] Failed to inspect moderation conversation:', error);
+    throw new AdminServiceError('Unable to prepare the moderation thread', 500);
+  }
+
+  return data?.[0]?.id ?? null;
+}
 
 function buildAdminUserListItem(
   profile: RawProfile,
@@ -195,8 +342,11 @@ export async function getAdminUsers(query: AdminUsersQuery): Promise<AdminUsersR
     throw new AdminServiceError('Unable to load moderation statistics', 500);
   }
 
+  const rawProfiles = (profiles ?? []) as RawProfile[];
+  const repairedProfiles = await syncMissingProfilesForAuthUsers(authUsers, rawProfiles);
+  const completeProfiles = [...rawProfiles, ...repairedProfiles];
   const authUserMap = new Map(authUsers.map((user) => [user.id, user]));
-  const allUsers = ((profiles ?? []) as RawProfile[]).map((profile) =>
+  const allUsers = completeProfiles.map((profile) =>
     buildAdminUserListItem(profile, authUserMap.get(profile.id), listingCountMap)
   );
 
@@ -510,7 +660,8 @@ export async function updateAdminUserStatus(
 
 export async function ensureAdminModerationThread(
   adminUserId: string,
-  targetUserId: string
+  targetUserId: string,
+  topic?: string | null
 ): Promise<AdminModerationThreadResponse> {
   if (adminUserId === targetUserId) {
     throw new AdminServiceError('You cannot start a moderation thread with your own account', 422);
@@ -520,24 +671,40 @@ export async function ensureAdminModerationThread(
   const targetDisplayName =
     targetProfile.full_name?.trim() || targetProfile.username || 'Marketplace User';
   const targetKey = buildModerationListingTargetKey(targetUserId);
-  const title = buildModerationListingTitle(targetDisplayName);
+  const topicName = normalizeModerationTopic(topic);
+  const title = buildModerationListingTitle(topicName ?? targetDisplayName);
 
-  const { data: existingListing, error: existingListingError } = await supabaseAdmin
+  let existingListingQuery = supabaseAdmin
     .from('listings')
-    .select('id, title')
+    .select('id, title, updated_at')
     .eq('seller_id', adminUserId)
     .eq('status', 'draft')
     .eq('brand', MODERATION_LISTING_BRAND)
-    .eq('description', targetKey)
-    .maybeSingle();
+    .eq('description', targetKey);
+
+  if (topicName) {
+    existingListingQuery = existingListingQuery.eq('title', title);
+  }
+
+  const { data: existingListings, error: existingListingError } = await existingListingQuery
+    .order('updated_at', { ascending: false })
+    .limit(1);
 
   if (existingListingError) {
     console.error('[Admin] Failed to inspect moderation listings:', existingListingError);
     throw new AdminServiceError('Unable to prepare the moderation thread', 500);
   }
 
+  const existingListing = existingListings?.[0] ?? null;
+
   if (existingListing) {
-    if (existingListing.title !== title) {
+    const conversationId = await getExistingModerationConversationId(
+      existingListing.id,
+      adminUserId,
+      targetUserId
+    );
+
+    if (!topicName && existingListing.title !== title) {
       const { error: updateError } = await supabaseAdmin
         .from('listings')
         .update({
@@ -552,6 +719,7 @@ export async function ensureAdminModerationThread(
     }
 
     return {
+      conversationId,
       listingId: existingListing.id,
       listingTitle: title,
       recipientId: targetUserId,
@@ -586,6 +754,7 @@ export async function ensureAdminModerationThread(
   }
 
   return {
+    conversationId: null,
     listingId: createdListing.id,
     listingTitle: createdListing.title,
     recipientId: targetUserId,

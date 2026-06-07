@@ -1,4 +1,7 @@
-import type { PurchasePaymentStatus } from '@/src/types/purchase';
+import type {
+  PurchaseDeliveryStatus,
+  PurchasePaymentStatus,
+} from '@/src/types/purchase';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -40,6 +43,9 @@ export interface OfferPurchaseReceiptSummary {
   receiptNumber: string;
   paymentStatus: PurchasePaymentStatus;
   paymentStatusLabel: string;
+  deliveryStatus: PurchaseDeliveryStatus;
+  deliveryStatusLabel: string;
+  deliveryMarkedAt: string | null;
   totalAmount: number;
   currency: string;
   buyerMarkedPaidAt: string | null;

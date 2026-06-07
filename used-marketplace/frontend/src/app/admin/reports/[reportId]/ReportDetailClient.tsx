@@ -162,6 +162,25 @@ function getReporterCopy(report: AdminReportListItem) {
   return report.details?.trim() || 'No extra notes were provided for this report.';
 }
 
+function truncateText(value: string, maxLength: number) {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  if (maxLength <= 3) {
+    return value.slice(0, maxLength);
+  }
+
+  return `${value.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+function buildReportModerationTopic(report: AdminReportListItem) {
+  const issueLabel = report.reportType === 'delivery_issue' ? 'Delivery dispute' : report.reasonLabel;
+  const rawTopic = `Report ${report.id.slice(0, 8)}: ${issueLabel} - ${report.listing.title}`;
+
+  return truncateText(rawTopic, 80);
+}
+
 export default function ReportDetailClient({ reportId }: ReportDetailClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -316,7 +335,9 @@ export default function ReportDetailClient({ reportId }: ReportDetailClientProps
     }
 
     setMessagingSeller(true);
-    const response = await ensureAdminModerationThread(token, report.seller.id);
+    const response = await ensureAdminModerationThread(token, report.seller.id, {
+      topic: buildReportModerationTopic(report),
+    });
     setMessagingSeller(false);
 
     if (!response.data) {
@@ -324,6 +345,11 @@ export default function ReportDetailClient({ reportId }: ReportDetailClientProps
         type: 'error',
         message: response.error || 'Failed to prepare a moderation chat with the seller',
       });
+      return;
+    }
+
+    if (response.data.conversationId) {
+      router.push(`${ROUTES.ADMIN_MESSAGES}?conversationId=${encodeURIComponent(response.data.conversationId)}`);
       return;
     }
 

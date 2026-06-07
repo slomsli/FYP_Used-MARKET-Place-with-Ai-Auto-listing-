@@ -1,13 +1,13 @@
 .page {
   display: grid;
-  gap: 2rem;
+  gap: clamp(1rem, 1.8vw, 2rem);
 }
 
 .hero {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 1.5rem;
+  gap: clamp(0.85rem, 1.5vw, 1.5rem);
 }
 
 .heroCopy {
@@ -25,6 +25,18 @@
   gap: 0.65rem;
   text-decoration: none;
   font-weight: 700;
+}
+
+.backLink svg,
+.proofLink svg,
+.secondaryButton svg,
+.primaryButton svg,
+.reviewButton svg,
+.resolveButton svg,
+.dismissButton svg,
+.pauseButton svg {
+  width: 14px;
+  height: 14px;
 }
 
 .backLink {
@@ -56,7 +68,7 @@
 }
 
 .title {
-  font-size: clamp(1.6rem, 3.2vw, 2.4rem);
+  font-size: clamp(1.15rem, 2.5vw, 2.2rem);
   line-height: 1.1;
   letter-spacing: -0.03em;
   color: var(--admin-primary, #1a237e);
@@ -264,9 +276,9 @@
 .stateCard,
 .sideCard,
 .contentCard {
-  padding: 1.5rem;
+  padding: clamp(1rem, 1.4vw, 1.5rem);
   display: grid;
-  gap: 1rem;
+  gap: clamp(0.65rem, 1vw, 1rem);
 }
 
 .stateCard h2,
@@ -278,21 +290,21 @@
 
 .mainGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1.18fr) minmax(320px, 0.92fr);
-  gap: 1.5rem;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  gap: clamp(0.85rem, 1.25vw, 1.25rem);
   align-items: start;
 }
 
 .mediaCard {
-  padding: 1.3rem;
+  padding: clamp(0.75rem, 1.15vw, 1.3rem);
   display: grid;
-  gap: 1rem;
+  gap: clamp(0.65rem, 1vw, 1rem);
 }
 
 .mediaShell {
-  height: 340px;
-  max-height: 380px;
-  border-radius: 22px;
+  height: clamp(180px, 28vw, 340px);
+  max-height: clamp(200px, 30vw, 380px);
+  border-radius: clamp(14px, 1.8vw, 22px);
   overflow: hidden;
   background:
     radial-gradient(circle at top left, rgba(77, 128, 118, 0.14), transparent 36%),
@@ -370,11 +382,11 @@
 }
 
 .avatarShell {
-  width: 54px;
-  height: 54px;
-  border-radius: 16px;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
   overflow: hidden;
-  font-size: 1.1rem;
+  font-size: 1rem;
 }
 
 .contentGrid {
@@ -406,6 +418,36 @@
   opacity: 0.58;
   cursor: not-allowed;
   transform: none;
+}
+
+@media (max-width: 1366px) {
+  .mainGrid {
+    grid-template-columns: minmax(0, 1.3fr) minmax(260px, 0.7fr);
+    gap: 1rem;
+  }
+
+  .mediaShell {
+    height: 280px;
+    max-height: 300px;
+  }
+
+  .mediaFallback {
+    height: 280px;
+  }
+
+  .stateCard,
+  .sideCard,
+  .contentCard {
+    padding: 1.2rem;
+  }
+
+  .mediaCard {
+    padding: 1rem;
+  }
+
+  .title {
+    font-size: clamp(1.4rem, 2.8vw, 2rem);
+  }
 }
 
 @media (max-width: 1180px) {

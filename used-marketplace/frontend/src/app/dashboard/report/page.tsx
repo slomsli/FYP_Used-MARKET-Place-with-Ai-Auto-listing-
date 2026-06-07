@@ -7,6 +7,7 @@ import { ROUTES } from '@/src/config/routes';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import { getPublicListingById } from '@/src/services/listingService';
 import { reportItemNotReceived } from '@/src/services/offerService';
+import { reportPurchaseReceiptNotReceived } from '@/src/services/purchaseService';
 import { createListingReport } from '@/src/services/reportService';
 import {
   REPORT_REASON_OPTIONS,
@@ -21,16 +22,18 @@ export default function DashboardReportPage() {
   const { user, token, loading } = useRequireAuth();
   const listingId = searchParams.get('listingId')?.trim() || '';
   const offerId = searchParams.get('offerId')?.trim() || '';
-  const orderId = searchParams.get('orderId')?.trim() || offerId;
+  const receiptId = searchParams.get('receiptId')?.trim() || '';
+  const orderId = searchParams.get('orderId')?.trim() || receiptId || offerId;
   const requestedTitle = searchParams.get('title')?.trim() || '';
   const agreedPrice = searchParams.get('amount')?.trim() || '';
   const sellerName = searchParams.get('seller')?.trim() || '';
+  const requestedPaymentReference = searchParams.get('paymentReference')?.trim() || '';
   const scope = searchParams.get('scope')?.trim() || '';
   const source = searchParams.get('source')?.trim() || '';
   const isDeliveryScope = scope === 'delivery';
   const [reason, setReason] = useState<ListingReportReason>('scam');
   const [details, setDetails] = useState('');
-  const [paymentReference, setPaymentReference] = useState('');
+  const [paymentReference, setPaymentReference] = useState(requestedPaymentReference);
   const [proofFiles, setProofFiles] = useState<File[]>([]);
   const [listingTitle, setListingTitle] = useState(requestedTitle);
   const [loadingListing, setLoadingListing] = useState(Boolean(listingId));
@@ -43,7 +46,12 @@ export default function DashboardReportPage() {
     () => REPORT_REASON_OPTIONS.find((option) => option.value === reason) ?? REPORT_REASON_OPTIONS[0],
     [reason]
   );
-  const cancelHref = isDeliveryScope ? ROUTES.OFFERS : ROUTES.MESSAGES;
+  const cancelHref =
+    isDeliveryScope && receiptId
+      ? `${ROUTES.PURCHASES}/${receiptId}`
+      : isDeliveryScope
+        ? ROUTES.OFFERS
+        : ROUTES.MESSAGES;
 
   const pageTitle = isDeliveryScope ? 'Report an item not received' : 'Report a marketplace issue';
   const pageSubtitle = isDeliveryScope
@@ -183,9 +191,9 @@ export default function DashboardReportPage() {
     let successText = 'Report submitted to admin review successfully.';
 
     if (isDeliveryScope) {
-      if (!offerId) {
+      if (!offerId && !receiptId) {
         setSubmitting(false);
-        setSubmitError('A purchase reference is required before you can report that the item was not received.');
+        setSubmitError('A purchase or receipt reference is required before you can report that the item was not received.');
         return;
       }
 
@@ -206,11 +214,17 @@ export default function DashboardReportPage() {
         return;
       }
 
-      const response = await reportItemNotReceived(token, offerId, {
-        buyerStatement: normalizedDetails,
-        paymentReference: normalizedPaymentReference || undefined,
-        proofs,
-      });
+      const response = receiptId
+        ? await reportPurchaseReceiptNotReceived(token, receiptId, {
+            buyerStatement: normalizedDetails,
+            paymentReference: normalizedPaymentReference || undefined,
+            proofs,
+          })
+        : await reportItemNotReceived(token, offerId, {
+            buyerStatement: normalizedDetails,
+            paymentReference: normalizedPaymentReference || undefined,
+            proofs,
+          });
 
       setSubmitting(false);
 
@@ -256,6 +270,7 @@ export default function DashboardReportPage() {
           </strong>
           <div className={styles.contextMeta}>
             {orderId && <span>Order ID: {orderId}</span>}
+            {receiptId && <span>Receipt ID: {receiptId}</span>}
             {scope && (
               <span>
                 Flow: {isDeliveryScope ? 'Delivery issue' : scope === 'sale' ? 'Sold item' : 'Purchase'}
@@ -280,7 +295,11 @@ export default function DashboardReportPage() {
             <p>{resolvedSuccessMessage}</p>
             <div className={styles.successActions}>
               <Link href={cancelHref} className={styles.secondaryLink}>
-                {isDeliveryScope ? 'Back to offers' : 'Open messages'}
+                {isDeliveryScope && receiptId
+                  ? 'Back to receipt'
+                  : isDeliveryScope
+                    ? 'Back to offers'
+                    : 'Open messages'}
               </Link>
               <Link href={ROUTES.BROWSE} className={styles.primaryLink}>
                 Back to marketplace

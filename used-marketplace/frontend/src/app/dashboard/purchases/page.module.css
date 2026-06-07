@@ -88,7 +88,7 @@
 
 .statsGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 1rem;
 }
 
@@ -313,6 +313,7 @@
 .statusBadge {
   display: inline-flex;
   align-items: center;
+  flex-shrink: 0;
   padding: 0.45rem 0.78rem;
   border-radius: 999px;
   font-size: 0.76rem;
@@ -334,6 +335,21 @@
 .statusPaid {
   background: #ecfdf3;
   color: #047857;
+}
+
+.statusDeliveryPending {
+  background: #f8fafc;
+  color: #475569;
+}
+
+.statusDeliveryReceived {
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.statusDeliveryIssue {
+  background: #fff1f2;
+  color: #be123c;
 }
 
 .amountRow {

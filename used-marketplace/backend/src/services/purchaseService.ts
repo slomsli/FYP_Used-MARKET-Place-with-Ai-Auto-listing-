@@ -1,19 +1,33 @@
 import { randomUUID } from 'crypto';
 import { supabaseAdmin } from '../config/supabase';
 import type {
+  DeliveryIssueProofInput,
   MarkPurchasePaidInput,
+  PurchaseDeliveryIssueSummary,
+  PurchaseDeliveryStatus,
   PurchasePaymentStatus,
   PurchaseReceiptDetail,
   PurchaseReceiptDetailResponse,
   PurchaseReceiptSource,
   PurchaseReceiptSummary,
   PurchasesDashboardResponse,
+  ReportPurchaseDeliveryIssueInput,
 } from '../types/purchase';
+import { REPORT_STATUS_LABELS, type ReportStatus } from '../types/report';
+import {
+  buildDeliveryDisputeDetails,
+  parseDeliveryDisputeDetails,
+} from '../utils/deliveryDispute';
 import { buildDisplayName } from '../utils/profile';
 import { type Relation, unwrapRelation } from '../utils/relation';
 import { createNotification } from './notificationService';
-import { getPublicStorageUrl } from '../utils/storage';
-import { AVATAR_BUCKET, LISTING_IMAGE_BUCKET } from '../utils/storageBuckets';
+import { getPublicStorageUrl, removeStorageObjects } from '../utils/storage';
+import { sanitizeStorageFileName } from '../utils/storageFile';
+import {
+  AVATAR_BUCKET,
+  DELIVERY_PROOF_BUCKET,
+  LISTING_IMAGE_BUCKET,
+} from '../utils/storageBuckets';
 import { toNumber, trimOptional } from '../utils/value';
 
 interface RawProfile {
@@ -31,6 +45,14 @@ interface RawListingReference {
   deleted_at: string | null;
   sold_at: string | null;
   created_at: string;
+}
+
+interface RawDeliveryReport {
+  id: string;
+  status: ReportStatus;
+  details: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 interface RawReceiptRow {
@@ -51,6 +73,9 @@ interface RawReceiptRow {
   buyer_note: string | null;
   buyer_marked_paid_at: string | null;
   seller_confirmed_paid_at: string | null;
+  delivery_status: PurchaseDeliveryStatus;
+  delivery_marked_at: string | null;
+  delivery_report_id: string | null;
   created_at: string;
   updated_at: string;
   listings: Relation<RawListingReference>;
@@ -112,6 +137,9 @@ interface ReceiptInsertRow {
   buyer_note: string | null;
   buyer_marked_paid_at: string | null;
   seller_confirmed_paid_at: string | null;
+  delivery_status: PurchaseDeliveryStatus;
+  delivery_marked_at: string | null;
+  delivery_report_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -124,6 +152,14 @@ interface PostgrestLikeError {
 let hasWarnedMissingPurchaseReceiptsTable = false;
 const PURCHASE_RECEIPT_BACKFILL_ATTEMPT_TTL_MS = 60 * 60 * 1000;
 const purchaseReceiptBackfillAttemptedUsers = new Map<string, number>();
+const MAX_DELIVERY_PROOF_SIZE_BYTES = 4 * 1024 * 1024;
+const DELIVERY_PROOF_MIME_TYPES = ['image/*'];
+let deliveryProofBucketPromise: Promise<void> | null = null;
+
+interface UploadedDeliveryProof {
+  publicUrl: string;
+  storagePath: string;
+}
 
 const RECEIPT_SELECT = `
   id,
@@ -143,6 +179,9 @@ const RECEIPT_SELECT = `
   buyer_note,
   buyer_marked_paid_at,
   seller_confirmed_paid_at,
+  delivery_status,
+  delivery_marked_at,
+  delivery_report_id,
   created_at,
   updated_at,
   listings!purchase_receipts_listing_id_fkey (
@@ -258,6 +297,81 @@ function getPaymentStatusLabel(status: PurchasePaymentStatus): string {
   }
 }
 
+function getDeliveryStatusLabel(status: PurchaseDeliveryStatus): string {
+  switch (status) {
+    case 'received':
+      return 'Item received';
+    case 'not_received':
+      return 'Item not received';
+    case 'pending':
+    default:
+      return 'Waiting for buyer confirmation';
+  }
+}
+
+function hasBuyerMarkedPaymentSent(status: PurchasePaymentStatus): boolean {
+  return status === 'buyer_marked_paid' || status === 'seller_confirmed_paid';
+}
+
+function formatCurrency(value: number, currency = 'MYR'): string {
+  try {
+    return new Intl.NumberFormat('en-MY', {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(value);
+  } catch {
+    return `${currency} ${value.toFixed(0)}`;
+  }
+}
+
+function toSingleLineNotificationText(value: string | null | undefined, fallback: string): string {
+  const normalized = (value ?? '').replace(/\s+/g, ' ').trim();
+
+  if (!normalized) {
+    return fallback;
+  }
+
+  return normalized.length > 180 ? `${normalized.slice(0, 177)}...` : normalized;
+}
+
+function mapDeliveryIssue(report: RawDeliveryReport | null): PurchaseDeliveryIssueSummary | null {
+  if (!report) {
+    return null;
+  }
+
+  const parsedDetails = parseDeliveryDisputeDetails(report.details);
+  if (!parsedDetails) {
+    return null;
+  }
+
+  return {
+    reportId: report.id,
+    status: report.status,
+    statusLabel: REPORT_STATUS_LABELS[report.status] ?? report.status,
+    createdAt: report.created_at,
+    updatedAt: report.updated_at,
+    paymentReference: parsedDetails.paymentReference,
+    agreedPriceLabel: parsedDetails.agreedPriceLabel,
+    proofUrls: parsedDetails.proofUrls,
+    buyerStatement: parsedDetails.buyerStatement,
+  };
+}
+
+function buildDeliveryIssueBuyerStatement(
+  buyerStatement: string,
+  existingReportDetails: string | null | undefined
+): string {
+  const previousDetails = trimOptional(existingReportDetails);
+
+  if (!previousDetails || parseDeliveryDisputeDetails(previousDetails)) {
+    return buyerStatement;
+  }
+
+  return `${buyerStatement}\n\nPrevious report details:\n${previousDetails}`;
+}
+
 function buildReceiptInsertRow(input: {
   source: PurchaseReceiptSource;
   offerId?: string | null;
@@ -295,16 +409,29 @@ function buildReceiptInsertRow(input: {
     buyer_note: null,
     buyer_marked_paid_at: null,
     seller_confirmed_paid_at: null,
+    delivery_status: 'pending',
+    delivery_marked_at: null,
+    delivery_report_id: null,
     created_at: input.createdAt,
     updated_at: input.createdAt,
   };
 }
 
-function mapReceiptSummary(row: RawReceiptRow, currentUserId: string): PurchaseReceiptSummary {
+function mapReceiptSummary(
+  row: RawReceiptRow,
+  currentUserId: string,
+  deliveryReportRow: RawDeliveryReport | null = null
+): PurchaseReceiptSummary {
   const listing = unwrapRelation(row.listings);
   const buyerProfile = unwrapRelation(row.buyer_profile);
   const sellerProfile = unwrapRelation(row.seller_profile);
   const paymentStatus = row.payment_status as PurchasePaymentStatus;
+  const deliveryStatus = (row.delivery_status ?? 'pending') as PurchaseDeliveryStatus;
+  const deliveryReport = mapDeliveryIssue(deliveryReportRow);
+  const canBuyerActOnDelivery =
+    row.buyer_id === currentUserId &&
+    hasBuyerMarkedPaymentSent(paymentStatus) &&
+    deliveryStatus === 'pending';
 
   return {
     id: row.id,
@@ -343,16 +470,26 @@ function mapReceiptSummary(row: RawReceiptRow, currentUserId: string): PurchaseR
     buyerNote: row.buyer_note,
     buyerMarkedPaidAt: row.buyer_marked_paid_at,
     sellerConfirmedPaidAt: row.seller_confirmed_paid_at,
+    deliveryStatus,
+    deliveryStatusLabel: getDeliveryStatusLabel(deliveryStatus),
+    deliveryMarkedAt: row.delivery_marked_at,
+    deliveryReport,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     canBuyerMarkPaid: row.buyer_id === currentUserId && paymentStatus === 'pending',
     canSellerConfirmPaid:
       row.seller_id === currentUserId && paymentStatus === 'buyer_marked_paid',
+    canBuyerMarkReceived: canBuyerActOnDelivery,
+    canBuyerReportNotReceived: canBuyerActOnDelivery,
   };
 }
 
-function mapReceiptDetail(row: RawReceiptRow, currentUserId: string): PurchaseReceiptDetailResponse {
-  const summary = mapReceiptSummary(row, currentUserId);
+function mapReceiptDetail(
+  row: RawReceiptRow,
+  currentUserId: string,
+  deliveryReportRow: RawDeliveryReport | null = null
+): PurchaseReceiptDetailResponse {
+  const summary = mapReceiptSummary(row, currentUserId, deliveryReportRow);
 
   return {
     receipt: {
@@ -397,6 +534,151 @@ async function insertReceiptRows(rows: ReceiptInsertRow[]): Promise<void> {
   }
 }
 
+async function ensureDeliveryProofBucket(): Promise<void> {
+  if (!deliveryProofBucketPromise) {
+    deliveryProofBucketPromise = (async () => {
+      const bucketResult = await supabaseAdmin.storage.getBucket(DELIVERY_PROOF_BUCKET);
+
+      if (bucketResult.data) {
+        const { error: updateError } = await supabaseAdmin.storage.updateBucket(
+          DELIVERY_PROOF_BUCKET,
+          {
+            public: true,
+            fileSizeLimit: MAX_DELIVERY_PROOF_SIZE_BYTES,
+            allowedMimeTypes: DELIVERY_PROOF_MIME_TYPES,
+          }
+        );
+
+        if (updateError) {
+          console.error('[Purchases] Failed to update delivery proof bucket:', updateError);
+          throw new PurchaseServiceError('Unable to prepare delivery proof storage', 500);
+        }
+
+        return;
+      }
+
+      const bucketErrorMessage = bucketResult.error?.message ?? '';
+      const isMissingBucketError = /not found|does not exist|404/i.test(bucketErrorMessage);
+      if (bucketResult.error && !isMissingBucketError) {
+        console.error('[Purchases] Failed to inspect delivery proof bucket:', bucketResult.error);
+        throw new PurchaseServiceError('Unable to prepare delivery proof storage', 500);
+      }
+
+      const { error: createError } = await supabaseAdmin.storage.createBucket(
+        DELIVERY_PROOF_BUCKET,
+        {
+          public: true,
+          fileSizeLimit: MAX_DELIVERY_PROOF_SIZE_BYTES,
+          allowedMimeTypes: DELIVERY_PROOF_MIME_TYPES,
+        }
+      );
+
+      if (createError && !/already exists/i.test(createError.message)) {
+        console.error('[Purchases] Failed to create delivery proof bucket:', createError);
+        throw new PurchaseServiceError('Unable to prepare delivery proof storage', 500);
+      }
+
+      if (createError) {
+        const { error: updateError } = await supabaseAdmin.storage.updateBucket(
+          DELIVERY_PROOF_BUCKET,
+          {
+            public: true,
+            fileSizeLimit: MAX_DELIVERY_PROOF_SIZE_BYTES,
+            allowedMimeTypes: DELIVERY_PROOF_MIME_TYPES,
+          }
+        );
+
+        if (updateError) {
+          console.error('[Purchases] Failed to sync delivery proof bucket settings:', updateError);
+          throw new PurchaseServiceError('Unable to prepare delivery proof storage', 500);
+        }
+      }
+    })().catch((error) => {
+      deliveryProofBucketPromise = null;
+      throw error;
+    });
+  }
+
+  return deliveryProofBucketPromise;
+}
+
+async function uploadDeliveryProofs(
+  buyerId: string,
+  proofs: DeliveryIssueProofInput[]
+): Promise<UploadedDeliveryProof[]> {
+  if (proofs.length === 0) {
+    return [];
+  }
+
+  await ensureDeliveryProofBucket();
+
+  const uploadedProofs: UploadedDeliveryProof[] = [];
+
+  for (const proof of proofs) {
+    const fileName = trimOptional(proof.fileName);
+    const contentType = trimOptional(proof.contentType);
+    const base64Data = trimOptional(proof.base64Data)?.replace(/\s/g, '');
+
+    if (!fileName || !contentType || !base64Data) {
+      throw new PurchaseServiceError(
+        'Each proof must include fileName, contentType, and base64Data',
+        422
+      );
+    }
+
+    if (!contentType.startsWith('image/')) {
+      throw new PurchaseServiceError('Only image proofs are supported right now', 422);
+    }
+
+    let fileBuffer: Buffer;
+    try {
+      fileBuffer = Buffer.from(base64Data, 'base64');
+    } catch {
+      throw new PurchaseServiceError('One of the proof files could not be read', 422);
+    }
+
+    if (fileBuffer.length === 0) {
+      throw new PurchaseServiceError('One of the proof files was empty', 422);
+    }
+
+    if (fileBuffer.length > MAX_DELIVERY_PROOF_SIZE_BYTES) {
+      throw new PurchaseServiceError('Each proof image must be 4 MB or smaller', 422);
+    }
+
+    const storagePath = `delivery-proofs/${buyerId}/${new Date().toISOString().slice(0, 10)}/${randomUUID()}-${sanitizeStorageFileName(
+      fileName,
+      'proof'
+    )}`;
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from(DELIVERY_PROOF_BUCKET)
+      .upload(storagePath, fileBuffer, {
+        contentType,
+        cacheControl: '3600',
+        upsert: false,
+      });
+
+    if (uploadError) {
+      console.error('[Purchases] Failed to upload delivery proof:', uploadError);
+      throw new PurchaseServiceError('Unable to upload one of the proof images', 500);
+    }
+
+    const {
+      data: { publicUrl },
+    } = supabaseAdmin.storage.from(DELIVERY_PROOF_BUCKET).getPublicUrl(storagePath);
+
+    if (!publicUrl) {
+      throw new PurchaseServiceError('Unable to generate a proof image URL', 500);
+    }
+
+    uploadedProofs.push({
+      publicUrl,
+      storagePath,
+    });
+  }
+
+  return uploadedProofs;
+}
+
 async function loadReceiptRowForUser(
   userId: string,
   receiptId: string
@@ -436,6 +718,45 @@ async function loadReceiptRowForUser(
   }
 
   return receipt;
+}
+
+async function getDeliveryReportMapForReceipts(
+  receipts: RawReceiptRow[]
+): Promise<Map<string, RawDeliveryReport>> {
+  const reportIds = Array.from(
+    new Set(
+      receipts
+        .map((receipt) => receipt.delivery_report_id)
+        .filter((reportId): reportId is string => Boolean(reportId))
+    )
+  );
+
+  if (reportIds.length === 0) {
+    return new Map();
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('reports')
+    .select('id, status, details, created_at, updated_at')
+    .in('id', reportIds);
+
+  if (error) {
+    console.error('[Purchases] Failed to load linked delivery reports:', error);
+    return new Map();
+  }
+
+  return new Map(
+    ((data ?? []) as RawDeliveryReport[]).map((report) => [report.id, report])
+  );
+}
+
+async function getDeliveryReportForReceipt(
+  receipt: RawReceiptRow
+): Promise<RawDeliveryReport | null> {
+  const reportMap = await getDeliveryReportMapForReceipts([receipt]);
+  return receipt.delivery_report_id
+    ? reportMap.get(receipt.delivery_report_id) ?? null
+    : null;
 }
 
 async function backfillAcceptedOfferReceiptsForUser(userId: string): Promise<Set<string>> {
@@ -841,7 +1162,16 @@ export async function getPurchaseReceiptsForUser(
     const listing = unwrapRelation(row.listings);
     return listing !== null && listing.deleted_at === null;
   });
-  const mapped = rows.map((row) => mapReceiptSummary(row, userId));
+  const deliveryReportMap = await getDeliveryReportMapForReceipts(rows);
+  const mapped = rows.map((row) =>
+    mapReceiptSummary(
+      row,
+      userId,
+      row.delivery_report_id
+        ? deliveryReportMap.get(row.delivery_report_id) ?? null
+        : null
+    )
+  );
   const purchases = mapped.filter((receipt) => receipt.buyer.id === userId);
   const sales = mapped.filter((receipt) => receipt.seller.id === userId);
 
@@ -851,6 +1181,10 @@ export async function getPurchaseReceiptsForUser(
       salesCount: sales.length,
       purchasePendingPaymentCount: purchases.filter(
         (receipt) => receipt.paymentStatus === 'pending'
+      ).length,
+      purchasePendingDeliveryCount: purchases.filter(
+        (receipt) =>
+          receipt.paymentStatus !== 'pending' && receipt.deliveryStatus === 'pending'
       ).length,
       salesAwaitingConfirmationCount: sales.filter(
         (receipt) => receipt.paymentStatus === 'buyer_marked_paid'
@@ -867,7 +1201,72 @@ export async function getPurchaseReceiptDetailForUser(
 ): Promise<PurchaseReceiptDetailResponse> {
   await maybeBackfillPurchaseReceiptsForUser(userId);
   const row = await loadReceiptRowForUser(userId, receiptId);
-  return mapReceiptDetail(row, userId);
+  const deliveryReport = await getDeliveryReportForReceipt(row);
+  return mapReceiptDetail(row, userId, deliveryReport);
+}
+
+async function findExistingReportForReceipt(
+  receipt: RawReceiptRow
+): Promise<RawDeliveryReport | null> {
+  const { data, error } = await supabaseAdmin
+    .from('reports')
+    .select('id, status, details, created_at, updated_at')
+    .eq('listing_id', receipt.listing_id)
+    .eq('reporter_id', receipt.buyer_id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[Purchases] Failed to inspect existing delivery report:', error);
+    throw new PurchaseServiceError('Unable to inspect existing reports', 500);
+  }
+
+  return (data as RawDeliveryReport | null) ?? null;
+}
+
+async function findExistingDeliveryIssueForReceipt(
+  receipt: RawReceiptRow
+): Promise<RawDeliveryReport | null> {
+  const existingReport = await findExistingReportForReceipt(receipt);
+
+  if (!existingReport || !parseDeliveryDisputeDetails(existingReport.details)) {
+    return null;
+  }
+
+  return existingReport;
+}
+
+async function updateReceiptDeliveryStatus(
+  receipt: RawReceiptRow,
+  userId: string,
+  input: {
+    deliveryStatus: PurchaseDeliveryStatus;
+    deliveryMarkedAt: string;
+    deliveryReportId?: string | null;
+  }
+): Promise<PurchaseReceiptDetailResponse> {
+  const { data, error } = await supabaseAdmin
+    .from('purchase_receipts')
+    .update({
+      delivery_status: input.deliveryStatus,
+      delivery_marked_at: input.deliveryMarkedAt,
+      delivery_report_id: input.deliveryReportId ?? null,
+      updated_at: input.deliveryMarkedAt,
+    })
+    .eq('id', receipt.id)
+    .eq('buyer_id', userId)
+    .select(RECEIPT_SELECT)
+    .single();
+
+  if (error || !data) {
+    console.error('[Purchases] Failed to update receipt delivery status:', error);
+    throw new PurchaseServiceError('Unable to update the delivery status', 500);
+  }
+
+  const updatedReceipt = data as RawReceiptRow;
+  const deliveryReport = await getDeliveryReportForReceipt(updatedReceipt);
+  return mapReceiptDetail(updatedReceipt, userId, deliveryReport);
 }
 
 export async function markPurchaseReceiptPaid(
@@ -922,7 +1321,9 @@ export async function markPurchaseReceiptPaid(
     console.error('[Purchases] Failed to create buyer-paid notification:', notificationError);
   }
 
-  return mapReceiptDetail(data as RawReceiptRow, userId);
+  const updatedReceipt = data as RawReceiptRow;
+  const deliveryReport = await getDeliveryReportForReceipt(updatedReceipt);
+  return mapReceiptDetail(updatedReceipt, userId, deliveryReport);
 }
 
 export async function confirmPurchaseReceiptPayment(
@@ -970,5 +1371,213 @@ export async function confirmPurchaseReceiptPayment(
     console.error('[Purchases] Failed to create seller-confirmed notification:', notificationError);
   }
 
-  return mapReceiptDetail(data as RawReceiptRow, userId);
+  const updatedReceipt = data as RawReceiptRow;
+  const deliveryReport = await getDeliveryReportForReceipt(updatedReceipt);
+  return mapReceiptDetail(updatedReceipt, userId, deliveryReport);
+}
+
+export async function markPurchaseReceiptReceived(
+  userId: string,
+  receiptId: string
+): Promise<PurchaseReceiptDetailResponse> {
+  const receipt = await loadReceiptRowForUser(userId, receiptId);
+  const deliveryStatus = (receipt.delivery_status ?? 'pending') as PurchaseDeliveryStatus;
+
+  if (receipt.buyer_id !== userId) {
+    throw new PurchaseServiceError('Only the buyer can confirm item receipt', 403);
+  }
+
+  if (!hasBuyerMarkedPaymentSent(receipt.payment_status)) {
+    throw new PurchaseServiceError('Mark this receipt as paid before confirming delivery', 409);
+  }
+
+  if (deliveryStatus === 'received') {
+    const deliveryReport = await getDeliveryReportForReceipt(receipt);
+    return mapReceiptDetail(receipt, userId, deliveryReport);
+  }
+
+  if (deliveryStatus === 'not_received') {
+    throw new PurchaseServiceError(
+      'This receipt is already marked as not received',
+      409
+    );
+  }
+
+  const existingDeliveryIssue = await findExistingDeliveryIssueForReceipt(receipt);
+  if (
+    existingDeliveryIssue &&
+    (existingDeliveryIssue.status === 'pending' ||
+      existingDeliveryIssue.status === 'reviewed')
+  ) {
+    throw new PurchaseServiceError(
+      'Resolve your item-not-received report before marking this item as received',
+      409
+    );
+  }
+
+  const updatedAt = new Date().toISOString();
+  const updatedReceipt = await updateReceiptDeliveryStatus(receipt, userId, {
+    deliveryStatus: 'received',
+    deliveryMarkedAt: updatedAt,
+  });
+  const listing = unwrapRelation(receipt.listings);
+
+  try {
+    await createNotification({
+      userId: receipt.seller_id,
+      type: 'system',
+      title: 'Buyer marked item as received',
+      body: `${buildDisplayName(unwrapRelation(receipt.buyer_profile), 'Marketplace User')} confirmed that "${listing?.title ?? 'your item'}" was received.`,
+      linkPath: `/dashboard/purchases/${receipt.id}`,
+    });
+  } catch (notificationError) {
+    console.error('[Purchases] Failed to create delivery-received notification:', notificationError);
+  }
+
+  return updatedReceipt;
+}
+
+export async function reportPurchaseReceiptNotReceived(
+  userId: string,
+  receiptId: string,
+  input: ReportPurchaseDeliveryIssueInput
+): Promise<PurchaseReceiptDetailResponse> {
+  const receipt = await loadReceiptRowForUser(userId, receiptId);
+  const deliveryStatus = (receipt.delivery_status ?? 'pending') as PurchaseDeliveryStatus;
+
+  if (receipt.buyer_id !== userId) {
+    throw new PurchaseServiceError('Only the buyer can report this delivery issue', 403);
+  }
+
+  if (!hasBuyerMarkedPaymentSent(receipt.payment_status)) {
+    throw new PurchaseServiceError('Mark this receipt as paid before reporting delivery', 409);
+  }
+
+  if (deliveryStatus === 'received') {
+    throw new PurchaseServiceError(
+      'This purchase is already marked as received, so a delivery issue cannot be opened',
+      409
+    );
+  }
+
+  if (deliveryStatus === 'not_received') {
+    const deliveryReport = await getDeliveryReportForReceipt(receipt);
+    return mapReceiptDetail(receipt, userId, deliveryReport);
+  }
+
+  const buyerStatement = trimOptional(input.buyerStatement);
+  const paymentReference =
+    trimOptional(input.paymentReference, 120) ?? receipt.payment_reference;
+  const proofs = input.proofs ?? [];
+
+  if (!buyerStatement || buyerStatement.length < 20) {
+    throw new PurchaseServiceError(
+      'buyerStatement must be at least 20 characters so the admin can review the delivery issue',
+      422
+    );
+  }
+
+  if (buyerStatement.length > 1000) {
+    throw new PurchaseServiceError('buyerStatement must be 1000 characters or fewer', 422);
+  }
+
+  if (proofs.length > 3) {
+    throw new PurchaseServiceError('You can upload up to 3 proof images per delivery issue', 422);
+  }
+
+  const existingReport = await findExistingReportForReceipt(receipt);
+  if (existingReport && parseDeliveryDisputeDetails(existingReport.details)) {
+    return updateReceiptDeliveryStatus(receipt, userId, {
+      deliveryStatus: 'not_received',
+      deliveryMarkedAt: receipt.delivery_marked_at ?? existingReport.created_at,
+      deliveryReportId: existingReport.id,
+    });
+  }
+
+  const listing = unwrapRelation(receipt.listings);
+  const uploadedProofs = await uploadDeliveryProofs(userId, proofs);
+  const timestamp = new Date().toISOString();
+  const reportDetails = buildDeliveryDisputeDetails({
+    offerId: receipt.offer_id,
+    receiptId: receipt.id,
+    agreedPriceLabel: formatCurrency(toNumber(receipt.total_amount), receipt.currency),
+    paymentReference,
+    proofUrls: uploadedProofs.map((proof) => proof.publicUrl),
+    buyerStatement: buildDeliveryIssueBuyerStatement(
+      buyerStatement,
+      existingReport?.details
+    ),
+  });
+
+  const reportWrite = existingReport
+    ? await supabaseAdmin
+        .from('reports')
+        .update({
+          reason: 'other',
+          details: reportDetails,
+          status: 'pending',
+          updated_at: timestamp,
+        })
+        .eq('id', existingReport.id)
+        .select('id, status, details, created_at, updated_at')
+        .single()
+    : await supabaseAdmin
+        .from('reports')
+        .insert({
+          listing_id: receipt.listing_id,
+          reporter_id: userId,
+          reason: 'other',
+          details: reportDetails,
+          status: 'pending',
+          created_at: timestamp,
+          updated_at: timestamp,
+        })
+        .select('id, status, details, created_at, updated_at')
+        .single();
+
+  const deliveryReport = reportWrite.data as RawDeliveryReport | null;
+  const reportWriteError = reportWrite.error;
+
+  if (reportWriteError || !deliveryReport) {
+    console.error('[Purchases] Failed to save receipt delivery issue report:', reportWriteError);
+
+    if (uploadedProofs.length > 0) {
+      try {
+        await removeStorageObjects(
+          DELIVERY_PROOF_BUCKET,
+          uploadedProofs.map((proof) => proof.storagePath)
+        );
+      } catch (cleanupError) {
+        console.error('[Purchases] Failed to clean up uploaded proof images:', cleanupError);
+      }
+    }
+
+    throw new PurchaseServiceError(
+      `Unable to submit a delivery issue for "${listing?.title ?? 'this listing'}"`,
+      500
+    );
+  }
+
+  const updatedReceipt = await updateReceiptDeliveryStatus(receipt, userId, {
+    deliveryStatus: 'not_received',
+    deliveryMarkedAt: timestamp,
+    deliveryReportId: deliveryReport.id,
+  });
+
+  try {
+    await createNotification({
+      userId: receipt.seller_id,
+      type: 'system',
+      title: 'Item not received reported',
+      body: toSingleLineNotificationText(
+        buyerStatement,
+        `The buyer reported that "${listing?.title ?? 'your item'}" was not received.`
+      ),
+      linkPath: `/dashboard/purchases/${receipt.id}`,
+    });
+  } catch (notificationError) {
+    console.error('[Purchases] Failed to create receipt delivery-issue notification:', notificationError);
+  }
+
+  return updatedReceipt;
 }

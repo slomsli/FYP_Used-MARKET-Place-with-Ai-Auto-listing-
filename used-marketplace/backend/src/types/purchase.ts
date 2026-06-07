@@ -5,11 +5,28 @@ export type PurchasePaymentStatus =
   | 'buyer_marked_paid'
   | 'seller_confirmed_paid';
 
+export type PurchaseDeliveryStatus =
+  | 'pending'
+  | 'received'
+  | 'not_received';
+
 export interface PurchaseReceiptParty {
   id: string;
   displayName: string;
   username: string | null;
   avatarPath: string | null;
+}
+
+export interface PurchaseDeliveryIssueSummary {
+  reportId: string;
+  status: string;
+  statusLabel: string;
+  createdAt: string;
+  updatedAt: string;
+  paymentReference: string | null;
+  agreedPriceLabel: string | null;
+  proofUrls: string[];
+  buyerStatement: string;
 }
 
 export interface PurchaseReceiptSummary {
@@ -39,10 +56,16 @@ export interface PurchaseReceiptSummary {
   buyerNote: string | null;
   buyerMarkedPaidAt: string | null;
   sellerConfirmedPaidAt: string | null;
+  deliveryStatus: PurchaseDeliveryStatus;
+  deliveryStatusLabel: string;
+  deliveryMarkedAt: string | null;
+  deliveryReport: PurchaseDeliveryIssueSummary | null;
   createdAt: string;
   updatedAt: string;
   canBuyerMarkPaid: boolean;
   canSellerConfirmPaid: boolean;
+  canBuyerMarkReceived: boolean;
+  canBuyerReportNotReceived: boolean;
 }
 
 export interface PurchaseReceiptDetail extends PurchaseReceiptSummary {
@@ -61,6 +84,7 @@ export interface PurchasesDashboardResponse {
     purchaseCount: number;
     salesCount: number;
     purchasePendingPaymentCount: number;
+    purchasePendingDeliveryCount: number;
     salesAwaitingConfirmationCount: number;
   };
   purchases: PurchaseReceiptSummary[];
@@ -75,4 +99,16 @@ export interface MarkPurchasePaidInput {
   paymentMethod?: string;
   paymentReference?: string;
   buyerNote?: string;
+}
+
+export interface DeliveryIssueProofInput {
+  fileName: string;
+  contentType: string;
+  base64Data: string;
+}
+
+export interface ReportPurchaseDeliveryIssueInput {
+  buyerStatement?: string;
+  paymentReference?: string;
+  proofs?: DeliveryIssueProofInput[];
 }

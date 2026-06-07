@@ -237,10 +237,12 @@ export async function updateAdminUserStatus(
 
 export async function ensureAdminModerationThread(
   token: string,
-  userId: string
+  userId: string,
+  payload: { topic?: string } = {}
 ): Promise<ServiceResponse<AdminModerationThreadResponse>> {
   return authorizedRequest<AdminModerationThreadResponse>(`/api/admin/users/${userId}/moderation-thread`, token, {
     method: 'POST',
+    body: JSON.stringify(payload),
   });
 }
 

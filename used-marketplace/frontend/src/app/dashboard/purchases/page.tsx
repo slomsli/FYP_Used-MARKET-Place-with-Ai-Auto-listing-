@@ -60,17 +60,41 @@ function getPaymentStatusClass(status: PurchaseReceiptSummary['paymentStatus']) 
   }
 }
 
+function getDeliveryStatusClass(status: PurchaseReceiptSummary['deliveryStatus']) {
+  switch (status) {
+    case 'received':
+      return styles.statusDeliveryReceived;
+    case 'not_received':
+      return styles.statusDeliveryIssue;
+    case 'pending':
+    default:
+      return styles.statusDeliveryPending;
+  }
+}
+
 function getReceiptHint(receipt: PurchaseReceiptSummary, activeTab: PurchaseTab): string {
+  if (receipt.deliveryStatus === 'received') {
+    return activeTab === 'purchases'
+      ? 'You confirmed this item was received.'
+      : 'The buyer confirmed this item was received.';
+  }
+
+  if (receipt.deliveryStatus === 'not_received') {
+    return activeTab === 'purchases'
+      ? 'You reported this item as not received. Customer service can review the report.'
+      : 'The buyer reported this item as not received. Customer service can review the report.';
+  }
+
   if (receipt.paymentStatus === 'seller_confirmed_paid') {
     return activeTab === 'purchases'
-      ? 'Payment has been confirmed by the seller.'
-      : 'You confirmed that payment was received.';
+      ? 'Payment has been confirmed. Open the receipt to mark received or report not received.'
+      : 'You confirmed that payment was received. Waiting for the buyer delivery result.';
   }
 
   if (receipt.paymentStatus === 'buyer_marked_paid') {
     return activeTab === 'purchases'
-      ? 'You marked this receipt as paid. Waiting for seller confirmation.'
-      : 'Buyer says payment was sent. Open the receipt to confirm.';
+      ? 'You marked this receipt as paid. You can now confirm delivery or report a problem.'
+      : 'Buyer says payment was sent. Open the receipt to confirm payment.';
   }
 
   return activeTab === 'purchases'
@@ -162,6 +186,13 @@ export default function PurchasesPage() {
             {data?.stats.purchasePendingPaymentCount ?? 0}
           </strong>
           <p className={styles.statHint}>Receipts waiting for your payment confirmation</p>
+        </article>
+        <article className={styles.statCard}>
+          <span className={styles.statLabel}>Delivery Pending</span>
+          <strong className={styles.statValue}>
+            {data?.stats.purchasePendingDeliveryCount ?? 0}
+          </strong>
+          <p className={styles.statHint}>Paid purchases waiting for your received status</p>
         </article>
         <article className={styles.statCard}>
           <span className={styles.statLabel}>Sales</span>
@@ -268,6 +299,13 @@ export default function PurchasesPage() {
                         )}`}
                       >
                         {receipt.paymentStatusLabel}
+                      </span>
+                      <span
+                        className={`${styles.statusBadge} ${getDeliveryStatusClass(
+                          receipt.deliveryStatus
+                        )}`}
+                      >
+                        {receipt.deliveryStatusLabel}
                       </span>
                     </div>
 

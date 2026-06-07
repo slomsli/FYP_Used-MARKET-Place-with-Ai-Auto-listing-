@@ -49,6 +49,8 @@ import {
   getPurchaseReceiptDetailHandler,
   getPurchasesHandler,
   markPurchaseReceiptPaidHandler,
+  markPurchaseReceiptReceivedHandler,
+  reportPurchaseReceiptNotReceivedHandler,
 } from '../controllers/purchaseController';
 import { authenticate } from '../middleware/authenticate';
 import { requireMarketplaceUser } from '../middleware/requireUnsuspendedTransactionUser';
@@ -152,6 +154,12 @@ router.patch('/purchases/:receiptId/mark-paid', markPurchaseReceiptPaidHandler);
 
 // PATCH /api/dashboard/purchases/:receiptId/confirm-payment
 router.patch('/purchases/:receiptId/confirm-payment', confirmPurchaseReceiptPaymentHandler);
+
+// PATCH /api/dashboard/purchases/:receiptId/mark-received
+router.patch('/purchases/:receiptId/mark-received', markPurchaseReceiptReceivedHandler);
+
+// POST /api/dashboard/purchases/:receiptId/not-received
+router.post('/purchases/:receiptId/not-received', reportPurchaseReceiptNotReceivedHandler);
 
 // ── Listings ───────────────────────────────────────────
 // GET /api/dashboard/listings/metadata

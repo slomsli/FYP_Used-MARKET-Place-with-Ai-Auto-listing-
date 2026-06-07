@@ -1,8 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
-import { ROUTES } from '@/src/config/routes';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import {
   createSupportConversation,
@@ -26,19 +24,9 @@ import styles from './support.module.css';
 const SUPPORT_TICKET_TITLE_PREFIX = 'Support request:';
 
 /* ── Icons ─────────────────────────────────────── */
-function TicketIcon() {
+function PlusIcon({ size = 16 }: { size?: number }) {
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4V7Z" />
-      <path d="M9 9h6" />
-      <path d="M9 15h4" />
-    </svg>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
       <path d="M12 5v14M5 12h14" />
     </svg>
   );
@@ -46,7 +34,7 @@ function PlusIcon() {
 
 function ImageIcon() {
   return (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="5" width="18" height="14" rx="2" />
       <circle cx="8.5" cy="10.5" r="1.5" />
       <path d="m21 15-5-5L5 21" />
@@ -56,7 +44,7 @@ function ImageIcon() {
 
 function SendIcon() {
   return (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M22 2 11 13M22 2 15 22l-4-9-9-4 20-7Z" />
     </svg>
   );
@@ -64,9 +52,37 @@ function SendIcon() {
 
 function InboxIcon() {
   return (
-    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M22 12h-4l-3 3H9l-3-3H2" />
       <path d="M5.45 5.11 2 12v5a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+    </svg>
+  );
+}
+
+function SupportHeadsetIcon() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 11a9 9 0 0 1 18 0" />
+      <path d="M21 11v3a1 1 0 0 1-1 1h-1a2 2 0 0 1-2-2v-1a2 2 0 0 1 2-2h2Z" />
+      <path d="M3 11v3a1 1 0 0 0 1 1h1a2 2 0 0 0 2-2v-1a2 2 0 0 0-2-2H3Z" />
+      <path d="M12 20a3 3 0 0 0 3-3v-1" />
+      <circle cx="12" cy="20" r="1" />
+    </svg>
+  );
+}
+
+function TicketIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M15 5v2M15 11v2M15 17v2M5 5h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4V7a2 2 0 0 1 2-2z" />
+    </svg>
+  );
+}
+
+function MessageIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     </svg>
   );
 }
@@ -108,6 +124,7 @@ export default function SupportTicketsPage() {
   const { user, token, loading: authLoading } = useRequireAuth();
   const [tickets, setTickets] = useState<ConversationDetail[]>([]);
   const [activeTicketId, setActiveTicketId] = useState<string | null>(null);
+  const [isNewTicketModalOpen, setIsNewTicketModalOpen] = useState(false);
   const [messagesByTicket, setMessagesByTicket] = useState<Record<string, ChatMessage[]>>({});
   const [subject, setSubject] = useState('');
   const [details, setDetails] = useState('');
@@ -271,6 +288,7 @@ export default function SupportTicketsPage() {
     revokePendingAttachmentPreviews(attachmentsToSend);
     setSubject('');
     setDetails('');
+    setIsNewTicketModalOpen(false);
     setMessagesByTicket((c) => ({
       ...c,
       [response.data!.conversation_id]: [response.data!.message],
@@ -324,7 +342,7 @@ export default function SupportTicketsPage() {
   }
 
   if (authLoading || !user) {
-    return <div className={styles.loading}>Loading support tickets...</div>;
+    return <div className={styles.loading}>Loading support tickets…</div>;
   }
 
   const activeTicket = tickets.find((t) => t.id === activeTicketId) ?? null;
@@ -335,27 +353,59 @@ export default function SupportTicketsPage() {
     : activeStatus === 'resolved' ? styles.statusResolved
     : styles.statusOpen;
 
+  const openCount   = tickets.filter(t => (t.listing_details?.support_status ?? 'open') === 'open').length;
+  const closedCount = tickets.filter(t => t.listing_details?.support_status === 'closed').length;
+
   return (
     <div className={styles.page}>
 
-      {/* ── Hero ── */}
-      <section className={styles.hero}>
-        <div className={styles.heroIcon}><TicketIcon /></div>
-        <div>
-          <p className={styles.eyebrow}>Help &amp; Support</p>
-          <h1 className={styles.title}>Support Tickets</h1>
-          <p className={styles.subtitle}>
-            Create a ticket for account problems, listing issues, or anything that needs admin attention.
-            All conversations are saved so you can track progress anytime.
-          </p>
+      {/* ═══ HERO HEADER ═══ */}
+      <section className={styles.supportHeader}>
+        <div className={styles.supportHeaderLeft}>
+          <div className={styles.supportHeaderIconWrap}>
+            <SupportHeadsetIcon />
+          </div>
+          <div className={styles.supportHeaderCopy}>
+            <p className={styles.eyebrow}>Help &amp; Support</p>
+            <h1 className={styles.title}>Support Centre</h1>
+            <p className={styles.subtitle}>
+              Track your support conversations and get help from our team — all in one place.
+            </p>
+            <div className={styles.headerStats}>
+              <span className={styles.statChip}>
+                <strong>{tickets.length}</strong> Total tickets
+              </span>
+              {openCount > 0 && (
+                <span className={styles.statChip}>
+                  <strong>{openCount}</strong> Open
+                </span>
+              )}
+              {closedCount > 0 && (
+                <span className={styles.statChip}>
+                  <strong>{closedCount}</strong> Closed
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className={styles.headerButtonWrap}>
+          <button
+            type="button"
+            className={styles.headerButton}
+            onClick={() => setIsNewTicketModalOpen(true)}
+            id="open-ticket-btn"
+          >
+            <PlusIcon size={15} />
+            Open new ticket
+          </button>
         </div>
       </section>
 
-      {error && <div className={styles.errorBox}>⚠ {error}</div>}
+      {error && <div className={styles.errorBox}>{error}</div>}
 
       <div className={styles.grid}>
 
-        {/* ── LEFT: Ticket list ── */}
+        {/* ═══ LEFT: Ticket list ═══ */}
         <section className={styles.ticketListCard} aria-label="Your support tickets">
           <div className={styles.ticketListHeader}>
             <div>
@@ -367,9 +417,11 @@ export default function SupportTicketsPage() {
 
           <div className={styles.ticketList}>
             {loadingTickets ? (
-              <p className={styles.emptyText}>Loading tickets...</p>
+              <p className={styles.emptyText}>Loading tickets…</p>
             ) : tickets.length === 0 ? (
-              <p className={styles.emptyText}>No tickets yet. Create one on the right →</p>
+              <p className={styles.emptyText}>
+                No tickets yet. Open your first ticket to get support from our team.
+              </p>
             ) : (
               tickets.map((ticket) => {
                 const isActive = ticket.id === activeTicketId;
@@ -396,99 +448,36 @@ export default function SupportTicketsPage() {
               })
             )}
           </div>
+
+          {/* Quick open button at the bottom of the list */}
+          <div className={styles.listQuickOpen}>
+            <button
+              type="button"
+              className={styles.listQuickOpenBtn}
+              onClick={() => setIsNewTicketModalOpen(true)}
+            >
+              <PlusIcon size={14} />
+              New support request
+            </button>
+          </div>
         </section>
 
-        {/* ── RIGHT: Work area ── */}
+        {/* ═══ RIGHT: Work area ═══ */}
         <section className={styles.ticketWorkCard}>
-
-          {/* New ticket form */}
-          <div className={styles.newTicketBox}>
-            <div className={styles.newTicketBoxHeader}>
-              <div className={styles.newTicketIconWrap}><PlusIcon /></div>
-              <div>
-                <p className={styles.sectionEyebrow}>New request</p>
-                <h2 className={styles.sectionTitle}>Open a ticket</h2>
-              </div>
-            </div>
-
-            <input
-              ref={newTicketFileInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              className={styles.hiddenFileInput}
-              onChange={(e) => void handleAttachmentSelect(e, newTicketAttachments, setNewTicketAttachments)}
-            />
-
-            <div className={styles.fieldGroup}>
-              <label className={styles.fieldLabel} htmlFor="ticket-subject">Subject</label>
-              <input
-                id="ticket-subject"
-                className={styles.input}
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                placeholder="e.g. Cannot add a new listing"
-                maxLength={90}
-              />
-            </div>
-
-            <div className={styles.fieldGroup}>
-              <label className={styles.fieldLabel} htmlFor="ticket-details">Describe the problem</label>
-              <textarea
-                id="ticket-details"
-                className={styles.textarea}
-                value={details}
-                onChange={(e) => setDetails(e.target.value)}
-                onPaste={(e) => void handlePasteForAttachments(e, newTicketAttachments, setNewTicketAttachments)}
-                placeholder="Tell admin what you tried, what failed, and any error you saw… (Ctrl+V to paste an image)"
-                rows={4}
-                maxLength={2000}
-              />
-            </div>
-
-            {newTicketAttachments.length > 0 && (
-              <div className={styles.pendingAttachments}>
-                {newTicketAttachments.map((a) => (
-                  <div key={a.id} className={styles.pendingAttachment}>
-                    <img src={a.previewUrl} alt={a.fileName} />
-                    <button
-                      type="button"
-                      onClick={() => removePendingAttachment(a.id, setNewTicketAttachments)}
-                      aria-label={`Remove ${a.fileName}`}
-                    >✕</button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className={styles.newTicketActions}>
-              <button
-                type="button"
-                className={styles.attachButton}
-                onClick={() => newTicketFileInputRef.current?.click()}
-                disabled={creatingTicket || newTicketAttachments.length >= MAX_MESSAGE_ATTACHMENTS}
-              >
-                <ImageIcon /> Attach screenshot
-              </button>
-              <button
-                type="button"
-                className={styles.primaryButton}
-                onClick={() => void handleCreateTicket()}
-                disabled={!subject.trim() || (!details.trim() && newTicketAttachments.length === 0) || creatingTicket}
-              >
-                {creatingTicket ? 'Opening…' : 'Open ticket'}
-              </button>
-            </div>
-          </div>
 
           {/* Thread view */}
           <div className={styles.threadBox}>
             <div className={styles.threadHeader}>
               <div className={styles.threadHeaderLeft}>
-                <p className={styles.sectionEyebrow}>Ticket conversation</p>
-                <h2 className={styles.threadTitle}>
-                  {activeTicket ? getTicketTitle(activeTicket) : 'Select a ticket'}
-                </h2>
+                <div className={styles.threadHeaderIcon}>
+                  <MessageIcon />
+                </div>
+                <div className={styles.threadHeaderCopy}>
+                  <p className={styles.sectionEyebrow}>Ticket conversation</p>
+                  <h2 className={styles.threadTitle}>
+                    {activeTicket ? getTicketTitle(activeTicket) : 'Select a ticket'}
+                  </h2>
+                </div>
               </div>
               {activeTicket && (
                 <div className={styles.threadActions}>
@@ -522,12 +511,6 @@ export default function SupportTicketsPage() {
                       {updatingStatus === 'closed' ? 'Closing…' : 'Close'}
                     </button>
                   )}
-                  <Link
-                    href={`${ROUTES.MESSAGES}?conversationId=${activeTicket.id}`}
-                    className={styles.openMessagesLink}
-                  >
-                    Open in messages
-                  </Link>
                 </div>
               )}
             </div>
@@ -538,7 +521,17 @@ export default function SupportTicketsPage() {
                 <div className={styles.threadEmpty}>
                   <div className={styles.threadEmptyIcon}><InboxIcon /></div>
                   <p className={styles.threadEmptyTitle}>No ticket selected</p>
-                  <p className={styles.threadEmptyText}>Choose a ticket from the list or open a new one above.</p>
+                  <p className={styles.threadEmptyText}>
+                    Choose a ticket from the list on the left, or open a new one to get started.
+                  </p>
+                  <button
+                    type="button"
+                    className={styles.threadEmptyAction}
+                    onClick={() => setIsNewTicketModalOpen(true)}
+                  >
+                    <PlusIcon size={14} />
+                    Open a new ticket
+                  </button>
                 </div>
               ) : loadingMessages ? (
                 <div className={styles.threadEmpty}>
@@ -556,25 +549,27 @@ export default function SupportTicketsPage() {
                       key={message.id}
                       className={`${styles.messageBubble} ${isMine ? styles.messageMine : styles.messageAdmin}`}
                     >
-                      <span className={styles.messageAuthor}>{isMine ? 'You' : 'Admin'}</span>
-                      {message.attachments?.length > 0 && (
-                        <div className={styles.messageAttachments}>
-                          {message.attachments.map((attachment) => (
-                            <button
-                              key={attachment.id || attachment.url}
-                              type="button"
-                              className={styles.attachmentThumb}
-                              onClick={() => setLightboxSrc(attachment.url)}
-                              aria-label="View image"
-                            >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={attachment.url} alt={attachment.file_name || 'Ticket image'} />
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {message.content && <p>{message.content}</p>}
-                      <time>{formatTicketTime(message.created_at)}</time>
+                      <div className={styles.messageBubbleInner}>
+                        <span className={styles.messageAuthor}>{isMine ? 'You' : 'Admin'}</span>
+                        {message.attachments?.length > 0 && (
+                          <div className={styles.messageAttachments}>
+                            {message.attachments.map((attachment) => (
+                              <button
+                                key={attachment.id || attachment.url}
+                                type="button"
+                                className={styles.attachmentThumb}
+                                onClick={() => setLightboxSrc(attachment.url)}
+                                aria-label="View image"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={attachment.url} alt={attachment.file_name || 'Ticket image'} />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {message.content && <p>{message.content}</p>}
+                        <time>{formatTicketTime(message.created_at)}</time>
+                      </div>
                     </article>
                   );
                 })
@@ -657,6 +652,120 @@ export default function SupportTicketsPage() {
 
         </section>
       </div>
+
+      {/* ═══ NEW TICKET MODAL ═══ */}
+      {isNewTicketModalOpen && (
+        <div
+          className={styles.modalBackdrop}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !creatingTicket) {
+              setIsNewTicketModalOpen(false);
+            }
+          }}
+        >
+          <section
+            className={`${styles.newTicketBox} ${styles.modalCard}`}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-ticket-title"
+          >
+            <div className={styles.modalHeader}>
+              <div className={styles.newTicketBoxHeader}>
+                <div className={styles.newTicketIconWrap}><TicketIcon /></div>
+                <div>
+                  <p className={styles.sectionEyebrow}>New request</p>
+                  <h2 className={styles.sectionTitle} id="new-ticket-title">Open a support ticket</h2>
+                </div>
+              </div>
+              <button
+                type="button"
+                className={styles.modalCloseButton}
+                onClick={() => setIsNewTicketModalOpen(false)}
+                disabled={creatingTicket}
+                aria-label="Close dialog"
+              >
+                ✕
+              </button>
+            </div>
+
+            <input
+              ref={newTicketFileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className={styles.hiddenFileInput}
+              onChange={(e) => void handleAttachmentSelect(e, newTicketAttachments, setNewTicketAttachments)}
+            />
+
+            <div className={styles.fieldGroup}>
+              <label className={styles.fieldLabel} htmlFor="ticket-subject">
+                Subject <span className={styles.fieldRequired}>*</span>
+              </label>
+              <input
+                id="ticket-subject"
+                className={styles.input}
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                placeholder="e.g. Cannot add a new listing"
+                maxLength={90}
+              />
+              <div className={styles.fieldFooter}>{subject.length}/90</div>
+            </div>
+
+            <div className={styles.fieldGroup}>
+              <label className={styles.fieldLabel} htmlFor="ticket-details">
+                Describe the problem <span className={styles.fieldRequired}>*</span>
+              </label>
+              <textarea
+                id="ticket-details"
+                className={styles.textarea}
+                value={details}
+                onChange={(e) => setDetails(e.target.value)}
+                onPaste={(e) => void handlePasteForAttachments(e, newTicketAttachments, setNewTicketAttachments)}
+                placeholder="Tell our team what you tried, what failed, and any error you saw…"
+                rows={5}
+                maxLength={2000}
+              />
+              <div className={styles.fieldFooter}>{details.length}/2000</div>
+              <p className={styles.fieldTip}>💡 Tip: You can paste a screenshot directly into this field (Ctrl+V)</p>
+            </div>
+
+            {newTicketAttachments.length > 0 && (
+              <div className={styles.pendingAttachments}>
+                {newTicketAttachments.map((a) => (
+                  <div key={a.id} className={styles.pendingAttachment}>
+                    <img src={a.previewUrl} alt={a.fileName} />
+                    <button
+                      type="button"
+                      onClick={() => removePendingAttachment(a.id, setNewTicketAttachments)}
+                      aria-label={`Remove ${a.fileName}`}
+                    >✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className={styles.newTicketActions}>
+              <button
+                type="button"
+                className={styles.attachButton}
+                onClick={() => newTicketFileInputRef.current?.click()}
+                disabled={creatingTicket || newTicketAttachments.length >= MAX_MESSAGE_ATTACHMENTS}
+              >
+                <ImageIcon /> Attach screenshot
+              </button>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={() => void handleCreateTicket()}
+                disabled={!subject.trim() || (!details.trim() && newTicketAttachments.length === 0) || creatingTicket}
+              >
+                {creatingTicket ? 'Opening ticket…' : 'Open ticket'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
       <ImageLightbox
         src={lightboxSrc}

@@ -1,5 +1,6 @@
 export interface DeliveryDisputeDetails {
   offerId: string | null;
+  receiptId: string | null;
   agreedPriceLabel: string | null;
   paymentReference: string | null;
   proofUrls: string[];
@@ -7,7 +8,8 @@ export interface DeliveryDisputeDetails {
 }
 
 export interface BuildDeliveryDisputeInput {
-  offerId: string;
+  offerId?: string | null;
+  receiptId?: string | null;
   agreedPriceLabel: string;
   paymentReference?: string | null;
   proofUrls?: string[];
@@ -16,6 +18,7 @@ export interface BuildDeliveryDisputeInput {
 
 const DELIVERY_DISPUTE_HEADER = 'Delivery issue report';
 const OFFER_PREFIX = 'Offer ID: ';
+const RECEIPT_PREFIX = 'Receipt ID: ';
 const PRICE_PREFIX = 'Agreed price: ';
 const PAYMENT_PREFIX = 'Payment reference: ';
 const PROOF_PREFIX = 'Proof URL: ';
@@ -35,9 +38,19 @@ export function buildDeliveryDisputeDetails(
 ): string {
   const lines: string[] = [
     DELIVERY_DISPUTE_HEADER,
-    `${OFFER_PREFIX}${input.offerId}`,
-    `${PRICE_PREFIX}${input.agreedPriceLabel}`,
   ];
+
+  const offerId = normalizeOptionalText(input.offerId);
+  if (offerId) {
+    lines.push(`${OFFER_PREFIX}${offerId}`);
+  }
+
+  const receiptId = normalizeOptionalText(input.receiptId);
+  if (receiptId) {
+    lines.push(`${RECEIPT_PREFIX}${receiptId}`);
+  }
+
+  lines.push(`${PRICE_PREFIX}${input.agreedPriceLabel}`);
 
   const paymentReference = normalizeOptionalText(input.paymentReference);
   if (paymentReference) {
@@ -72,6 +85,7 @@ export function parseDeliveryDisputeDetails(
   }
 
   let offerId: string | null = null;
+  let receiptId: string | null = null;
   let agreedPriceLabel: string | null = null;
   let paymentReference: string | null = null;
   const proofUrls: string[] = [];
@@ -86,6 +100,11 @@ export function parseDeliveryDisputeDetails(
 
     if (line.startsWith(OFFER_PREFIX)) {
       offerId = normalizeOptionalText(line.slice(OFFER_PREFIX.length));
+      continue;
+    }
+
+    if (line.startsWith(RECEIPT_PREFIX)) {
+      receiptId = normalizeOptionalText(line.slice(RECEIPT_PREFIX.length));
       continue;
     }
 
@@ -124,6 +143,7 @@ export function parseDeliveryDisputeDetails(
 
   return {
     offerId,
+    receiptId,
     agreedPriceLabel,
     paymentReference,
     proofUrls,

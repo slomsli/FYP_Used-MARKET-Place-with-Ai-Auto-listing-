@@ -507,13 +507,17 @@ export default function OffersPage() {
                     : styles.statusCancelled;
             const saleFollowUp = offer.saleFollowUp;
             const isCompletedSale = offer.status === 'accepted' && offer.listing.status === 'sold' && Boolean(saleFollowUp);
+            const receipt = saleFollowUp?.receipt ?? null;
             const followUpClass = saleFollowUp?.deliveryIssue
               ? styles.fulfillmentIssue
               : saleFollowUp?.review
                 ? styles.fulfillmentReceived
+                : receipt?.deliveryStatus === 'not_received'
+                  ? styles.fulfillmentIssue
+                  : receipt?.deliveryStatus === 'received'
+                    ? styles.fulfillmentReceived
                 : styles.fulfillmentPending;
             const deliveryIssueHref = buildDeliveryIssueHref(offer);
-            const receipt = saleFollowUp?.receipt ?? null;
             const receiptHref = receipt ? `${ROUTES.PURCHASES}/${receipt.id}` : ROUTES.PURCHASES;
             const receiptStatusClass =
               receipt?.paymentStatus === 'seller_confirmed_paid'
@@ -613,7 +617,9 @@ export default function OffersPage() {
                             ? formatDateTime(saleFollowUp.review.createdAt)
                             : saleFollowUp.deliveryIssue
                               ? formatDateTime(saleFollowUp.deliveryIssue.createdAt)
-                              : 'Buyer confirmation pending'}
+                              : receipt?.deliveryMarkedAt
+                                ? formatDateTime(receipt.deliveryMarkedAt)
+                                : 'Buyer confirmation pending'}
                         </span>
                       </div>
 
@@ -673,6 +679,18 @@ export default function OffersPage() {
                             &ldquo;{saleFollowUp.deliveryIssue.buyerStatement}&rdquo;
                           </p>
                         </>
+                      ) : receipt?.deliveryStatus === 'received' ? (
+                        <p className={styles.fulfillmentText}>
+                          {isReceived
+                            ? 'Buyer marked this item as received from the purchase receipt.'
+                            : 'You marked this item as received from the purchase receipt.'}
+                        </p>
+                      ) : receipt?.deliveryStatus === 'not_received' ? (
+                        <p className={styles.fulfillmentText}>
+                          {isReceived
+                            ? 'Buyer marked this item as not received from the purchase receipt.'
+                            : 'You marked this item as not received from the purchase receipt.'}
+                        </p>
                       ) : (
                         <p className={styles.fulfillmentText}>
                           {isReceived
@@ -701,6 +719,7 @@ export default function OffersPage() {
                                 Seller confirmed: {formatDateTime(receipt.sellerConfirmedPaidAt)}
                               </span>
                             )}
+                            <span>Delivery: {receipt.deliveryStatusLabel}</span>
                           </div>
                         </div>
                       )}
