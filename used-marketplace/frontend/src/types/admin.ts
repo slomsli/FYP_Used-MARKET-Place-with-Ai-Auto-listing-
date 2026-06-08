@@ -1,5 +1,6 @@
 import type { ListingCondition } from '@/src/types/listing';
 import type { ListingReportReason, ListingReportStatus } from '@/src/types/report';
+import type { IdentityVerificationStatus } from '@/src/types/verification';
 
 export type AdminRole = 'user' | 'admin';
 export type AdminUserStatus = 'active' | 'pending_verification' | 'suspended';
@@ -302,6 +303,9 @@ export interface AdminReportListItem {
     username: string;
     avatarPath: string | null;
     locationLabel: string;
+    identityVerificationStatus: IdentityVerificationStatus;
+    identityVerificationBadge: boolean;
+    identityVerifiedAt: string | null;
   };
   seller: {
     id: string;
@@ -309,6 +313,9 @@ export interface AdminReportListItem {
     username: string;
     avatarPath: string | null;
     locationLabel: string;
+    identityVerificationStatus: IdentityVerificationStatus;
+    identityVerificationBadge: boolean;
+    identityVerifiedAt: string | null;
   };
 }
 

@@ -16,6 +16,46 @@ import {
 import styles from './page.module.css';
 
 const MINIMUM_DETAILS_LENGTH = 20;
+const MAXIMUM_DETAILS_LENGTH = 1000;
+const MAXIMUM_CONTEXT_LENGTH = 420;
+
+function formatSourceLabel(value: string) {
+  switch (value) {
+    case 'assistant':
+      return 'Assistant';
+    case 'purchases':
+      return 'Purchases';
+    case 'sales':
+      return 'Sales';
+    default:
+      return value;
+  }
+}
+
+function formatScopeLabel(value: string) {
+  switch (value) {
+    case 'delivery':
+      return 'Delivery issue';
+    case 'sale':
+      return 'Sold item';
+    case 'purchase':
+      return 'Purchase';
+    default:
+      return value;
+  }
+}
+
+function truncateReportText(value: string, maxLength: number) {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  if (maxLength <= 3) {
+    return value.slice(0, Math.max(maxLength, 0));
+  }
+
+  return `${value.slice(0, maxLength - 3).trimEnd()}...`;
+}
 
 export default function DashboardReportPage() {
   const searchParams = useSearchParams();
@@ -27,10 +67,19 @@ export default function DashboardReportPage() {
   const requestedTitle = searchParams.get('title')?.trim() || '';
   const agreedPrice = searchParams.get('amount')?.trim() || '';
   const sellerName = searchParams.get('seller')?.trim() || '';
+  const buyerName = searchParams.get('buyer')?.trim() || '';
   const requestedPaymentReference = searchParams.get('paymentReference')?.trim() || '';
   const scope = searchParams.get('scope')?.trim() || '';
   const source = searchParams.get('source')?.trim() || '';
   const isDeliveryScope = scope === 'delivery';
+  const isPurchaseScope = scope === 'purchase';
+  const isSaleScope = scope === 'sale';
+  const isPurchaseAreaReport =
+    isDeliveryScope ||
+    isPurchaseScope ||
+    isSaleScope ||
+    source === 'purchases' ||
+    source === 'sales';
   const [reason, setReason] = useState<ListingReportReason>('scam');
   const [details, setDetails] = useState('');
   const [paymentReference, setPaymentReference] = useState(requestedPaymentReference);
@@ -46,17 +95,44 @@ export default function DashboardReportPage() {
     () => REPORT_REASON_OPTIONS.find((option) => option.value === reason) ?? REPORT_REASON_OPTIONS[0],
     [reason]
   );
+  const receiptHref = receiptId ? `${ROUTES.PURCHASES}/${receiptId}` : '';
   const cancelHref =
-    isDeliveryScope && receiptId
-      ? `${ROUTES.PURCHASES}/${receiptId}`
+    receiptHref
+      ? receiptHref
       : isDeliveryScope
         ? ROUTES.OFFERS
-        : ROUTES.MESSAGES;
+        : isPurchaseAreaReport
+          ? ROUTES.PURCHASES
+          : ROUTES.MESSAGES;
+  const backLabel = receiptHref
+    ? 'Back to receipt'
+    : isDeliveryScope
+      ? 'Back to offers'
+      : isPurchaseAreaReport
+        ? 'Back to purchases'
+        : 'Open messages';
+  const contextLabel = isDeliveryScope || isPurchaseScope
+    ? 'Purchase context'
+    : isSaleScope
+      ? 'Sale context'
+      : source
+        ? 'Report context'
+        : 'Assistant context';
 
-  const pageTitle = isDeliveryScope ? 'Report an item not received' : 'Report a marketplace issue';
+  const pageTitle = isDeliveryScope
+    ? 'Report an item not received'
+    : isPurchaseScope
+      ? 'Report a purchase problem'
+      : isSaleScope
+        ? 'Report a sold item problem'
+        : 'Report a marketplace issue';
   const pageSubtitle = isDeliveryScope
     ? 'Use this form when a seller accepted your purchase but the item still has not arrived. The admin can review the payment details, proofs, and seller activity.'
-    : 'Use this form when you need admin review for a suspicious or unsafe listing.';
+    : isPurchaseScope
+      ? 'Use this form when something about an item you bought needs admin review.'
+      : isSaleScope
+        ? 'Use this form when something about an item you sold needs admin review.'
+        : 'Use this form when you need admin review for a suspicious or unsafe listing.';
 
   const successTitle = isDeliveryScope ? 'Delivery issue submitted' : 'Report submitted';
   const resolvedSuccessMessage = successMessage || (
@@ -69,15 +145,28 @@ export default function DashboardReportPage() {
     let active = true;
 
     if (!listingId) {
-      setLoadingListing(false);
-      setLoadingError('A listing reference is required before you can submit a report.');
+      Promise.resolve().then(() => {
+        if (!active) {
+          return;
+        }
+
+        setLoadingListing(false);
+        setLoadingError('A listing reference is required before you can submit a report.');
+      });
+
       return () => {
         active = false;
       };
     }
 
-    setLoadingListing(true);
-    setLoadingError(null);
+    Promise.resolve().then(() => {
+      if (!active) {
+        return;
+      }
+
+      setLoadingListing(true);
+      setLoadingError(null);
+    });
 
     getPublicListingById(listingId)
       .then((response) => {
@@ -160,6 +249,39 @@ export default function DashboardReportPage() {
     setProofFiles(selectedFiles);
   }
 
+  function buildListingReportDetails(normalizedDetails: string) {
+    const contextLines = [
+      scope ? `Flow: ${formatScopeLabel(scope)}` : null,
+      source ? `Opened from: ${formatSourceLabel(source)}` : null,
+      orderId ? `Order ID: ${orderId}` : null,
+      receiptId ? `Receipt ID: ${receiptId}` : null,
+      offerId ? `Offer ID: ${offerId}` : null,
+      listingTitle ? `Listing: ${listingTitle}` : requestedTitle ? `Listing: ${requestedTitle}` : null,
+      agreedPrice ? `Agreed price: ${agreedPrice}` : null,
+      sellerName ? `Seller: ${sellerName}` : null,
+      buyerName ? `Buyer: ${buyerName}` : null,
+      requestedPaymentReference ? `Payment reference: ${requestedPaymentReference}` : null,
+    ].filter((line): line is string => Boolean(line));
+
+    if (contextLines.length === 0) {
+      return normalizedDetails;
+    }
+
+    const contextBlock = `\n\nReport context:\n${truncateReportText(
+      contextLines.join('\n'),
+      MAXIMUM_CONTEXT_LENGTH
+    )}`;
+
+    if (normalizedDetails.length + contextBlock.length <= MAXIMUM_DETAILS_LENGTH) {
+      return `${normalizedDetails}${contextBlock}`;
+    }
+
+    return `${truncateReportText(
+      normalizedDetails,
+      MAXIMUM_DETAILS_LENGTH - contextBlock.length
+    )}${contextBlock}`;
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -238,7 +360,7 @@ export default function DashboardReportPage() {
       const response = await createListingReport(token, {
         listingId,
         reason,
-        details: normalizedDetails,
+        details: buildListingReportDetails(normalizedDetails),
       });
 
       setSubmitting(false);
@@ -263,7 +385,7 @@ export default function DashboardReportPage() {
       <section className={styles.panel}>
         <div className={styles.contextCard}>
           <span className={styles.contextLabel}>
-            {isDeliveryScope ? 'Purchase context' : 'Assistant context'}
+            {contextLabel}
           </span>
           <strong className={styles.contextTitle}>
             {loadingListing ? 'Loading listing...' : listingTitle || 'Listing reference'}
@@ -273,12 +395,13 @@ export default function DashboardReportPage() {
             {receiptId && <span>Receipt ID: {receiptId}</span>}
             {scope && (
               <span>
-                Flow: {isDeliveryScope ? 'Delivery issue' : scope === 'sale' ? 'Sold item' : 'Purchase'}
+                Flow: {formatScopeLabel(scope)}
               </span>
             )}
             {agreedPrice && <span>Agreed price: {agreedPrice}</span>}
             {sellerName && <span>Seller: {sellerName}</span>}
-            {source && <span>Opened from: {source}</span>}
+            {buyerName && <span>Buyer: {buyerName}</span>}
+            {source && <span>Opened from: {formatSourceLabel(source)}</span>}
           </div>
           {isDeliveryScope && (
             <p className={styles.contextNote}>
@@ -295,11 +418,7 @@ export default function DashboardReportPage() {
             <p>{resolvedSuccessMessage}</p>
             <div className={styles.successActions}>
               <Link href={cancelHref} className={styles.secondaryLink}>
-                {isDeliveryScope && receiptId
-                  ? 'Back to receipt'
-                  : isDeliveryScope
-                    ? 'Back to offers'
-                    : 'Open messages'}
+                {backLabel}
               </Link>
               <Link href={ROUTES.BROWSE} className={styles.primaryLink}>
                 Back to marketplace
@@ -390,12 +509,12 @@ export default function DashboardReportPage() {
                     : 'Explain what happened, how you noticed it, and any proof the admin should review.'
                 }
                 minLength={MINIMUM_DETAILS_LENGTH}
-                maxLength={1000}
+                maxLength={MAXIMUM_DETAILS_LENGTH}
                 disabled={submitting || loadingListing || Boolean(loadingError)}
                 required
               />
               <span className={styles.hint}>
-                Minimum {MINIMUM_DETAILS_LENGTH} characters. {details.length}/1000 characters.
+                Minimum {MINIMUM_DETAILS_LENGTH} characters. {details.length}/{MAXIMUM_DETAILS_LENGTH} characters.
               </span>
             </label>
 

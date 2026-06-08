@@ -12,6 +12,10 @@ import {
   markPurchaseReceiptPaid,
 } from '@/src/services/purchaseService';
 import type { PurchaseReceiptDetail } from '@/src/types/purchase';
+import {
+  buildDeliveryIssueReportHref,
+  buildPurchaseReportHref,
+} from '@/src/utils/purchaseReportLinks';
 import ImageLightbox from '@/src/components/ui/ImageLightbox';
 import styles from './page.module.css';
 
@@ -50,29 +54,6 @@ function buildMessageHref(
   });
 
   return `${ROUTES.MESSAGES}?${params.toString()}`;
-}
-
-function buildDeliveryIssueHref(receipt: PurchaseReceiptDetail) {
-  const params = new URLSearchParams({
-    listingId: receipt.listing.id,
-    receiptId: receipt.id,
-    orderId: receipt.receiptNumber,
-    title: receipt.listing.title,
-    amount: formatCurrency(receipt.totalAmount, receipt.currency),
-    seller: receipt.seller.displayName,
-    scope: 'delivery',
-    source: 'purchases',
-  });
-
-  if (receipt.offerId) {
-    params.set('offerId', receipt.offerId);
-  }
-
-  if (receipt.paymentReference) {
-    params.set('paymentReference', receipt.paymentReference);
-  }
-
-  return `${ROUTES.REPORT}?${params.toString()}`;
 }
 
 function getStatusClass(status: PurchaseReceiptDetail['paymentStatus']) {
@@ -181,7 +162,8 @@ export default function PurchaseReceiptDetailPage() {
     counterparty.id,
     counterparty.displayName
   );
-  const deliveryIssueHref = buildDeliveryIssueHref(receipt);
+  const reportHref = buildPurchaseReportHref(receipt, isBuyer ? 'purchase' : 'sale');
+  const deliveryIssueHref = buildDeliveryIssueReportHref(receipt);
 
   async function handleMarkPaid() {
     const authToken = token;
@@ -290,6 +272,9 @@ export default function PurchaseReceiptDetailPage() {
         <div className={styles.toolbarActions}>
           <Link href={messageHref} className={styles.secondaryButton}>
             Message {isBuyer ? 'Seller' : 'Buyer'}
+          </Link>
+          <Link href={reportHref} className={styles.reportButton}>
+            File Report
           </Link>
           <button
             type="button"
@@ -496,6 +481,9 @@ export default function PurchaseReceiptDetailPage() {
                 ? 'After you mark payment as sent, confirm whether the item arrived or report it for customer-service review.'
                 : 'You can verify the buyer payment after they mark the receipt as paid, then watch the delivery status.'}
             </p>
+            <Link href={reportHref} className={styles.reportButton}>
+              File Report
+            </Link>
           </div>
 
           {receipt.canBuyerMarkPaid && (

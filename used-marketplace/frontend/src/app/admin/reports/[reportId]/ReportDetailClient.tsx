@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ROUTES } from '@/src/config/routes';
+import ReMarketVerifiedBadge from '@/src/components/identity/ReMarketVerifiedBadge';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import {
   ensureAdminModerationThread,
@@ -13,6 +14,7 @@ import {
   updateAdminReportStatus,
 } from '@/src/services/adminService';
 import type { AdminReportListItem } from '@/src/types/admin';
+import type { IdentityVerificationStatus } from '@/src/types/verification';
 import styles from './page.module.css';
 
 interface ReportDetailClientProps {
@@ -154,6 +156,37 @@ function getListingTone(status: string) {
   return styles.listingNeutral;
 }
 
+function getIdentityVerificationLabel(status: IdentityVerificationStatus) {
+  switch (status) {
+    case 'verified':
+      return 'Verified';
+    case 'pending':
+      return 'Pending review';
+    case 'rejected':
+      return 'Rejected';
+    case 'resubmission_required':
+      return 'Needs resubmission';
+    case 'unverified':
+    default:
+      return 'Unverified';
+  }
+}
+
+function getIdentityVerificationTone(status: IdentityVerificationStatus) {
+  switch (status) {
+    case 'verified':
+      return styles.identityVerified;
+    case 'pending':
+      return styles.identityPending;
+    case 'rejected':
+    case 'resubmission_required':
+      return styles.identityAttention;
+    case 'unverified':
+    default:
+      return styles.identityNeutral;
+  }
+}
+
 function getReporterCopy(report: AdminReportListItem) {
   if (report.deliveryIssue?.buyerStatement) {
     return report.deliveryIssue.buyerStatement;
@@ -181,6 +214,51 @@ function buildReportModerationTopic(report: AdminReportListItem) {
   return truncateText(rawTopic, 80);
 }
 
+function ReportPersonCard({
+  label,
+  person,
+}: {
+  label: string;
+  person: AdminReportListItem['reporter'];
+}) {
+  return (
+    <div className={styles.personCard}>
+      <div className={styles.avatarShell}>
+        {person.avatarPath ? (
+          <img
+            src={person.avatarPath}
+            alt={person.fullName}
+            className={styles.avatarImage}
+          />
+        ) : (
+          getInitials(person.fullName)
+        )}
+      </div>
+      <div className={styles.personContent}>
+        <span className={styles.personLabel}>{label}</span>
+        <div className={styles.personNameRow}>
+          <strong>{person.fullName}</strong>
+          {person.identityVerificationBadge && (
+            <ReMarketVerifiedBadge compact className={styles.personVerifiedBadge} />
+          )}
+        </div>
+        <p className={styles.personMeta}>
+          @{person.username} - {person.locationLabel}
+        </p>
+        <div className={styles.identityRow}>
+          <span
+            className={`${styles.identityPill} ${getIdentityVerificationTone(
+              person.identityVerificationStatus
+            )}`}
+          >
+            ReMarket Stamp: {getIdentityVerificationLabel(person.identityVerificationStatus)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ReportDetailClient({ reportId }: ReportDetailClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -203,9 +281,15 @@ export default function ReportDetailClient({ reportId }: ReportDetailClientProps
     }
 
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setReport(null);
+    Promise.resolve().then(() => {
+      if (cancelled) {
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+      setReport(null);
+    });
 
     getAdminReportDetails(token, reportId).then((response) => {
       if (cancelled) {
@@ -547,47 +631,8 @@ export default function ReportDetailClient({ reportId }: ReportDetailClientProps
             <p className={styles.sectionEyebrow}>People</p>
             <h2>Reporter and seller</h2>
             <div className={styles.peopleList}>
-              <div className={styles.personCard}>
-                <div className={styles.avatarShell}>
-                  {report.reporter.avatarPath ? (
-                    <img
-                      src={report.reporter.avatarPath}
-                      alt={report.reporter.fullName}
-                      className={styles.avatarImage}
-                    />
-                  ) : (
-                    getInitials(report.reporter.fullName)
-                  )}
-                </div>
-                <div>
-                  <span className={styles.personLabel}>Reporter</span>
-                  <strong>{report.reporter.fullName}</strong>
-                  <p className={styles.personMeta}>
-                    @{report.reporter.username} - {report.reporter.locationLabel}
-                  </p>
-                </div>
-              </div>
-
-              <div className={styles.personCard}>
-                <div className={styles.avatarShell}>
-                  {report.seller.avatarPath ? (
-                    <img
-                      src={report.seller.avatarPath}
-                      alt={report.seller.fullName}
-                      className={styles.avatarImage}
-                    />
-                  ) : (
-                    getInitials(report.seller.fullName)
-                  )}
-                </div>
-                <div>
-                  <span className={styles.personLabel}>Seller</span>
-                  <strong>{report.seller.fullName}</strong>
-                  <p className={styles.personMeta}>
-                    @{report.seller.username} - {report.seller.locationLabel}
-                  </p>
-                </div>
-              </div>
+              <ReportPersonCard label="Reporter" person={report.reporter} />
+              <ReportPersonCard label="Seller" person={report.seller} />
             </div>
           </article>
 

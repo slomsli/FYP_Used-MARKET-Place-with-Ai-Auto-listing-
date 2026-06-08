@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ROUTES } from '@/src/config/routes';
 import { resolveSupabaseUserRole } from '@/src/utils/authHelpers';
+import DashboardNavbar from '@/src/components/layout/DashboardNavbar';
 import ReportListingModal from '@/src/components/reports/ReportListingModal';
 import ReMarketVerifiedBadge from '@/src/components/identity/ReMarketVerifiedBadge';
 import { useAuth } from '@/src/hooks/useAuth';
@@ -34,24 +35,6 @@ const sortOptions: Array<{ value: PublicListingSortOption; label: string }> = [
 
 const toneClasses = ['toneSeafoam', 'toneInk', 'toneLinen', 'toneCopper'] as const;
 
-function SearchIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="11" cy="11" r="8" />
-      <path d="m21 21-4.35-4.35" />
-    </svg>
-  );
-}
-
-function BellIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-    </svg>
-  );
-}
-
 function HeartIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
@@ -65,15 +48,6 @@ function FlagIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M5 4v16" />
       <path d="M5 5h10l-1.5 3L15 11H5" />
-    </svg>
-  );
-}
-
-function MailIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="2" y="4" width="20" height="16" rx="2" />
-      <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
     </svg>
   );
 }
@@ -212,14 +186,25 @@ export default function BrowsePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewerRole, setViewerRole] = useState<string | null>(null);
+  const [profileName, setProfileName] = useState<string | null>(null);
+  const [profileAvatarPath, setProfileAvatarPath] = useState<string | null>(null);
   const [favoriteMap, setFavoriteMap] = useState<Record<string, boolean>>({});
   const [favoriteLoadingIds, setFavoriteLoadingIds] = useState<Set<string>>(new Set());
   const [reportTarget, setReportTarget] = useState<PublicListingSummary | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
+    const initialQuery = getInitialBrowseQuery();
+    setSearchText(initialQuery);
+    setQuery(initialQuery);
+    setCurrentPage(1);
+  }, []);
+
+  useEffect(() => {
     if (!user || !session?.access_token) {
       setViewerRole(null);
+      setProfileName(null);
+      setProfileAvatarPath(null);
       return;
     }
 
@@ -233,9 +218,13 @@ export default function BrowsePage() {
       setViewerRole(
         resolveSupabaseUserRole(user, response.data?.role ?? null)
       );
+      setProfileName(response.data?.fullName ?? response.data?.username ?? null);
+      setProfileAvatarPath(response.data?.avatarPath ?? null);
     }).catch(() => {
       if (!cancelled) {
         setViewerRole(resolveSupabaseUserRole(user));
+        setProfileName(null);
+        setProfileAvatarPath(null);
       }
     });
 
@@ -250,6 +239,29 @@ export default function BrowsePage() {
   const accountHubRoute = isAdminViewer ? ROUTES.ADMIN : ROUTES.DASHBOARD;
   const notificationRoute = isAdminViewer ? ROUTES.ADMIN_NOTIFICATIONS : ROUTES.NOTIFICATIONS;
   const inboxRoute = isAdminViewer ? ROUTES.ADMIN_MESSAGES : ROUTES.MESSAGES;
+  const profileRoute = isAdminViewer ? ROUTES.ADMIN : ROUTES.PROFILE;
+  const navbarUserName =
+    profileName?.trim() ||
+    (typeof user?.user_metadata?.full_name === 'string' ? user.user_metadata.full_name : null) ||
+    user?.email?.split('@')[0] ||
+    (isAdminViewer ? 'Admin' : 'User');
+  const navbarItems = [
+    {
+      href: accountHubRoute,
+      label: isAdminViewer ? 'Admin Console' : 'Dashboard',
+      isActive: false,
+    },
+    {
+      href: ROUTES.BROWSE,
+      label: 'Browse',
+      isActive: true,
+    },
+    {
+      href: isAdminViewer ? ROUTES.ADMIN_USERS : ROUTES.ADD_LISTING,
+      label: isAdminViewer ? 'Users' : 'Sell',
+      isActive: false,
+    },
+  ];
 
   // Check favorite status when listings load and user is authenticated
   useEffect(() => {
@@ -471,61 +483,26 @@ export default function BrowsePage() {
 
   return (
     <div className={styles.page}>
-      <header className={styles.topbar}>
-        <div className={styles.brandGroup}>
-          <Link href={ROUTES.BROWSE} className={styles.brand}>
-            <span className={styles.brandMark}>R</span>
-            <span>ReMarket</span>
-          </Link>
-
-          <nav className={styles.nav}>
-            <Link href={accountHubRoute} className={styles.navLink}>
-              {isAdminViewer ? 'Admin Console' : 'Dashboard'}
-            </Link>
-            <Link href={ROUTES.BROWSE} className={`${styles.navLink} ${styles.navLinkActive}`}>
-              Browse
-            </Link>
-            <Link href={isAdminViewer ? ROUTES.ADMIN_USERS : ROUTES.ADD_LISTING} className={styles.navLink}>
-              {isAdminViewer ? 'Users' : 'Sell'}
-            </Link>
-          </nav>
-        </div>
-
-        <div className={styles.topActions}>
-          <label className={styles.searchShell}>
-            <span className={styles.searchIcon}>
-              <SearchIcon />
-            </span>
-            <input
-              type="search"
-              className={styles.searchInput}
-              placeholder="Search marketplace..."
-              value={searchText}
-              onChange={(event) => setSearchText(event.target.value)}
-            />
-          </label>
-
-          <Link
-            href={notificationRoute}
-            className={styles.iconButton}
-            aria-label={isAdminViewer ? 'Admin notifications' : 'Notifications'}
-          >
-            <BellIcon />
-          </Link>
-          <Link href={inboxRoute} className={styles.iconButton} aria-label="Messages">
-            <MailIcon />
-          </Link>
-          {showMemberActions && (
-            <Link href={ROUTES.FAVORITES} className={styles.iconButton} aria-label="Favorites">
-              <HeartIcon />
-            </Link>
-          )}
-
-          <Link href={accountHubRoute} className={styles.avatarButton}>
-            {isAdminViewer ? 'Admin' : 'Hub'}
-          </Link>
-        </div>
-      </header>
+      <DashboardNavbar
+        userName={navbarUserName}
+        avatarUrl={profileAvatarPath}
+        authToken={session?.access_token ?? null}
+        navItems={navbarItems}
+        notificationHref={notificationRoute}
+        messagesHref={inboxRoute}
+        profileHref={profileRoute}
+        searchValue={searchText}
+        searchPlaceholder="Search marketplace..."
+        onSearchChange={(value) => {
+          setSearchText(value);
+          setCurrentPage(1);
+        }}
+        onSearchSubmit={(value) => {
+          setSearchText(value);
+          setQuery(value);
+          setCurrentPage(1);
+        }}
+      />
 
       <div className={styles.shell}>
         <aside className={styles.sidebar}>

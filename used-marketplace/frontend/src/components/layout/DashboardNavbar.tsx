@@ -12,6 +12,18 @@ interface DashboardNavbarProps {
   userName?: string;
   avatarUrl?: string | null;
   authToken?: string | null;
+  navItems?: Array<{
+    href: string;
+    label: string;
+    isActive?: boolean;
+  }>;
+  notificationHref?: string;
+  messagesHref?: string;
+  profileHref?: string;
+  searchValue?: string;
+  searchPlaceholder?: string;
+  onSearchChange?: (value: string) => void;
+  onSearchSubmit?: (value: string) => void;
 }
 
 /* ── Inline SVG Icons ── */
@@ -39,12 +51,20 @@ export default function DashboardNavbar({
   userName,
   avatarUrl,
   authToken,
+  navItems: customNavItems,
+  notificationHref = ROUTES.NOTIFICATIONS,
+  messagesHref = ROUTES.MESSAGES,
+  profileHref = ROUTES.PROFILE,
+  searchValue,
+  searchPlaceholder = 'Search marketplace...',
+  onSearchChange,
+  onSearchSubmit,
 }: DashboardNavbarProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const [searchQuery, setSearchQuery] = useState('');
+  const [internalSearchQuery, setInternalSearchQuery] = useState('');
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
-  const navItems = [
+  const navItems = customNavItems ?? [
     {
       href: ROUTES.DASHBOARD,
       label: 'Dashboard',
@@ -61,6 +81,7 @@ export default function DashboardNavbar({
       isActive: pathname.startsWith(ROUTES.ADD_LISTING),
     },
   ];
+  const searchQuery = searchValue ?? internalSearchQuery;
   const initials = userName
     ? userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     : 'U';
@@ -115,7 +136,21 @@ export default function DashboardNavbar({
     event.preventDefault();
 
     const nextQuery = searchQuery.trim();
+    if (onSearchSubmit) {
+      onSearchSubmit(nextQuery);
+      return;
+    }
+
     router.push(nextQuery ? `${ROUTES.BROWSE}?q=${encodeURIComponent(nextQuery)}` : ROUTES.BROWSE);
+  }
+
+  function handleSearchChange(value: string) {
+    if (onSearchChange) {
+      onSearchChange(value);
+      return;
+    }
+
+    setInternalSearchQuery(value);
   }
 
   return (
@@ -147,17 +182,17 @@ export default function DashboardNavbar({
           <span className={styles.searchIcon}><SearchIcon /></span>
           <input
             type="text"
-            placeholder="Search marketplace..."
+            placeholder={searchPlaceholder}
             className={styles.searchInput}
             id="dashboard-search"
             value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
+            onChange={(event) => handleSearchChange(event.target.value)}
           />
         </form>
 
         <div className={styles.iconGroup}>
           <Link
-            href={ROUTES.NOTIFICATIONS}
+            href={notificationHref}
             className={`${styles.iconBtn} ${displayedUnreadNotificationCount > 0 ? styles.iconBtnAlert : ''}`}
             aria-label={
               displayedUnreadNotificationCount > 0
@@ -173,10 +208,10 @@ export default function DashboardNavbar({
               </span>
             )}
           </Link>
-          <Link href={ROUTES.MESSAGES} className={styles.iconBtn} aria-label="Messages" id="messages-btn">
+          <Link href={messagesHref} className={styles.iconBtn} aria-label="Messages" id="messages-btn">
             <MailIcon />
           </Link>
-          <Link href={ROUTES.PROFILE} className={styles.avatarBtn} id="user-avatar-btn">
+          <Link href={profileHref} className={styles.avatarBtn} id="user-avatar-btn">
             {avatarUrl ? (
               <img src={avatarUrl} alt={userName || 'User'} className={styles.avatarImg} />
             ) : (

@@ -22,6 +22,12 @@ export type AdminListingStatusFilter =
   | 'archived'
   | 'reported';
 export type AdminReportStatusFilter = SharedAdminReportStatusFilter;
+export type IdentityVerificationStatus =
+  | 'unverified'
+  | 'pending'
+  | 'verified'
+  | 'rejected'
+  | 'resubmission_required';
 
 export const LISTING_IMAGE_BUCKET =
   process.env.SUPABASE_LISTING_IMAGES_BUCKET?.trim() ||
@@ -52,7 +58,7 @@ export interface RawProfile {
   updated_at: string;
   state_id: number | null;
   area_id: number | null;
-  identity_verification_status?: 'unverified' | 'pending' | 'verified' | 'rejected' | 'resubmission_required' | null;
+  identity_verification_status?: IdentityVerificationStatus | null;
   identity_verification_badge?: boolean | null;
   identity_verified_at?: string | null;
   identity_verified_by?: string | null;
@@ -168,7 +174,7 @@ export interface RawAdminOverviewProfile {
   username: string;
   full_name: string | null;
   created_at: string;
-  identity_verification_status?: 'unverified' | 'pending' | 'verified' | 'rejected' | 'resubmission_required' | null;
+  identity_verification_status?: IdentityVerificationStatus | null;
   identity_verification_badge?: boolean | null;
 }
 
@@ -608,6 +614,9 @@ export interface AdminReportListItem {
     username: string;
     avatarPath: string | null;
     locationLabel: string;
+    identityVerificationStatus: IdentityVerificationStatus;
+    identityVerificationBadge: boolean;
+    identityVerifiedAt: string | null;
   };
   seller: {
     id: string;
@@ -615,6 +624,9 @@ export interface AdminReportListItem {
     username: string;
     avatarPath: string | null;
     locationLabel: string;
+    identityVerificationStatus: IdentityVerificationStatus;
+    identityVerificationBadge: boolean;
+    identityVerifiedAt: string | null;
   };
 }
 

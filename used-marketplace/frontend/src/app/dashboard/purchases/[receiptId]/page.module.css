@@ -43,6 +43,7 @@
 .primaryButton,
 .secondaryButton,
 .confirmButton,
+.reportButton,
 .dangerButton {
   display: inline-flex;
   align-items: center;
@@ -61,6 +62,13 @@
   padding: 0.78rem 1rem;
   background: #edf2fb;
   color: #223660;
+}
+
+.reportButton {
+  padding: 0.82rem 1.1rem;
+  background: #fff1f2;
+  color: #be123c;
+  border: 1px solid rgba(190, 18, 60, 0.14);
 }
 
 .primaryButton {
@@ -88,12 +96,14 @@
 .primaryButton:hover,
 .secondaryButton:hover,
 .confirmButton:hover,
+.reportButton:hover,
 .dangerButton:hover {
   transform: translateY(-1px);
 }
 
 .primaryButton:disabled,
 .confirmButton:disabled,
+.reportButton:disabled,
 .dangerButton:disabled {
   cursor: not-allowed;
   opacity: 0.65;
@@ -635,6 +645,7 @@
   .primaryButton,
   .secondaryButton,
   .confirmButton,
+  .reportButton,
   .dangerButton,
   .toolbarLink {
     width: 100%;

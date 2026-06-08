@@ -98,6 +98,14 @@ function formatCurrency(amount: number, currency = 'MYR') {
   }).format(amount);
 }
 
+function getDisplayPriceAmount(amount: number) {
+  return Math.round(amount);
+}
+
+function formatPriceInput(amount: number) {
+  return String(getDisplayPriceAmount(amount));
+}
+
 function formatDate(value: string | null) {
   if (!value) {
     return 'Recently published';
@@ -366,7 +374,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
     setOfferSubmitting(true);
 
     const price = showOfferModal === 'purchase'
-      ? response.listing.price
+      ? getDisplayPriceAmount(response.listing.price)
       : parseFloat(offerPrice);
 
     if (isNaN(price) || price < 0) {
@@ -717,7 +725,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
                         router.push(`${ROUTES.LOGIN}?redirect=${encodeURIComponent(`/product/${listingId}`)}`);
                         return;
                       }
-                      setOfferPrice(String(listing.price));
+                      setOfferPrice(formatPriceInput(listing.price));
                       setOfferMessage('');
                       setShowOfferModal('purchase');
                     }}
@@ -932,7 +940,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
             </h2>
             <p className={styles.modalSubtitle}>
               {showOfferModal === 'purchase'
-                ? `You are requesting to buy "${response.listing.title}" at the asking price.`
+                ? `You are requesting to buy "${response.listing.title}" at ${formatCurrency(getDisplayPriceAmount(response.listing.price), response.listing.currency)}.`
                 : `Submit a custom offer for "${response.listing.title}".`}
             </p>
 
@@ -945,12 +953,12 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
                 <input
                   type="number"
                   className={styles.modalInput}
-                  value={showOfferModal === 'purchase' ? String(response.listing.price) : offerPrice}
+                  value={showOfferModal === 'purchase' ? formatPriceInput(response.listing.price) : offerPrice}
                   onChange={(e) => setOfferPrice(e.target.value)}
                   disabled={showOfferModal === 'purchase'}
                   placeholder="0.00"
                   min="0"
-                  step="0.01"
+                  step={showOfferModal === 'purchase' ? '1' : '0.01'}
                 />
               </div>
               {showOfferModal === 'offer' && (

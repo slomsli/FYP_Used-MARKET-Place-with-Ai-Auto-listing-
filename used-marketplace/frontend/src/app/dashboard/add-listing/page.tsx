@@ -81,6 +81,51 @@ type ListingImageItem = {
   file?: File;
 };
 
+type CategoryOption = ListingMetadata['categories'][number];
+
+type CategoryGroup = {
+  parent: CategoryOption;
+  children: CategoryOption[];
+};
+
+const CATEGORY_PARENT_ORDER = new Map([
+  ['home-garden', 1],
+  ['entertainment', 2],
+  ['clothing-accessories', 3],
+  ['family', 4],
+  ['electronics', 5],
+  ['hobbies', 6],
+  ['classifieds', 7],
+]);
+
+const CATEGORY_CHILD_ORDER = new Map([
+  ['tools', 1],
+  ['furniture', 2],
+  ['garden', 3],
+  ['appliances', 4],
+  ['household', 5],
+  ['books-films-music', 6],
+  ['video-games', 7],
+  ['jewellery-accessories', 8],
+  ['bags-luggage', 9],
+  ['men-s-clothing-and-shoes', 10],
+  ['women-s-clothing-and-shoes', 11],
+  ['toys-games', 12],
+  ['baby-children', 13],
+  ['pet-supplies', 14],
+  ['health-beauty', 15],
+  ['mobile-phones', 16],
+  ['electronics-computers', 17],
+  ['sports-outdoors', 18],
+  ['musical-instruments', 19],
+  ['arts-crafts', 20],
+  ['antiques-collectibles', 21],
+  ['car-parts', 22],
+  ['bicycles', 23],
+  ['garage-sale', 24],
+  ['miscellaneous', 25],
+]);
+
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat('en-MY', {
     style: 'currency',
@@ -88,6 +133,17 @@ function formatCurrency(amount: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(amount);
+}
+
+function compareCategoryByOrder(
+  left: CategoryOption,
+  right: CategoryOption,
+  orderMap: Map<string, number>
+) {
+  const leftOrder = orderMap.get(left.slug) ?? Number.MAX_SAFE_INTEGER;
+  const rightOrder = orderMap.get(right.slug) ?? Number.MAX_SAFE_INTEGER;
+
+  return leftOrder - rightOrder || left.name.localeCompare(right.name);
 }
 
 const SUSPENDED_LISTING_NOTICE =
@@ -199,6 +255,7 @@ export default function AddListingPage() {
 
   const [title, setTitle] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
   const [brand, setBrand] = useState('');
   const [description, setDescription] = useState('');
   const [condition, setCondition] = useState<ListingCondition | ''>('');
@@ -220,6 +277,7 @@ export default function AddListingPage() {
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const categoryPickerRef = useRef<HTMLDivElement>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const locationLookupRequestRef = useRef(0);
@@ -244,6 +302,35 @@ export default function AddListingPage() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!categoryPickerOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (
+        categoryPickerRef.current &&
+        !categoryPickerRef.current.contains(event.target as Node)
+      ) {
+        setCategoryPickerOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setCategoryPickerOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [categoryPickerOpen]);
 
   const showToast = useCallback((message: string) => {
     if (toastTimerRef.current) {
@@ -520,10 +607,46 @@ export default function AddListingPage() {
     return categories;
   }, [existingListing, metadata]);
 
+  const categoryGroups = useMemo<CategoryGroup[]>(() => {
+    const categoryById = new Map(availableCategories.map((category) => [category.id, category]));
+    const childMap = new Map<number, CategoryOption[]>();
+    const rootCategories: CategoryOption[] = [];
+
+    availableCategories.forEach((category) => {
+      if (category.parentId && categoryById.has(category.parentId)) {
+        const children = childMap.get(category.parentId) ?? [];
+        children.push(category);
+        childMap.set(category.parentId, children);
+        return;
+      }
+
+      rootCategories.push(category);
+    });
+
+    return rootCategories
+      .map((parent) => ({
+        parent,
+        children: (childMap.get(parent.id) ?? []).sort((left, right) =>
+          compareCategoryByOrder(left, right, CATEGORY_CHILD_ORDER)
+        ),
+      }))
+      .sort((left, right) =>
+        compareCategoryByOrder(left.parent, right.parent, CATEGORY_PARENT_ORDER)
+      );
+  }, [availableCategories]);
+
   const selectedCategory = useMemo(
     () => availableCategories.find((item) => String(item.id) === categoryId) ?? null,
     [availableCategories, categoryId]
   );
+
+  const selectedParentCategory = useMemo(() => {
+    if (!selectedCategory?.parentId) {
+      return null;
+    }
+
+    return availableCategories.find((item) => item.id === selectedCategory.parentId) ?? null;
+  }, [availableCategories, selectedCategory]);
 
   const selectedCondition = useMemo(
     () => metadata?.conditions.find((item) => item.value === condition) ?? null,
@@ -1143,20 +1266,89 @@ export default function AddListingPage() {
             <div className={styles.formRow}>
               <div className={styles.formGroup}>
                 <label className={styles.label} htmlFor="listing-category">Category</label>
-                <select
-                  id="listing-category"
-                  className={styles.select}
-                  value={categoryId}
-                  onChange={(event) => setCategoryId(event.target.value)}
-                  disabled={disabled}
+                <div
+                  ref={categoryPickerRef}
+                  className={`${styles.categoryPicker} ${categoryPickerOpen ? styles.categoryPickerOpen : ''}`}
                 >
-                  <option value="">Select category</option>
-                  {availableCategories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
+                  <button
+                    type="button"
+                    id="listing-category"
+                    className={styles.categoryTrigger}
+                    onClick={() => setCategoryPickerOpen((current) => !current)}
+                    disabled={disabled || metadataLoading || availableCategories.length === 0}
+                    aria-haspopup="listbox"
+                    aria-expanded={categoryPickerOpen}
+                  >
+                    <span className={styles.categoryTriggerText}>
+                      {selectedCategory ? selectedCategory.name : metadataLoading ? 'Loading categories...' : 'Select category'}
+                    </span>
+                    {selectedParentCategory && (
+                      <span className={styles.categoryTriggerMeta}>
+                        {selectedParentCategory.name}
+                      </span>
+                    )}
+                    <span className={styles.categoryChevron} aria-hidden="true" />
+                  </button>
+
+                  {categoryPickerOpen && (
+                    <div className={styles.categoryMenu} role="listbox" aria-labelledby="listing-category">
+                      {categoryGroups.map((group) => {
+                        const parentSelected = String(group.parent.id) === categoryId;
+
+                        return (
+                          <div key={group.parent.id} className={styles.categoryGroup}>
+                            <button
+                              type="button"
+                              className={`${styles.categoryParentOption} ${parentSelected ? styles.categoryOptionActive : ''}`}
+                              onClick={() => {
+                                setCategoryId(String(group.parent.id));
+                                setCategoryPickerOpen(false);
+                              }}
+                              role="option"
+                              aria-selected={parentSelected}
+                            >
+                              <span className={styles.categoryMark}>
+                                {group.parent.name.slice(0, 2).toUpperCase()}
+                              </span>
+                              <span className={styles.categoryParentCopy}>
+                                <strong>{group.parent.name}</strong>
+                                <span>
+                                  {group.children.length > 0
+                                    ? `${group.children.length} subcategor${group.children.length === 1 ? 'y' : 'ies'}`
+                                    : 'Main category'}
+                                </span>
+                              </span>
+                            </button>
+
+                            {group.children.length > 0 && (
+                              <div className={styles.categoryChildren}>
+                                {group.children.map((category) => {
+                                  const categorySelected = String(category.id) === categoryId;
+
+                                  return (
+                                    <button
+                                      key={category.id}
+                                      type="button"
+                                      className={`${styles.categoryChildOption} ${categorySelected ? styles.categoryOptionActive : ''}`}
+                                      onClick={() => {
+                                        setCategoryId(String(category.id));
+                                        setCategoryPickerOpen(false);
+                                      }}
+                                      role="option"
+                                      aria-selected={categorySelected}
+                                    >
+                                      <span>{category.name}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
                 {!metadataLoading && availableCategories.length === 0 && (
                   <p className={styles.fieldHint}>
                     Categories did not load. Try refreshing the metadata.

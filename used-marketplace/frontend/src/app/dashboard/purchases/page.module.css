@@ -50,6 +50,7 @@
 .secondaryLink,
 .primaryButton,
 .secondaryButton,
+.reportButton,
 .tab {
   display: inline-flex;
   align-items: center;
@@ -78,10 +79,18 @@
   color: #17403a;
 }
 
+.reportButton {
+  padding: 0.82rem 1.1rem;
+  background: #fff1f2;
+  color: #be123c;
+  border: 1px solid rgba(190, 18, 60, 0.14);
+}
+
 .primaryLink:hover,
 .secondaryLink:hover,
 .primaryButton:hover,
 .secondaryButton:hover,
+.reportButton:hover,
 .tab:hover {
   transform: translateY(-1px);
 }
@@ -441,7 +450,8 @@
   .primaryLink,
   .secondaryLink,
   .primaryButton,
-  .secondaryButton {
+  .secondaryButton,
+  .reportButton {
     width: 100%;
   }
 }

@@ -81,6 +81,10 @@ function buildAdminReportListItem(
   const reasonLabel = deliveryIssue
     ? 'Item Not Received'
     : REPORT_REASON_LABELS[report.reason] ?? humanizeValue(report.reason);
+  const reporterIdentityVerificationStatus =
+    reporterProfile.identity_verification_status ?? 'unverified';
+  const sellerIdentityVerificationStatus =
+    sellerProfile.identity_verification_status ?? 'unverified';
 
   return {
     id: report.id,
@@ -122,6 +126,11 @@ function buildAdminReportListItem(
       username: reporterProfile.username,
       avatarPath: getPublicStorageUrl(AVATAR_BUCKET, reporterProfile.avatar_path),
       locationLabel: buildLocationLabel(reporterState?.name ?? null, reporterArea?.name ?? null),
+      identityVerificationStatus: reporterIdentityVerificationStatus,
+      identityVerificationBadge:
+        reporterIdentityVerificationStatus === 'verified' &&
+        reporterProfile.identity_verification_badge === true,
+      identityVerifiedAt: reporterProfile.identity_verified_at ?? null,
     },
     seller: {
       id: sellerProfile.id,
@@ -129,6 +138,11 @@ function buildAdminReportListItem(
       username: sellerProfile.username,
       avatarPath: getPublicStorageUrl(AVATAR_BUCKET, sellerProfile.avatar_path),
       locationLabel: buildLocationLabel(sellerState?.name ?? null, sellerArea?.name ?? null),
+      identityVerificationStatus: sellerIdentityVerificationStatus,
+      identityVerificationBadge:
+        sellerIdentityVerificationStatus === 'verified' &&
+        sellerProfile.identity_verification_badge === true,
+      identityVerifiedAt: sellerProfile.identity_verified_at ?? null,
     },
   };
 }
@@ -148,6 +162,7 @@ export async function getAdminReports(query: AdminReportsQuery): Promise<AdminRe
       .from('profiles')
       .select(`
         id, username, full_name, avatar_path, role, created_at, updated_at, state_id, area_id,
+        identity_verification_status, identity_verification_badge, identity_verified_at,
         states!profiles_state_id_fkey ( id, name ),
         areas!profiles_area_id_fkey ( id, name )
       `),
@@ -348,6 +363,7 @@ export async function getAdminReportDetails(
       .from('profiles')
       .select(`
         id, username, full_name, avatar_path, role, created_at, updated_at, state_id, area_id,
+        identity_verification_status, identity_verification_badge, identity_verified_at,
         states!profiles_state_id_fkey ( id, name ),
         areas!profiles_area_id_fkey ( id, name )
       `)

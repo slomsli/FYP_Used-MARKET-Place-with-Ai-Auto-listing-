@@ -9,6 +9,7 @@ import type {
   PurchaseReceiptSummary,
   PurchasesDashboardResponse,
 } from '@/src/types/purchase';
+import { buildPurchaseReportHref } from '@/src/utils/purchaseReportLinks';
 import styles from './page.module.css';
 
 type PurchaseTab = 'purchases' | 'sales';
@@ -258,6 +259,10 @@ export default function PurchasesPage() {
                 counterparty.id,
                 counterparty.displayName
               );
+              const reportHref = buildPurchaseReportHref(
+                receipt,
+                activeTab === 'purchases' ? 'purchase' : 'sale'
+              );
 
               return (
                 <article key={receipt.id} className={styles.receiptCard}>
@@ -332,6 +337,9 @@ export default function PurchasesPage() {
                       </Link>
                       <Link href={messageHref} className={styles.secondaryButton}>
                         Message {activeTab === 'purchases' ? 'Seller' : 'Buyer'}
+                      </Link>
+                      <Link href={reportHref} className={styles.reportButton}>
+                        File Report
                       </Link>
                     </div>
                   </div>

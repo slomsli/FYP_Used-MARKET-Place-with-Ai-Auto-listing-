@@ -381,6 +381,65 @@
   border: 1px solid rgba(0, 0, 0, 0.03);
 }
 
+.personContent {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.personNameRow,
+.identityRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.personNameRow strong {
+  margin-top: 0;
+}
+
+.personVerifiedBadge {
+  flex: 0 0 auto;
+}
+
+.identityPill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.identityVerified {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid rgba(4, 120, 87, 0.16);
+}
+
+.identityPending {
+  background: #fef9c3;
+  color: #854d0e;
+  border: 1px solid rgba(133, 77, 14, 0.16);
+}
+
+.identityAttention {
+  background: #fef2f2;
+  color: var(--admin-tertiary, #5c1800);
+  border: 1px solid rgba(92, 24, 0, 0.12);
+}
+
+.identityNeutral {
+  background: #e2e8f0;
+  color: var(--admin-neutral, #45474f);
+  border: 1px solid rgba(69, 71, 79, 0.1);
+}
+
 .avatarShell {
   width: 46px;
   height: 46px;
