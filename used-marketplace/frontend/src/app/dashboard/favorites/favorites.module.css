@@ -20,7 +20,12 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
+  padding: 1.35rem;
+  border: 1px solid rgba(15, 29, 54, 0.08);
+  border-radius: 24px;
+  background: linear-gradient(135deg, #ffffff 0%, #f7f8fc 64%, #fff7ed 100%);
+  box-shadow: 0 16px 34px rgba(17, 24, 39, 0.055);
   flex-wrap: wrap;
   gap: 1rem;
 }
@@ -130,7 +135,7 @@
 
 .itemsGrid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 1.25rem;
   margin-bottom: 6rem;
 }
@@ -140,9 +145,10 @@
 .itemCard {
   background: #ffffff;
   border-radius: 20px;
-  border: 1px solid rgba(0,0,0,0.04);
+  border: 1px solid rgba(15, 29, 54, 0.07);
   overflow: hidden;
-  transition: all 0.25s ease;
+  box-shadow: 0 12px 28px rgba(17, 24, 39, 0.04);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
   display: flex;
   flex-direction: column;
   text-decoration: none;
@@ -150,7 +156,8 @@
 }
 
 .itemCard:hover {
-  box-shadow: 0 12px 32px rgba(26, 35, 126, 0.08);
+  border-color: rgba(77, 128, 118, 0.2);
+  box-shadow: 0 18px 38px rgba(26, 35, 126, 0.08);
   transform: translateY(-3px);
 }
 

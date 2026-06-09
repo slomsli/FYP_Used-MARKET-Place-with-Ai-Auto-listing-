@@ -251,7 +251,12 @@ function buildInsightBuckets(
   offers: number;
 }> {
   const daysInMonth = endDate.getUTCDate();
-  const totalWeeks = Math.ceil(daysInMonth / 7);
+  const regularWeekCount = Math.floor(daysInMonth / 7);
+  const trailingDays = daysInMonth % 7;
+  const totalWeeks =
+    trailingDays > 0 && trailingDays < 4
+      ? regularWeekCount
+      : Math.ceil(daysInMonth / 7);
   const monthShort = new Intl.DateTimeFormat('en-MY', {
     month: 'short',
     timeZone: DASHBOARD_TIME_ZONE,
@@ -259,7 +264,9 @@ function buildInsightBuckets(
 
   return Array.from({ length: totalWeeks }, (_, index) => {
     const startDay = index * 7 + 1;
-    const endDay = Math.min(startDay + 6, daysInMonth);
+    const endDay = index === totalWeeks - 1
+      ? daysInMonth
+      : Math.min(startDay + 6, daysInMonth);
 
     return {
       week: `WEEK ${index + 1}`,

@@ -35,6 +35,22 @@ const HeartIcon = () => (
   </svg>
 );
 
+const OfferIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20.59 13.41 11 3.83A2.8 2.8 0 0 0 9.02 3H4a1 1 0 0 0-1 1v5.02c0 .74.3 1.45.83 1.98l9.58 9.59a2 2 0 0 0 2.83 0l4.35-4.35a2 2 0 0 0 0-2.83Z" />
+    <path d="M7.5 7.5h.01" />
+  </svg>
+);
+
+const BrowseIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="11" r="7" />
+    <path d="m20 20-3.5-3.5" />
+    <path d="M8.5 11h5" />
+    <path d="M11 8.5v5" />
+  </svg>
+);
+
 const ArrowIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
     <path d="M5 12h14" />
@@ -252,6 +268,66 @@ export default function DashboardPage() {
   const chartContextLabel = summary.insights.selectedListingId
     ? summary.insights.selectedListingLabel
     : 'All Listings';
+  const nextStep =
+    summary.stats.unreadMessages > 0
+      ? {
+          href: ROUTES.MESSAGES,
+          label: 'Reply to new messages',
+          detail: `${summary.stats.unreadMessages} unread conversation${
+            summary.stats.unreadMessages === 1 ? '' : 's'
+          } waiting`,
+        }
+      : summary.stats.pendingOffers > 0
+        ? {
+            href: ROUTES.OFFERS,
+            label: 'Review pending offers',
+            detail: `${summary.stats.pendingOffers} offer${
+              summary.stats.pendingOffers === 1 ? '' : 's'
+            } ready for a decision`,
+          }
+        : summary.stats.activeListings === 0
+          ? {
+              href: ROUTES.ADD_LISTING,
+              label: 'Post your first listing',
+              detail: 'Start selling with a complete marketplace card',
+            }
+          : {
+              href: ROUTES.MY_LISTINGS,
+              label: 'Review your inventory',
+              detail: `${summary.stats.activeListings} active listing${
+                summary.stats.activeListings === 1 ? '' : 's'
+              } live now`,
+            };
+  const quickActions = [
+    {
+      href: ROUTES.ADD_LISTING,
+      label: 'Post Item',
+      detail: 'Create listing',
+      icon: <PlusIcon />,
+      featured: true,
+    },
+    {
+      href: ROUTES.MESSAGES,
+      label: 'Messages',
+      detail: `${summary.stats.unreadMessages} unread`,
+      icon: <MsgIcon />,
+      featured: false,
+    },
+    {
+      href: ROUTES.OFFERS,
+      label: 'Offers',
+      detail: `${summary.stats.pendingOffers} pending`,
+      icon: <OfferIcon />,
+      featured: false,
+    },
+    {
+      href: ROUTES.BROWSE,
+      label: 'Browse',
+      detail: 'Find items',
+      icon: <BrowseIcon />,
+      featured: false,
+    },
+  ];
 
   function openConciergeAssistant(message: string, autoSend = false) {
     window.dispatchEvent(
@@ -263,19 +339,71 @@ export default function DashboardPage() {
 
   return (
     <div className={styles.dashboard}>
-      <section className={styles.welcome} id="welcome-section">
-        <h1 className={styles.welcomeTitle}>Hello, {displayName}!</h1>
-        <p className={styles.welcomeSub}>
-          Manage your activity, track listings, and explore curated offers in your personal archive.
-        </p>
-        <div className={styles.badges}>
-          <span className={styles.badgeGreen}>
-            <ShieldCheck /> Curated Seller
-          </span>
-          <span className={styles.badgeGreen}>
-            <ShieldCheck /> Verified Buyer
-          </span>
+      <section className={styles.commandCenter} id="welcome-section">
+        <div className={styles.commandCopy}>
+          <span className={styles.commandEyebrow}>Marketplace Command Center</span>
+          <h1 className={styles.commandTitle}>Welcome back, {displayName}</h1>
+          <p className={styles.commandSub}>
+            Track your listings, answer buyers, and move quickly on the offers that matter most.
+          </p>
+
+          <div className={styles.commandBadges}>
+            <span className={styles.commandBadge}>
+              <ShieldCheck /> Curated Seller
+            </span>
+            <span className={styles.commandBadge}>
+              <ShieldCheck /> Verified Buyer
+            </span>
+          </div>
+
+          <div className={styles.quickActions} aria-label="Dashboard quick actions">
+            {quickActions.map((action) => (
+              <Link
+                key={action.href}
+                href={action.href}
+                className={`${styles.quickAction} ${
+                  action.featured ? styles.quickActionFeatured : ''
+                }`}
+              >
+                <span className={styles.quickActionIcon}>{action.icon}</span>
+                <span className={styles.quickActionText}>
+                  <strong>{action.label}</strong>
+                  <span>{action.detail}</span>
+                </span>
+              </Link>
+            ))}
+          </div>
         </div>
+
+        <aside className={styles.commandPanel} aria-label="Marketplace snapshot">
+          <div className={styles.panelHeader}>
+            <span className={styles.panelLabel}>Today&apos;s Focus</span>
+            <span className={styles.panelStatus}>Live</span>
+          </div>
+
+          <Link href={nextStep.href} className={styles.nextStepCard}>
+            <span>
+              <strong>{nextStep.label}</strong>
+              <span>{nextStep.detail}</span>
+            </span>
+            <ArrowIcon />
+          </Link>
+
+          <div className={styles.signalGrid}>
+            <div className={styles.signalItem}>
+              <strong>{summary.stats.activeListings}</strong>
+              <span>Listings</span>
+            </div>
+            <div className={styles.signalItem}>
+              <strong>{summary.stats.unreadMessages}</strong>
+              <span>Messages</span>
+            </div>
+            <div className={styles.signalItem}>
+              <strong>{summary.stats.pendingOffers}</strong>
+              <span>Offers</span>
+            </div>
+          </div>
+        </aside>
       </section>
 
       <section className={styles.statsRow} id="stats-section">

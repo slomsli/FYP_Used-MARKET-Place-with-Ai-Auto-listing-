@@ -17,7 +17,12 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
+  padding: 1.35rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 24px;
+  background: linear-gradient(135deg, #ffffff 0%, #f7f9fd 62%, #eff6ff 100%);
+  box-shadow: 0 16px 34px rgba(17, 24, 39, 0.055);
   flex-wrap: wrap;
   gap: 1.5rem;
 }
@@ -121,15 +126,16 @@
   background: #ffffff;
   padding: 1.5rem;
   border-radius: 1.5rem;
-  border: 1px solid rgba(0,0,0,0.04);
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.02);
-  transition: transform 0.2s, box-shadow 0.2s;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  box-shadow: 0 14px 32px rgba(17, 24, 39, 0.045);
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
   flex-wrap: wrap;
 }
 
 .offerCard:hover {
   transform: translateY(-2px);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.05);
+  border-color: rgba(59, 130, 246, 0.18);
+  box-shadow: 0 20px 42px rgba(17, 24, 39, 0.08);
 }
 
 .listingImageWrap {
@@ -138,6 +144,7 @@
   border-radius: 1rem;
   overflow: hidden;
   background: #f8fafc;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
   flex-shrink: 0;
 }
 
