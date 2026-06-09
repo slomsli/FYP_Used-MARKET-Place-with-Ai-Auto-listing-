@@ -3,7 +3,8 @@
    ══════════════════════════════════════════ */
 
 .container {
-  max-width: 1040px;
+  width: 100%;
+  max-width: none;
   animation: fadeIn 0.4s ease-out;
 }
 

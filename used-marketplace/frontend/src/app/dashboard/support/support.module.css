@@ -31,7 +31,8 @@
 
 /* ── Page wrapper ── */
 .page {
-  max-width: 1340px;
+  width: 100%;
+  max-width: none;
   display: grid;
   gap: 1.25rem;
   animation: supportEnter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;

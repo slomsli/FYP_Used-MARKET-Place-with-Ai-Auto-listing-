@@ -22,8 +22,9 @@
   --radius-input: 14px;
   --radius-card: 20px;
 
-  max-width: 1100px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
   color: var(--text);
   animation: pageIn 0.45s ease-out;
 }
