@@ -12,6 +12,7 @@ import type {
   AdminReportStatusFilter,
   AdminReportsResponse,
 } from '@/src/types/admin';
+import { scheduleEffectWork } from '@/src/utils/effectScheduling';
 import styles from './page.module.css';
 
 function AlertIcon() {
@@ -212,34 +213,41 @@ export default function AdminReportsPage() {
     }
 
     let cancelled = false;
-    setLoading(true);
-
-    getAdminReports(token, {
-      page,
-      pageSize: 12,
-      search: deferredSearch,
-      status: requestedStatusFilter,
-    }).then((response) => {
+    const cancelScheduledWork = scheduleEffectWork(() => {
       if (cancelled) {
         return;
       }
 
-      if (response.data) {
-        setData(response.data);
-        setError(null);
+      setLoading(true);
 
-        if (response.data.pagination.page !== page) {
-          setPage(response.data.pagination.page);
+      getAdminReports(token, {
+        page,
+        pageSize: 12,
+        search: deferredSearch,
+        status: requestedStatusFilter,
+      }).then((response) => {
+        if (cancelled) {
+          return;
         }
-      } else {
-        setError(response.error || 'Failed to load reports');
-      }
 
-      setLoading(false);
+        if (response.data) {
+          setData(response.data);
+          setError(null);
+
+          if (response.data.pagination.page !== page) {
+            setPage(response.data.pagination.page);
+          }
+        } else {
+          setError(response.error || 'Failed to load reports');
+        }
+
+        setLoading(false);
+      });
     });
 
     return () => {
       cancelled = true;
+      cancelScheduledWork();
     };
   }, [deferredSearch, page, refreshKey, requestedStatusFilter, token]);
 

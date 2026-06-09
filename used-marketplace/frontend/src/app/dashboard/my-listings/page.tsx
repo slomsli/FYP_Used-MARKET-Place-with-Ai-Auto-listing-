@@ -14,6 +14,7 @@ import {
   markListingAsSold,
   updateListing,
 } from '@/src/services/listingService';
+import { scheduleEffectWork } from '@/src/utils/effectScheduling';
 import type {
   CreateListingPayload,
   ListingFilterStatus,
@@ -353,38 +354,45 @@ export default function MyListingsPage() {
     const currentSaleTarget = saleTarget;
     const currentToken = token;
     let cancelled = false;
-    setSaleCandidatesLoading(true);
-    setSaleCandidates([]);
-    setSelectedSaleBuyerId('');
-
-    async function loadSaleCandidates() {
-      const response = await getListingSaleBuyerCandidates(currentToken, currentSaleTarget.id);
-
+    const cancelScheduledWork = scheduleEffectWork(() => {
       if (cancelled) {
         return;
       }
 
-      if (!response.data) {
-        setSaleTarget(null);
-        setNotice({
-          type: 'error',
-          message: response.error || 'Failed to load recent buyers for this listing.',
-        });
+      setSaleCandidatesLoading(true);
+      setSaleCandidates([]);
+      setSelectedSaleBuyerId('');
+
+      async function loadSaleCandidates() {
+        const response = await getListingSaleBuyerCandidates(currentToken, currentSaleTarget.id);
+
+        if (cancelled) {
+          return;
+        }
+
+        if (!response.data) {
+          setSaleTarget(null);
+          setNotice({
+            type: 'error',
+            message: response.error || 'Failed to load recent buyers for this listing.',
+          });
+          setSaleCandidatesLoading(false);
+          return;
+        }
+
+        setSaleCandidates(response.data);
+        if (response.data.length === 1) {
+          setSelectedSaleBuyerId(response.data[0].id);
+        }
         setSaleCandidatesLoading(false);
-        return;
       }
 
-      setSaleCandidates(response.data);
-      if (response.data.length === 1) {
-        setSelectedSaleBuyerId(response.data[0].id);
-      }
-      setSaleCandidatesLoading(false);
-    }
-
-    void loadSaleCandidates();
+      void loadSaleCandidates();
+    });
 
     return () => {
       cancelled = true;
+      cancelScheduledWork();
     };
   }, [saleTarget, token]);
 
@@ -889,7 +897,7 @@ export default function MyListingsPage() {
             </button>
 
             <p className={styles.modalEyebrow}>Complete Sale</p>
-            <h2 className={styles.modalTitle}>Mark "{saleTarget.title}" as sold</h2>
+            <h2 className={styles.modalTitle}>Mark &quot;{saleTarget.title}&quot; as sold</h2>
             <p className={styles.modalText}>
               Save the buyer if this sale came from a marketplace offer or conversation. You can
               also leave it blank for an outside sale.

@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, startTransition, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, startTransition, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Spinner from '@/src/components/ui/Spinner';
 import { useAuth } from '@/src/hooks/useAuth';
@@ -15,6 +15,7 @@ import {
 import { getPublicConfig } from '@/src/services/publicSettingsService';
 import { getProfile } from '@/src/services/profileService';
 import { resolveSupabaseUserRole } from '@/src/utils/authHelpers';
+import { scheduleEffectWork } from '@/src/utils/effectScheduling';
 import type {
   AssistantConversationMessage,
   AssistantCurrentPageContext,
@@ -464,116 +465,133 @@ export default function MarketplaceAssistant() {
 
   useEffect(() => {
     if (assistantEnabled === false) {
-      setAssistantRole(null);
-      setProfileLoading(false);
-      return;
+      return scheduleEffectWork(() => {
+        setAssistantRole(null);
+        setProfileLoading(false);
+      });
     }
 
     if (!token) {
-      setAssistantRole(null);
-      setProfileLoading(false);
-      return;
+      return scheduleEffectWork(() => {
+        setAssistantRole(null);
+        setProfileLoading(false);
+      });
     }
 
     let cancelled = false;
-    setProfileLoading(true);
+    const cancelScheduledWork = scheduleEffectWork(() => {
+      if (cancelled) {
+        return;
+      }
 
-    getProfile(token)
-      .then((response) => {
-        if (cancelled) {
-          return;
-        }
+      setProfileLoading(true);
 
-        const resolvedRole = resolveSupabaseUserRole(user, response.data?.role ?? null);
+      getProfile(token)
+        .then((response) => {
+          if (cancelled) {
+            return;
+          }
 
-        if (resolvedRole === 'admin') {
-          setAssistantRole('admin');
-        } else if (resolvedRole === 'user') {
-          setAssistantRole('user');
-        } else {
-          setAssistantRole('user');
-        }
+          const resolvedRole = resolveSupabaseUserRole(user, response.data?.role ?? null);
 
-        setProfileLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) {
-          return;
-        }
+          if (resolvedRole === 'admin') {
+            setAssistantRole('admin');
+          } else if (resolvedRole === 'user') {
+            setAssistantRole('user');
+          } else {
+            setAssistantRole('user');
+          }
 
-        const resolvedRole = resolveSupabaseUserRole(user);
+          setProfileLoading(false);
+        })
+        .catch(() => {
+          if (cancelled) {
+            return;
+          }
 
-        if (resolvedRole === 'admin') {
-          setAssistantRole('admin');
-        } else if (user) {
-          setAssistantRole('user');
-        } else {
-          setAssistantRole(null);
-        }
+          const resolvedRole = resolveSupabaseUserRole(user);
 
-        setProfileLoading(false);
-      });
+          if (resolvedRole === 'admin') {
+            setAssistantRole('admin');
+          } else if (user) {
+            setAssistantRole('user');
+          } else {
+            setAssistantRole(null);
+          }
+
+          setProfileLoading(false);
+        });
+    });
 
     return () => {
       cancelled = true;
+      cancelScheduledWork();
     };
   }, [assistantEnabled, token, user]);
 
   useEffect(() => {
     if (!assistantRole || !token) {
-      setThreads([]);
-      setMessagesByThreadId({});
-      setThreadErrors({});
-      setActiveThreadId(null);
-      setThreadListError(null);
-      setThreadsLoading(false);
-      return;
+      return scheduleEffectWork(() => {
+        setThreads([]);
+        setMessagesByThreadId({});
+        setThreadErrors({});
+        setActiveThreadId(null);
+        setThreadListError(null);
+        setThreadsLoading(false);
+      });
     }
 
     let cancelled = false;
-    setThreadsLoading(true);
+    const cancelScheduledWork = scheduleEffectWork(() => {
+      if (cancelled) {
+        return;
+      }
 
-    listAssistantThreads(token)
-      .then((response) => {
-        if (cancelled) {
-          return;
-        }
+      setThreadsLoading(true);
 
-        const nextThreadData = response.data;
-
-        if (response.error || !nextThreadData) {
-          setThreads([]);
-          setActiveThreadId(null);
-          setThreadListError(response.error || 'Unable to load assistant chats.');
-          setThreadsLoading(false);
-          return;
-        }
-
-        const nextThreads = sortThreadsByActivity(nextThreadData);
-        setThreads(nextThreads);
-        setThreadListError(null);
-        setActiveThreadId((currentThreadId) => {
-          if (currentThreadId && nextThreads.some((thread) => thread.id === currentThreadId)) {
-            return currentThreadId;
+      listAssistantThreads(token)
+        .then((response) => {
+          if (cancelled) {
+            return;
           }
 
-          return nextThreads[0]?.id ?? null;
-        });
-        setThreadsLoading(false);
-      })
-      .catch((error) => {
-        if (cancelled) {
-          return;
-        }
+          const nextThreadData = response.data;
 
-        setThreads([]);
-        setActiveThreadId(null);
-        setThreadListError(error instanceof Error ? error.message : 'Unable to load assistant chats.');
-        setThreadsLoading(false);
-      });
+          if (response.error || !nextThreadData) {
+            setThreads([]);
+            setActiveThreadId(null);
+            setThreadListError(response.error || 'Unable to load assistant chats.');
+            setThreadsLoading(false);
+            return;
+          }
+
+          const nextThreads = sortThreadsByActivity(nextThreadData);
+          setThreads(nextThreads);
+          setThreadListError(null);
+          setActiveThreadId((currentThreadId) => {
+            if (currentThreadId && nextThreads.some((thread) => thread.id === currentThreadId)) {
+              return currentThreadId;
+            }
+
+            return nextThreads[0]?.id ?? null;
+          });
+          setThreadsLoading(false);
+        })
+        .catch((error) => {
+          if (cancelled) {
+            return;
+          }
+
+          setThreads([]);
+          setActiveThreadId(null);
+          setThreadListError(error instanceof Error ? error.message : 'Unable to load assistant chats.');
+          setThreadsLoading(false);
+        });
+    });
 
     return () => {
       cancelled = true;
+      cancelScheduledWork();
     };
   }, [assistantRole, token]);
 
@@ -589,69 +607,78 @@ export default function MarketplaceAssistant() {
 
     const existingMessages = messagesByThreadId[activeThreadId];
     if (existingMessages) {
-      setMessagesLoading(false);
-      return;
+      return scheduleEffectWork(() => {
+        setMessagesLoading(false);
+      });
     }
 
     if (activeThread.messageCount === 0) {
-      setMessagesLoading(false);
-      setMessagesByThreadId((current) => {
-        if (current[activeThreadId]) {
-          return current;
-        }
+      return scheduleEffectWork(() => {
+        setMessagesLoading(false);
+        setMessagesByThreadId((current) => {
+          if (current[activeThreadId]) {
+            return current;
+          }
 
-        return {
-          ...current,
-          [activeThreadId]: [],
-        };
+          return {
+            ...current,
+            [activeThreadId]: [],
+          };
+        });
       });
-      return;
     }
 
     let cancelled = false;
-    setMessagesLoading(true);
+    const cancelScheduledWork = scheduleEffectWork(() => {
+      if (cancelled) {
+        return;
+      }
 
-    getAssistantThreadMessages(token, activeThreadId)
-      .then((response) => {
-        if (cancelled) {
-          return;
-        }
+      setMessagesLoading(true);
 
-        const threadMessages = response.data;
+      getAssistantThreadMessages(token, activeThreadId)
+        .then((response) => {
+          if (cancelled) {
+            return;
+          }
 
-        if (response.error || !threadMessages) {
+          const threadMessages = response.data;
+
+          if (response.error || !threadMessages) {
+            setThreadErrors((current) => ({
+              ...current,
+              [activeThreadId]: response.error || 'Unable to load this conversation.',
+            }));
+            setMessagesLoading(false);
+            return;
+          }
+
+          setMessagesByThreadId((current) => ({
+            ...current,
+            [activeThreadId]: threadMessages.map(mapPersistedMessage),
+          }));
           setThreadErrors((current) => ({
             ...current,
-            [activeThreadId]: response.error || 'Unable to load this conversation.',
+            [activeThreadId]: null,
           }));
           setMessagesLoading(false);
-          return;
-        }
+        })
+        .catch((error) => {
+          if (cancelled) {
+            return;
+          }
 
-        setMessagesByThreadId((current) => ({
-          ...current,
-          [activeThreadId]: threadMessages.map(mapPersistedMessage),
-        }));
-        setThreadErrors((current) => ({
-          ...current,
-          [activeThreadId]: null,
-        }));
-        setMessagesLoading(false);
-      })
-      .catch((error) => {
-        if (cancelled) {
-          return;
-        }
-
-        setThreadErrors((current) => ({
-          ...current,
-          [activeThreadId]: error instanceof Error ? error.message : 'Unable to load this conversation.',
-        }));
-        setMessagesLoading(false);
-      });
+          setThreadErrors((current) => ({
+            ...current,
+            [activeThreadId]: error instanceof Error ? error.message : 'Unable to load this conversation.',
+          }));
+          setMessagesLoading(false);
+        });
+    });
 
     return () => {
       cancelled = true;
+      cancelScheduledWork();
       setMessagesLoading(false);
     };
   }, [token, activeThreadId, threads, messagesByThreadId]);
@@ -1012,6 +1039,10 @@ export default function MarketplaceAssistant() {
     setIsHistoryOpen(false);
   }
 
+  const submitAutoSendMessage = useEffectEvent((message: string) => {
+    void submitMessage(message);
+  });
+
   useEffect(() => {
     if (
       !pendingAutoSendMessage ||
@@ -1027,8 +1058,10 @@ export default function MarketplaceAssistant() {
     }
 
     const message = pendingAutoSendMessage;
-    setPendingAutoSendMessage(null);
-    void submitMessage(message);
+    return scheduleEffectWork(() => {
+      setPendingAutoSendMessage(null);
+      submitAutoSendMessage(message);
+    });
   }, [
     assistantRole,
     isSending,

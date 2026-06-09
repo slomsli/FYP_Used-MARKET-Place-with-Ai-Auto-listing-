@@ -8,6 +8,7 @@ import { ROUTES } from '@/src/config/routes';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import { getAdminListingDetails } from '@/src/services/adminService';
 import type { AdminListingDetailResponse } from '@/src/types/admin';
+import { scheduleEffectWork } from '@/src/utils/effectScheduling';
 import ImageLightbox from '@/src/components/ui/ImageLightbox';
 import styles from './page.module.css';
 
@@ -163,7 +164,6 @@ export default function ListingDetailClient({ listingId }: ListingDetailClientPr
   const [detail, setDetail] = useState<AdminListingDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   useEffect(() => {
@@ -172,26 +172,32 @@ export default function ListingDetailClient({ listingId }: ListingDetailClientPr
     }
 
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-
-    getAdminListingDetails(token, listingId).then((response) => {
+    const cancelScheduledWork = scheduleEffectWork(() => {
       if (cancelled) {
         return;
       }
 
-      if (response.data) {
-        setDetail(response.data);
-        setActiveIndex(0);
-      } else {
-        setError(response.error || 'Unable to load listing details');
-      }
+      setLoading(true);
+      setError(null);
 
-      setLoading(false);
+      getAdminListingDetails(token, listingId).then((response) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (response.data) {
+          setDetail(response.data);
+        } else {
+          setError(response.error || 'Unable to load listing details');
+        }
+
+        setLoading(false);
+      });
     });
 
     return () => {
       cancelled = true;
+      cancelScheduledWork();
     };
   }, [listingId, token]);
 
@@ -328,7 +334,6 @@ export default function ListingDetailClient({ listingId }: ListingDetailClientPr
                   type="button"
                   className={styles.thumbnailButton}
                   onClick={() => {
-                    setActiveIndex(index);
                     setLightboxSrc(imageUrl);
                   }}
                   title="Click to enlarge"
@@ -506,7 +511,6 @@ export default function ListingDetailClient({ listingId }: ListingDetailClientPr
         gallery={gallery}
         onClose={() => setLightboxSrc(null)}
         onNavigate={(index) => {
-          setActiveIndex(index);
           setLightboxSrc(gallery[index] ?? null);
         }}
       />

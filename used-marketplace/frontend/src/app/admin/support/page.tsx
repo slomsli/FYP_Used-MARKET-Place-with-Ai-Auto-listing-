@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ROUTES } from '@/src/config/routes';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
+import { scheduleEffectWork } from '@/src/utils/effectScheduling';
 import {
   fetchConversations,
   fetchMessages,
@@ -261,6 +262,7 @@ export default function AdminSupportPage() {
   const messagesEndRef         = useRef<HTMLDivElement>(null);
   const fileInputRef           = useRef<HTMLInputElement>(null);
   const pendingAttachmentsRef  = useRef<PendingMessageAttachment[]>([]);
+  const tempMessageCounterRef  = useRef(0);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   /* ── Load tickets ── */
@@ -282,9 +284,14 @@ export default function AdminSupportPage() {
 
   useEffect(() => {
     if (authLoading || !token) return;
-    void loadTickets(undefined, true);
+    const cancelScheduledWork = scheduleEffectWork(() => {
+      void loadTickets(undefined, true);
+    });
     const iv = window.setInterval(() => void loadTickets(), 15000);
-    return () => window.clearInterval(iv);
+    return () => {
+      cancelScheduledWork();
+      window.clearInterval(iv);
+    };
   }, [authLoading, loadTickets, token]);
 
   useEffect(() => { pendingAttachmentsRef.current = pendingAttachments; }, [pendingAttachments]);
@@ -326,7 +333,11 @@ export default function AdminSupportPage() {
   useEffect(() => {
     const authToken = token;
     const ticketId  = openTicketId;
-    if (!authToken || !ticketId) { setLoadingMessages(false); return; }
+    if (!authToken || !ticketId) {
+      return scheduleEffectWork(() => {
+        setLoadingMessages(false);
+      });
+    }
 
     let cancelled = false;
 
@@ -344,9 +355,15 @@ export default function AdminSupportPage() {
       }
     }
 
-    void loadMessages(true);
+    const cancelScheduledWork = scheduleEffectWork(() => {
+      void loadMessages(true);
+    });
     const iv = window.setInterval(() => void loadMessages(), 7000);
-    return () => { cancelled = true; window.clearInterval(iv); };
+    return () => {
+      cancelled = true;
+      cancelScheduledWork();
+      window.clearInterval(iv);
+    };
   }, [openTicketId, token]);
 
   useEffect(() => {
@@ -422,9 +439,11 @@ export default function AdminSupportPage() {
     const uploads       = toAttachmentUploads(attachsToSend);
     const tempAttachs   = toPreviewMessageAttachments(attachsToSend);
     const fallback      = content || (attachsToSend.length === 1 ? 'Sent an image' : `Sent ${attachsToSend.length} images`);
+    tempMessageCounterRef.current += 1;
+    const tempCreatedAt = new Date().toISOString();
     const tempMsg: ChatMessage = {
-      id: `temp-${Date.now()}`, conversation_id: openTicket.id, sender_id: user.id,
-      content: fallback, attachments: tempAttachs, event: null, is_read: false, created_at: new Date().toISOString(),
+      id: `temp-${user.id}-${tempMessageCounterRef.current}`, conversation_id: openTicket.id, sender_id: user.id,
+      content: fallback, attachments: tempAttachs, event: null, is_read: false, created_at: tempCreatedAt,
     };
 
     setSendingReply(true);

@@ -2,6 +2,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import ReMarketVerifiedBadge from '@/src/components/identity/ReMarketVerifiedBadge';
 import {
@@ -17,6 +18,7 @@ import type {
   IdentityDocumentType,
   IdentityRequestStatus,
 } from '@/src/types/verification';
+import { scheduleEffectWork } from '@/src/utils/effectScheduling';
 import styles from './page.module.css';
 
 const STATUS_TABS: Array<{ value: IdentityRequestStatus; label: string }> = [
@@ -74,6 +76,7 @@ function getStatusClass(status: IdentityRequestStatus) {
 }
 
 export default function AdminVerificationPage() {
+  const searchParams = useSearchParams();
   const { token } = useRequireAuth();
   const [activeStatus, setActiveStatus] = useState<IdentityRequestStatus>('pending');
   const [data, setData] = useState<AdminVerificationRequestsResponse | null>(null);
@@ -87,7 +90,7 @@ export default function AdminVerificationPage() {
   const [adminNotes, setAdminNotes] = useState('');
   const [decisionBusy, setDecisionBusy] = useState<DecisionAction | null>(null);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [requestIdFromQuery, setRequestIdFromQuery] = useState<string | null>(null);
+  const requestIdFromQuery = searchParams.get('requestId');
 
   const openReview = useCallback(async (requestId: string) => {
     if (!token) return;
@@ -113,30 +116,30 @@ export default function AdminVerificationPage() {
     if (!token) return;
 
     let cancelled = false;
-    setLoading(true);
-
-    getAdminVerificationRequests(token, activeStatus).then((response) => {
+    const cancelScheduledWork = scheduleEffectWork(() => {
       if (cancelled) return;
 
-      if (response.data) {
-        setData(response.data);
-        setError(null);
-      } else {
-        setError(response.error || 'Failed to load verification requests.');
-      }
+      setLoading(true);
 
-      setLoading(false);
+      getAdminVerificationRequests(token, activeStatus).then((response) => {
+        if (cancelled) return;
+
+        if (response.data) {
+          setData(response.data);
+          setError(null);
+        } else {
+          setError(response.error || 'Failed to load verification requests.');
+        }
+
+        setLoading(false);
+      });
     });
 
     return () => {
       cancelled = true;
+      cancelScheduledWork();
     };
   }, [activeStatus, refreshKey, token]);
-
-  useEffect(() => {
-    const requestId = new URLSearchParams(window.location.search).get('requestId');
-    setRequestIdFromQuery(requestId);
-  }, []);
 
   useEffect(() => {
     if (!notice) return;
@@ -148,7 +151,9 @@ export default function AdminVerificationPage() {
   useEffect(() => {
     if (!requestIdFromQuery || !token) return;
 
-    void openReview(requestIdFromQuery);
+    return scheduleEffectWork(() => {
+      void openReview(requestIdFromQuery);
+    });
   }, [openReview, requestIdFromQuery, token]);
 
   const totalRequests = useMemo(() => {

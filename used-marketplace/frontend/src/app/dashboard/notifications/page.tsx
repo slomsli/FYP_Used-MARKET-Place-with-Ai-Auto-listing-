@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ROUTES } from '@/src/config/routes';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import { broadcastDashboardNotificationUpdate } from '@/src/lib/notificationSync';
+import { scheduleEffectWork } from '@/src/utils/effectScheduling';
 import {
   getNotifications,
   markAllNotificationsRead,
@@ -170,7 +171,7 @@ export default function NotificationsPage() {
         setLoading(false);
       }
     },
-    [syncUnreadCount, token]
+    [token]
   );
 
   const updateNotifications = useCallback(
@@ -191,13 +192,16 @@ export default function NotificationsPage() {
       return;
     }
 
-    void loadNotifications();
+    const cancelScheduledWork = scheduleEffectWork(() => {
+      void loadNotifications();
+    });
 
     const intervalId = window.setInterval(() => {
       void loadNotifications(false);
     }, 30000);
 
     return () => {
+      cancelScheduledWork();
       window.clearInterval(intervalId);
     };
   }, [loadNotifications, token, user]);

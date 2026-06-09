@@ -16,7 +16,12 @@ import {
   type StateLookup,
   type AreaLookup,
 } from '@/src/services/profileService';
-import { getPlatformSettings, updatePlatformSettings } from '@/src/services/adminSettingsService';
+import {
+  getPlatformSettings,
+  updatePlatformSettings,
+  type PlatformSettingValue,
+  type PlatformSettings,
+} from '@/src/services/adminSettingsService';
 import { ROUTES } from '@/src/config/routes';
 import OriginMapPicker, {
   type ListingCoordinates,
@@ -117,8 +122,8 @@ export default function AdminSettingsPage() {
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Platform Settings State
-  const [platformSettings, setPlatformSettings] = useState<Record<string, any>>({});
-  const [originalPlatformSettings, setOriginalPlatformSettings] = useState<Record<string, any>>({});
+  const [platformSettings, setPlatformSettings] = useState<PlatformSettings>({});
+  const [originalPlatformSettings, setOriginalPlatformSettings] = useState<PlatformSettings>({});
 
   // Profile State
   const [profile, setProfile] = useState<ProfileData | null>(null);
@@ -214,7 +219,7 @@ export default function AdminSettingsPage() {
 
   const isSettingsDirty = JSON.stringify(platformSettings) !== JSON.stringify(originalPlatformSettings);
 
-  const handleSettingChange = (key: string, value: any) => {
+  const handleSettingChange = (key: string, value: PlatformSettingValue) => {
     setPlatformSettings(prev => ({ ...prev, [key]: value }));
   };
 
@@ -360,7 +365,7 @@ export default function AdminSettingsPage() {
         setLoadingAvatar(false);
       };
       reader.readAsDataURL(file);
-    } catch (err) {
+    } catch {
       setLoadingAvatar(false);
       input.value = '';
       showToast('error', 'Error reading file');

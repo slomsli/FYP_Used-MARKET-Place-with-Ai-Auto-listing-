@@ -43,7 +43,7 @@ export default function AuthInput({
         )}
         <input
           id={inputId}
-          className="flex-1 bg-transparent text-[0.9375rem] text-gray-900 outline-none placeholder:text-gray-400 w-full"
+          className={`flex-1 bg-transparent text-[0.9375rem] text-gray-900 outline-none placeholder:text-gray-400 w-full ${className ?? ''}`}
           {...props}
         />
         {rightElement}

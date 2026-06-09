@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import {
   createSupportConversation,
@@ -19,6 +19,7 @@ import {
   type SupportTicketStatus,
 } from '@/src/services/messageService';
 import ImageLightbox from '@/src/components/ui/ImageLightbox';
+import { scheduleEffectWork } from '@/src/utils/effectScheduling';
 import styles from './support.module.css';
 
 const SUPPORT_TICKET_TITLE_PREFIX = 'Support request:';
@@ -144,7 +145,7 @@ export default function SupportTicketsPage() {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
 
-  async function loadTickets(preferredTicketId?: string) {
+  const loadTickets = useCallback(async (preferredTicketId?: string) => {
     if (!token) return;
     setLoadingTickets(true);
     const response = await fetchConversations(token);
@@ -161,9 +162,15 @@ export default function SupportTicketsPage() {
       if (currentTicketId && nextTickets.some((t) => t.id === currentTicketId)) return currentTicketId;
       return nextTickets[0]?.id ?? null;
     });
-  }
+  }, [token]);
 
-  useEffect(() => { if (token) void loadTickets(); }, [token]);
+  useEffect(() => {
+    if (!token) return;
+
+    return scheduleEffectWork(() => {
+      void loadTickets();
+    });
+  }, [loadTickets, token]);
 
   useEffect(() => { newTicketAttachmentsRef.current = newTicketAttachments; }, [newTicketAttachments]);
   useEffect(() => { replyAttachmentsRef.current = replyAttachments; }, [replyAttachments]);
@@ -178,19 +185,26 @@ export default function SupportTicketsPage() {
   useEffect(() => {
     if (!token || !activeTicketId || messagesByTicket[activeTicketId]) return;
     let cancelled = false;
-    setLoadingMessages(true);
-    fetchMessages(token, activeTicketId)
-      .then((response) => {
-        if (cancelled) return;
-        if (response.data) {
-          setMessagesByTicket((c) => ({ ...c, [activeTicketId]: response.data ?? [] }));
-          setError(null);
-        } else {
-          setError(response.error || 'Unable to load this ticket.');
-        }
-      })
-      .finally(() => { if (!cancelled) setLoadingMessages(false); });
-    return () => { cancelled = true; };
+    const cancelScheduledWork = scheduleEffectWork(() => {
+      if (cancelled) return;
+
+      setLoadingMessages(true);
+      fetchMessages(token, activeTicketId)
+        .then((response) => {
+          if (cancelled) return;
+          if (response.data) {
+            setMessagesByTicket((c) => ({ ...c, [activeTicketId]: response.data ?? [] }));
+            setError(null);
+          } else {
+            setError(response.error || 'Unable to load this ticket.');
+          }
+        })
+        .finally(() => { if (!cancelled) setLoadingMessages(false); });
+    });
+    return () => {
+      cancelled = true;
+      cancelScheduledWork();
+    };
   }, [activeTicketId, messagesByTicket, token]);
 
   // Auto-scroll messages

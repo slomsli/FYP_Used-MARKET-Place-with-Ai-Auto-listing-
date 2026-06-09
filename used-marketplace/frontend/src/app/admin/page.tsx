@@ -6,6 +6,7 @@ import { ROUTES } from '@/src/config/routes';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import { getAdminOverview } from '@/src/services/adminService';
 import type { AdminOverviewResponse } from '@/src/types/admin';
+import { scheduleEffectWork } from '@/src/utils/effectScheduling';
 import styles from './page.module.css';
 
 function UsersIcon() {
@@ -173,7 +174,9 @@ export default function AdminPage() {
   }, [selectedYear, token]);
 
   useEffect(() => {
-    void loadOverview();
+    return scheduleEffectWork(() => {
+      void loadOverview();
+    });
   }, [loadOverview]);
 
   if (loading && !overview) {

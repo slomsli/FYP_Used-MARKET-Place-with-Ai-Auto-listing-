@@ -1,6 +1,21 @@
 import { createClient } from '@/src/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
+type AuthCallbackOtpType = 'signup' | 'invite' | 'magiclink' | 'recovery' | 'email_change' | 'email';
+
+const AUTH_CALLBACK_OTP_TYPES = new Set<string>([
+  'signup',
+  'invite',
+  'magiclink',
+  'recovery',
+  'email_change',
+  'email',
+]);
+
+function resolveAuthCallbackOtpType(value: string | null): AuthCallbackOtpType | null {
+  return value && AUTH_CALLBACK_OTP_TYPES.has(value) ? (value as AuthCallbackOtpType) : null;
+}
+
 /**
  * GET /auth/callback
  * 
@@ -11,7 +26,7 @@ export async function GET(request: Request) {
   
   const code = searchParams.get('code');
   const token_hash = searchParams.get('token_hash');
-  const type = searchParams.get('type') as any;
+  const type = resolveAuthCallbackOtpType(searchParams.get('type'));
   const next = searchParams.get('next') ?? '/dashboard';
 
   const supabase = await createClient();

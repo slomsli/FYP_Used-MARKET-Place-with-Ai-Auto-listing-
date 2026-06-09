@@ -2,12 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { getPublicConfig } from '@/src/services/publicSettingsService';
-import { useAuth } from '@/src/hooks/useAuth';
 import { usePathname } from 'next/navigation';
 
 export default function MaintenanceBlocker({ children }: { children: React.ReactNode }) {
   const [isMaintenance, setIsMaintenance] = useState<boolean | null>(null);
-  const { session, user } = useAuth();
   const pathname = usePathname();
 
   useEffect(() => {

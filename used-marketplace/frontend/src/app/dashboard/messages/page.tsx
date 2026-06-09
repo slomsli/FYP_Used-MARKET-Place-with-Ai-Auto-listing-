@@ -8,6 +8,7 @@ import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import { getPublicListingById } from '@/src/services/listingService';
 import * as messageService from '@/src/services/messageService';
 import type { ChatMessage, ConversationDetail } from '@/src/services/messageService';
+import { scheduleEffectWork } from '@/src/utils/effectScheduling';
 import ImageLightbox from '@/src/components/ui/ImageLightbox';
 import ReMarketVerifiedBadge from '@/src/components/identity/ReMarketVerifiedBadge';
 import styles from './page.module.css';
@@ -403,32 +404,40 @@ export default function MessagesPage() {
 
   useEffect(() => {
     if (!user?.id || !token) {
-      setArchivedConversationIds([]);
-      setLoadingArchives(false);
-      return;
+      return scheduleEffectWork(() => {
+        setArchivedConversationIds([]);
+        setLoadingArchives(false);
+      });
     }
 
     let cancelled = false;
-    setLoadingArchives(true);
-
-    messageService.fetchArchivedConversationIds(token).then(({ data, error }) => {
+    const cancelScheduledWork = scheduleEffectWork(() => {
       if (cancelled) {
         return;
       }
 
-      if (error || !data) {
-        setPageError(error || 'Failed to load archived conversations');
-        setLoadingArchives(false);
-        return;
-      }
+      setLoadingArchives(true);
 
-      setArchivedConversationIds(data);
-      setPageError(null);
-      setLoadingArchives(false);
+      messageService.fetchArchivedConversationIds(token).then(({ data, error }) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (error || !data) {
+          setPageError(error || 'Failed to load archived conversations');
+          setLoadingArchives(false);
+          return;
+        }
+
+        setArchivedConversationIds(data);
+        setPageError(null);
+        setLoadingArchives(false);
+      });
     });
 
     return () => {
       cancelled = true;
+      cancelScheduledWork();
     };
   }, [token, user?.id]);
 
@@ -439,9 +448,11 @@ export default function MessagesPage() {
 
     const validConversationIds = new Set(conversations.map((conversation) => conversation.id));
 
-    setArchivedConversationIds((current) => {
-      const next = current.filter((conversationId) => validConversationIds.has(conversationId));
-      return next.length === current.length ? current : next;
+    return scheduleEffectWork(() => {
+      setArchivedConversationIds((current) => {
+        const next = current.filter((conversationId) => validConversationIds.has(conversationId));
+        return next.length === current.length ? current : next;
+      });
     });
   }, [conversations, loadingConversations]);
 
@@ -591,13 +602,16 @@ export default function MessagesPage() {
   useEffect(() => {
     if (!token || authLoading) return;
 
-    void loadConversations();
+    const cancelScheduledWork = scheduleEffectWork(() => {
+      void loadConversations();
+    });
 
     const interval = window.setInterval(() => {
       void loadConversations();
     }, 10000);
 
     return () => {
+      cancelScheduledWork();
       conversationRequestIdRef.current += 1;
       window.clearInterval(interval);
     };
@@ -606,20 +620,23 @@ export default function MessagesPage() {
   useEffect(() => {
     if (!selectedConversation) {
       messageRequestIdRef.current += 1;
-      setMessages([]);
-      setLoadingMessages(false);
-      return;
+      return scheduleEffectWork(() => {
+        setMessages([]);
+        setLoadingMessages(false);
+      });
     }
 
     let cancelled = false;
 
-    void loadMessages(selectedConversation, {
-      showLoader: true,
-      reportErrors: true,
-    }).then((data) => {
-      if (!cancelled && data) {
-        void markConversationRead(selectedConversation);
-      }
+    const cancelScheduledWork = scheduleEffectWork(() => {
+      void loadMessages(selectedConversation, {
+        showLoader: true,
+        reportErrors: true,
+      }).then((data) => {
+        if (!cancelled && data) {
+          void markConversationRead(selectedConversation);
+        }
+      });
     });
 
     const interval = window.setInterval(() => {
@@ -632,6 +649,7 @@ export default function MessagesPage() {
 
     return () => {
       cancelled = true;
+      cancelScheduledWork();
       messageRequestIdRef.current += 1;
       window.clearInterval(interval);
     };
@@ -733,90 +751,92 @@ export default function MessagesPage() {
       return;
     }
 
-    const activeConversations = conversations.filter(
-      (conversation) => !archivedConversationIdSet.has(conversation.id)
-    );
-    const hasPendingRequest =
-      requestKey !== null && handledRequestKeyRef.current !== requestKey;
+    return scheduleEffectWork(() => {
+      const activeConversations = conversations.filter(
+        (conversation) => !archivedConversationIdSet.has(conversation.id)
+      );
+      const hasPendingRequest =
+        requestKey !== null && handledRequestKeyRef.current !== requestKey;
 
-    if (conversations.length === 0) {
-      if (draftTarget) {
+      if (conversations.length === 0) {
+        if (draftTarget) {
+          return;
+        }
+
+        if (!requestedListingId) {
+          setSelectedConversation(null);
+        }
+        setMessages([]);
         return;
       }
 
-      if (!requestedListingId) {
-        setSelectedConversation(null);
-      }
-      setMessages([]);
-      return;
-    }
-
-    const requestedConversation =
-      hasPendingRequest && requestedConversationId
-        ? conversations.find((conversation) => conversation.id === requestedConversationId)
-        : null;
-    const requestedListingConversation =
-      hasPendingRequest && requestedListingId
-        ? conversations.find((conversation) =>
-            conversationMatchesRequest(
-              conversation,
-              requestedListingId,
-              requestedRecipientId
+      const requestedConversation =
+        hasPendingRequest && requestedConversationId
+          ? conversations.find((conversation) => conversation.id === requestedConversationId)
+          : null;
+      const requestedListingConversation =
+        hasPendingRequest && requestedListingId
+          ? conversations.find((conversation) =>
+              conversationMatchesRequest(
+                conversation,
+                requestedListingId,
+                requestedRecipientId
+              )
             )
-          )
+          : null;
+      const activeStillExists = selectedConversation
+        ? conversations.find((conversation) => conversation.id === selectedConversation)
         : null;
-    const activeStillExists = selectedConversation
-      ? conversations.find((conversation) => conversation.id === selectedConversation)
-      : null;
-    const activeConversationArchived = activeStillExists
-      ? archivedConversationIdSet.has(activeStillExists.id)
-      : false;
+      const activeConversationArchived = activeStillExists
+        ? archivedConversationIdSet.has(activeStillExists.id)
+        : false;
 
-    let nextConversationId = selectedConversation;
-    let shouldOpenChat = false;
+      let nextConversationId = selectedConversation;
+      let shouldOpenChat = false;
 
-    if (requestedConversation) {
-      if (archivedConversationIdSet.has(requestedConversation.id)) {
-        removeArchivedConversationId(requestedConversation.id);
-        void persistArchiveState(requestedConversation.id, false);
+      if (requestedConversation) {
+        if (archivedConversationIdSet.has(requestedConversation.id)) {
+          removeArchivedConversationId(requestedConversation.id);
+          void persistArchiveState(requestedConversation.id, false);
+        }
+        nextConversationId = requestedConversation.id;
+        shouldOpenChat = true;
+        completeInboxRequest();
+      } else if (requestedListingConversation) {
+        if (archivedConversationIdSet.has(requestedListingConversation.id)) {
+          removeArchivedConversationId(requestedListingConversation.id);
+          void persistArchiveState(requestedListingConversation.id, false);
+        }
+        nextConversationId = requestedListingConversation.id;
+        shouldOpenChat = true;
+        completeInboxRequest();
+      } else if (hasPendingRequest && requestedListingId) {
+        nextConversationId = null;
+        shouldOpenChat = true;
+      } else if (!draftTarget && (!activeStillExists || (activeConversationArchived && filterTab !== 'archived'))) {
+        nextConversationId = isDesktopViewport()
+          ? activeConversations[0]?.id ?? null
+          : null;
       }
-      nextConversationId = requestedConversation.id;
-      shouldOpenChat = true;
-      completeInboxRequest();
-    } else if (requestedListingConversation) {
-      if (archivedConversationIdSet.has(requestedListingConversation.id)) {
-        removeArchivedConversationId(requestedListingConversation.id);
-        void persistArchiveState(requestedListingConversation.id, false);
-      }
-      nextConversationId = requestedListingConversation.id;
-      shouldOpenChat = true;
-      completeInboxRequest();
-    } else if (hasPendingRequest && requestedListingId) {
-      nextConversationId = null;
-      shouldOpenChat = true;
-    } else if (!draftTarget && (!activeStillExists || (activeConversationArchived && filterTab !== 'archived'))) {
-      nextConversationId = isDesktopViewport()
-        ? activeConversations[0]?.id ?? null
-        : null;
-    }
 
-    if (nextConversationId === selectedConversation) {
-      if (!nextConversationId && shouldOpenChat) {
+      if (nextConversationId === selectedConversation) {
+        if (!nextConversationId && shouldOpenChat) {
+          setMobileChatOpen(true);
+        }
+        return;
+      }
+
+      setSelectedConversation(nextConversationId);
+      if (nextConversationId && shouldOpenChat) {
         setMobileChatOpen(true);
       }
-      return;
-    }
-
-    setSelectedConversation(nextConversationId);
-    if (nextConversationId && shouldOpenChat) {
-      setMobileChatOpen(true);
-    }
-    if (!nextConversationId) {
-      setMessages([]);
-      if (shouldOpenChat) {
-        setMobileChatOpen(true);
+      if (!nextConversationId) {
+        setMessages([]);
+        if (shouldOpenChat) {
+          setMobileChatOpen(true);
+        }
       }
-    }
+    });
   }, [
     filterTab,
     completeInboxRequest,
@@ -842,30 +862,34 @@ export default function MessagesPage() {
     );
 
     if (selectedConversationExists) {
-      setDraftTarget(null);
+      return scheduleEffectWork(() => {
+        setDraftTarget(null);
+      });
     }
   }, [conversations, draftTarget, selectedConversation]);
 
   useEffect(() => {
-    if (filterTab === 'archived') {
-      if (selectedConversation && archivedConversationIdSet.has(selectedConversation)) {
+    return scheduleEffectWork(() => {
+      if (filterTab === 'archived') {
+        if (selectedConversation && archivedConversationIdSet.has(selectedConversation)) {
+          return;
+        }
+
+        const firstArchivedConversationId =
+          conversations.find((conversation) => archivedConversationIdSet.has(conversation.id))?.id ?? null;
+
+        setSelectedConversation(firstArchivedConversationId);
+        if (!firstArchivedConversationId) {
+          setMessages([]);
+        }
         return;
       }
 
-      const firstArchivedConversationId =
-        conversations.find((conversation) => archivedConversationIdSet.has(conversation.id))?.id ?? null;
-
-      setSelectedConversation(firstArchivedConversationId);
-      if (!firstArchivedConversationId) {
+      if (selectedConversation && archivedConversationIdSet.has(selectedConversation)) {
+        setSelectedConversation(null);
         setMessages([]);
       }
-      return;
-    }
-
-    if (selectedConversation && archivedConversationIdSet.has(selectedConversation)) {
-      setSelectedConversation(null);
-      setMessages([]);
-    }
+    });
   }, [
     archivedConversationIdSet,
     conversations,
@@ -1583,7 +1607,6 @@ export default function MessagesPage() {
                           {message.attachments?.length > 0 && (
                             <div className={styles.messageAttachments}>
                               {message.attachments.map((attachment) => (
-                                /* eslint-disable-next-line @next/next/no-img-element */
                                 <button
                                   key={attachment.id || attachment.url}
                                   type="button"

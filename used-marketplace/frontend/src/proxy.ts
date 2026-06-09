@@ -58,7 +58,7 @@ function resolveProtectedRedirect(pathname: string, isAdmin: boolean) {
     : ROUTES.DASHBOARD;
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(

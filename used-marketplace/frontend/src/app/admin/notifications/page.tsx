@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ROUTES } from '@/src/config/routes';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import { broadcastDashboardNotificationUpdate } from '@/src/lib/notificationSync';
+import { scheduleEffectWork } from '@/src/utils/effectScheduling';
 import {
   getNotifications,
   markAllNotificationsRead,
@@ -172,11 +173,16 @@ export default function AdminNotificationsPage() {
 
   useEffect(() => {
     if (!user || !token) return;
-    void loadNotifications();
+    const cancelScheduledWork = scheduleEffectWork(() => {
+      void loadNotifications();
+    });
     const intervalId = window.setInterval(() => {
       void loadNotifications(false);
     }, 30000);
-    return () => window.clearInterval(intervalId);
+    return () => {
+      cancelScheduledWork();
+      window.clearInterval(intervalId);
+    };
   }, [loadNotifications, token, user]);
 
   const handleMarkRead = useCallback(
