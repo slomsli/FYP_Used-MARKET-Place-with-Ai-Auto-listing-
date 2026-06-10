@@ -88,6 +88,7 @@ export interface ListingMetadata {
   currencies: string[];
   features: {
     aiListingAutofillEnabled: boolean;
+    aiListingCoachEnabled: boolean;
   };
 }
 
@@ -156,6 +157,9 @@ export interface MyListingsResponse {
   filters: {
     status: ListingFilterStatus;
     sort: ListingSortOption;
+  };
+  features: {
+    aiListingCoachEnabled: boolean;
   };
   statusCounts: {
     all: number;

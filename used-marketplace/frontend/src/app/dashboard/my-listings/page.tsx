@@ -833,6 +833,18 @@ export default function MyListingsPage() {
                       )
                     )}
 
+                    {data.features?.aiListingCoachEnabled !== false &&
+                      listing.status !== 'sold' &&
+                      listing.status !== 'rejected' &&
+                      !isSuspended && (
+                      <Link
+                        href={`${ROUTES.ADD_LISTING}?listingId=${listing.id}&coach=true`}
+                        className={styles.coachAction}
+                      >
+                        AI Coach
+                      </Link>
+                    )}
+
                     {listing.status === 'rejected' && (
                       <span className={`${styles.secondaryAction} ${styles.actionDisabled}`}>
                         Waiting for Admin

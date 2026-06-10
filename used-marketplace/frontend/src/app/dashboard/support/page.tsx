@@ -120,6 +120,10 @@ function statusPillClass(status: string) {
   return styles.pillOpen;
 }
 
+function trimPrefillParam(value: string | null, maxLength: number) {
+  return (value ?? '').trim().slice(0, maxLength);
+}
+
 /* ── Component ─────────────────────────────────────── */
 export default function SupportTicketsPage() {
   const { user, token, loading: authLoading } = useRequireAuth();
@@ -144,6 +148,7 @@ export default function SupportTicketsPage() {
   const replyAttachmentsRef = useRef<PendingMessageAttachment[]>([]);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
+  const appliedUrlPrefillRef = useRef(false);
 
   const loadTickets = useCallback(async (preferredTicketId?: string) => {
     if (!token) return;
@@ -171,6 +176,24 @@ export default function SupportTicketsPage() {
       void loadTickets();
     });
   }, [loadTickets, token]);
+
+  useEffect(() => {
+    if (appliedUrlPrefillRef.current || typeof window === 'undefined') return;
+
+    const params = new URLSearchParams(window.location.search);
+    const shouldOpenTicket = params.get('newTicket') === '1';
+    const prefillSubject = trimPrefillParam(params.get('subject'), 90);
+    const prefillDetails = trimPrefillParam(params.get('details'), 2000);
+
+    if (!shouldOpenTicket && !prefillSubject && !prefillDetails) return;
+
+    appliedUrlPrefillRef.current = true;
+    return scheduleEffectWork(() => {
+      if (prefillSubject) setSubject(prefillSubject);
+      if (prefillDetails) setDetails(prefillDetails);
+      setIsNewTicketModalOpen(true);
+    });
+  }, []);
 
   useEffect(() => { newTicketAttachmentsRef.current = newTicketAttachments; }, [newTicketAttachments]);
   useEffect(() => { replyAttachmentsRef.current = replyAttachments; }, [replyAttachments]);

@@ -446,6 +446,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
   }
 
   const { listing, seller, related } = response;
+  const isSeller = user && user.id === seller.id;
   const gallery = buildGallery(listing);
   const activeImage = gallery[activeIndex] ?? null;
   const toneClass = styles[getToneClass(listing)];
@@ -483,7 +484,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
           : 'The listing is currently set to a fixed asking price, but buyers can still contact the seller through the marketplace flow.',
   ];
   const highlights = [
-    `${listing.favoritesCount} saves and ${listing.totalOffersCount} recorded offer${listing.totalOffersCount === 1 ? '' : 's'}.`,
+    ...(isSeller ? [`${listing.favoritesCount} saves and ${listing.totalOffersCount} recorded offer${listing.totalOffersCount === 1 ? '' : 's'}.`] : []),
     `${gallery.length} image${gallery.length === 1 ? '' : 's'} attached by the seller.`,
     `Seller has ${seller.activeListings} active listing${seller.activeListings === 1 ? '' : 's'} and ${seller.totalSales} completed sale${seller.totalSales === 1 ? '' : 's'}.`,
   ];
@@ -792,10 +793,12 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
                 <span className={styles.assuranceLabel}>Seller</span>
                 <strong>{seller.totalReviews} review(s) on record</strong>
               </div>
-              <div>
-                <span className={styles.assuranceLabel}>Interest</span>
-                <strong>{listing.favoritesCount} saves, {listing.totalOffersCount} offers</strong>
-              </div>
+              {isSeller && (
+                <div>
+                  <span className={styles.assuranceLabel}>Interest</span>
+                  <strong>{listing.favoritesCount} saves, {listing.totalOffersCount} offers</strong>
+                </div>
+              )}
               <div>
                 <span className={styles.assuranceLabel}>Workflow</span>
                 <strong>Offers and messages are linked to this listing</strong>

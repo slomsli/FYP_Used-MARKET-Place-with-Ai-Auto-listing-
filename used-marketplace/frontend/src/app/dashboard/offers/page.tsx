@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import {
@@ -49,6 +49,10 @@ function formatDateTime(isoString: string) {
   }).format(date);
 }
 
+function formatCount(count: number, singular: string, plural = `${singular}s`) {
+  return `${count.toLocaleString()} ${count === 1 ? singular : plural}`;
+}
+
 function buildMessageHref(listingId: string, recipientId: string, recipientName: string) {
   const params = new URLSearchParams({
     listingId,
@@ -76,6 +80,59 @@ function buildDeliveryIssueHref(offer: OfferSummary) {
 
 type OfferTab = 'received' | 'sent';
 type SummaryTone = 'action' | 'waiting' | 'neutral';
+type ProductFilterOption = {
+  listingId: string;
+  title: string;
+  coverImagePath: string | null;
+  categoryName: string | null;
+  currency: string;
+  totalOffers: number;
+  pendingOffers: number;
+  highestOffer: number;
+  latestOfferAt: string;
+};
+
+const ALL_PRODUCTS_FILTER = 'all';
+
+function getTimestamp(isoString: string) {
+  const timestamp = new Date(isoString).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function buildProductFilterOptions(offers: OfferSummary[]): ProductFilterOption[] {
+  const productMap = new Map<string, ProductFilterOption>();
+
+  offers.forEach((offer) => {
+    const current = productMap.get(offer.listingId);
+
+    if (!current) {
+      productMap.set(offer.listingId, {
+        listingId: offer.listingId,
+        title: offer.listing.title,
+        coverImagePath: offer.listing.coverImagePath,
+        categoryName: offer.listing.categoryName,
+        currency: offer.listing.currency,
+        totalOffers: 1,
+        pendingOffers: offer.status === 'pending' ? 1 : 0,
+        highestOffer: offer.offerPrice,
+        latestOfferAt: offer.updatedAt,
+      });
+      return;
+    }
+
+    current.totalOffers += 1;
+    current.pendingOffers += offer.status === 'pending' ? 1 : 0;
+    current.highestOffer = Math.max(current.highestOffer, offer.offerPrice);
+
+    if (getTimestamp(offer.updatedAt) > getTimestamp(current.latestOfferAt)) {
+      current.latestOfferAt = offer.updatedAt;
+    }
+  });
+
+  return Array.from(productMap.values()).sort(
+    (first, second) => getTimestamp(second.latestOfferAt) - getTimestamp(first.latestOfferAt)
+  );
+}
 
 function StarIcon({ filled }: { filled: boolean }) {
   return (
@@ -258,6 +315,8 @@ export default function OffersPage() {
   const [sellerReplyText, setSellerReplyText] = useState('');
   const [sellerReplySubmitting, setSellerReplySubmitting] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [selectedListingId, setSelectedListingId] = useState(ALL_PRODUCTS_FILTER);
+  const [productSearch, setProductSearch] = useState('');
 
   const fetchOffers = useCallback(async () => {
     if (!token) return;
@@ -294,6 +353,65 @@ export default function OffersPage() {
     const timeoutId = window.setTimeout(() => setNotice(null), 3200);
     return () => window.clearTimeout(timeoutId);
   }, [notice]);
+
+  const productOptions = useMemo(() => buildProductFilterOptions(offers), [offers]);
+  const selectedListingExists =
+    selectedListingId === ALL_PRODUCTS_FILTER ||
+    productOptions.some((product) => product.listingId === selectedListingId);
+  const activeListingFilter = selectedListingExists ? selectedListingId : ALL_PRODUCTS_FILTER;
+  const selectedProduct = useMemo(
+    () => productOptions.find((product) => product.listingId === activeListingFilter) ?? null,
+    [activeListingFilter, productOptions]
+  );
+  const normalizedProductSearch = productSearch.trim().toLowerCase();
+  const searchedProductOptions = useMemo(() => {
+    if (!normalizedProductSearch) {
+      return productOptions;
+    }
+
+    return productOptions.filter((product) => {
+      const categoryName = product.categoryName ?? '';
+      return (
+        product.title.toLowerCase().includes(normalizedProductSearch) ||
+        categoryName.toLowerCase().includes(normalizedProductSearch)
+      );
+    });
+  }, [normalizedProductSearch, productOptions]);
+  const searchedProductIds = useMemo(
+    () => new Set(searchedProductOptions.map((product) => product.listingId)),
+    [searchedProductOptions]
+  );
+  const visibleOffers = useMemo(() => {
+    if (activeListingFilter !== ALL_PRODUCTS_FILTER) {
+      return offers.filter((offer) => offer.listingId === activeListingFilter);
+    }
+
+    if (!normalizedProductSearch) {
+      return offers;
+    }
+
+    return offers.filter((offer) => searchedProductIds.has(offer.listingId));
+  }, [activeListingFilter, normalizedProductSearch, offers, searchedProductIds]);
+  const pendingOfferCount = useMemo(
+    () => offers.filter((offer) => offer.status === 'pending').length,
+    [offers]
+  );
+
+  const handleSelectProduct = (listingId: string) => {
+    setSelectedListingId(listingId);
+    setProductSearch('');
+  };
+
+  const clearProductFilter = () => {
+    setSelectedListingId(ALL_PRODUCTS_FILTER);
+    setProductSearch('');
+  };
+
+  const handleTabChange = (tab: OfferTab) => {
+    setActiveTab(tab);
+    setSelectedListingId(ALL_PRODUCTS_FILTER);
+    setProductSearch('');
+  };
 
   const handleAccept = async (offerId: string) => {
     if (!token) return;
@@ -423,6 +541,13 @@ export default function OffersPage() {
   };
 
   const currentUserId = user?.id ?? null;
+  const hasActiveProductFilter =
+    activeListingFilter !== ALL_PRODUCTS_FILTER || normalizedProductSearch.length > 0;
+  const productFilterSummary = selectedProduct
+    ? `${formatCount(visibleOffers.length, 'offer')} for this product. ${formatCount(selectedProduct.pendingOffers, 'pending offer')}.`
+    : normalizedProductSearch
+      ? `${formatCount(visibleOffers.length, 'offer')} matching "${productSearch.trim()}".`
+      : `${formatCount(offers.length, 'offer')} across ${formatCount(productOptions.length, 'product')}. ${formatCount(pendingOfferCount, 'pending offer')}.`;
 
   if (authLoading || loading) {
     return (
@@ -444,13 +569,13 @@ export default function OffersPage() {
         <div className={styles.tabsRow}>
           <button
             className={`${styles.tab} ${activeTab === 'received' ? styles.tabActive : ''}`}
-            onClick={() => setActiveTab('received')}
+            onClick={() => handleTabChange('received')}
           >
             Received
           </button>
           <button
             className={`${styles.tab} ${activeTab === 'sent' ? styles.tabActive : ''}`}
-            onClick={() => setActiveTab('sent')}
+            onClick={() => handleTabChange('sent')}
           >
             Sent
           </button>
@@ -478,8 +603,67 @@ export default function OffersPage() {
           </p>
         </div>
       ) : (
-        <div className={styles.offersList}>
-          {offers.map((offer) => {
+        <>
+          <section className={styles.productFilterPanel} aria-label="Filter offers by product">
+            <div className={styles.filterHeader}>
+              <div>
+                <span className={styles.filterEyebrow}>Product filter</span>
+                <h2 className={styles.filterTitle}>
+                  {selectedProduct ? selectedProduct.title : 'All products'}
+                </h2>
+                <p className={styles.filterSummary}>{productFilterSummary}</p>
+              </div>
+              <button
+                type="button"
+                className={styles.clearFilterButton}
+                onClick={clearProductFilter}
+                disabled={!hasActiveProductFilter}
+              >
+                Clear filter
+              </button>
+            </div>
+
+            <div className={styles.filterControls}>
+              <label className={styles.filterControl}>
+                <span>Search product</span>
+                <input
+                  type="search"
+                  value={productSearch}
+                  onChange={(event) => setProductSearch(event.target.value)}
+                  placeholder="Type a product name or category"
+                  className={styles.productSearchInput}
+                />
+              </label>
+              <label className={styles.filterControl}>
+                <span>Choose product</span>
+                <select
+                  value={activeListingFilter}
+                  onChange={(event) => handleSelectProduct(event.target.value)}
+                  className={styles.productSelect}
+                >
+                  <option value={ALL_PRODUCTS_FILTER}>
+                    {normalizedProductSearch
+                      ? `Matching products (${formatCount(visibleOffers.length, 'offer')})`
+                      : `All products (${formatCount(offers.length, 'offer')})`}
+                  </option>
+                  {searchedProductOptions.map((product) => (
+                    <option key={product.listingId} value={product.listingId}>
+                      {product.title} ({formatCount(product.totalOffers, 'offer')})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </section>
+
+          {visibleOffers.length === 0 ? (
+            <div className={`${styles.emptyState} ${styles.filteredEmptyState}`}>
+              <h3>No offers match this product filter</h3>
+              <p>Try another product name or clear the filter to see every offer in this tab.</p>
+            </div>
+          ) : (
+            <div className={styles.offersList}>
+              {visibleOffers.map((offer) => {
             const isReceived = activeTab === 'received';
             const participant = isReceived ? offer.buyer : offer.seller;
             const participantRoleLabel = isReceived ? 'Buyer' : 'Seller';
@@ -865,8 +1049,10 @@ export default function OffersPage() {
                 </div>
               </div>
             );
-          })}
-        </div>
+              })}
+            </div>
+          )}
+        </>
       )}
 
       {showCounterModal && (

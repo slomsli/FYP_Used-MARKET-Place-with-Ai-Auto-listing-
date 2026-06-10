@@ -1,3 +1,10 @@
+.badgeContainer {
+  position: relative;
+  display: inline-flex;
+  cursor: pointer;
+  user-select: none;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -15,10 +22,14 @@
   line-height: 1;
   letter-spacing: 0;
   white-space: nowrap;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.badge svg {
-  flex: 0 0 auto;
+.badgeContainer:hover .badge {
+  background: #d1fae5;
+  border-color: rgba(4, 120, 87, 0.35);
+  box-shadow: 0 4px 12px rgba(4, 120, 87, 0.1);
+  transform: translateY(-1px);
 }
 
 .compact {
@@ -27,4 +38,74 @@
   min-height: 24px;
   justify-content: center;
   padding: 0;
+}
+
+/* Tooltip styles */
+.tooltip {
+  display: block;
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  width: 280px;
+  padding: 1rem;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(4, 120, 87, 0.2);
+  box-shadow: 
+    0 10px 25px -5px rgba(4, 120, 87, 0.08),
+    0 8px 16px -6px rgba(0, 0, 0, 0.05),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+  color: #1f2937;
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.5;
+  white-space: normal;
+  text-align: left;
+  animation: tooltipFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: auto;
+}
+
+/* Triangle arrow */
+.tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 6px;
+  border-style: solid;
+  border-color: rgba(255, 255, 255, 0.95) transparent transparent transparent;
+}
+
+.tooltipHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.45rem;
+  color: #047857;
+  font-weight: 800;
+  font-size: 0.85rem;
+}
+
+.tooltipBody {
+  display: block;
+  color: #4b5563;
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
 }

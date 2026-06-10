@@ -6,6 +6,7 @@ import { sendReply } from './messageService';
 import { ensurePurchaseReceiptForManualSale } from './purchaseService';
 import {
   AI_LISTING_AUTOFILL_SETTING_KEY,
+  AI_LISTING_COACH_SETTING_KEY,
   isSettingEnabled,
 } from './settingsService';
 import {
@@ -1581,7 +1582,13 @@ export async function getListingMetadata(stateId?: number): Promise<ListingMetad
     await ensureStateExists(stateId);
   }
 
-  const [categoriesResult, statesResult, areasResult, aiListingAutofillEnabled] = await Promise.all([
+  const [
+    categoriesResult,
+    statesResult,
+    areasResult,
+    aiListingAutofillEnabled,
+    aiListingCoachEnabled,
+  ] = await Promise.all([
     supabaseAdmin
       .from('categories')
       .select('id, name, slug, parent_id')
@@ -1598,6 +1605,7 @@ export async function getListingMetadata(stateId?: number): Promise<ListingMetad
         .eq('state_id', stateId)
         .order('name', { ascending: true }),
     isSettingEnabled(AI_LISTING_AUTOFILL_SETTING_KEY, true),
+    isSettingEnabled(AI_LISTING_COACH_SETTING_KEY, true),
   ]);
 
   if (categoriesResult.error) {
@@ -1640,6 +1648,7 @@ export async function getListingMetadata(stateId?: number): Promise<ListingMetad
     currencies: ['MYR'],
     features: {
       aiListingAutofillEnabled,
+      aiListingCoachEnabled,
     },
   };
 }
@@ -2254,7 +2263,12 @@ export async function getMyListings(
 
   listingsQuery = applyListingSort(listingsQuery, filters.sort);
 
-  const [filteredListingsResult, allListingsResult, ratingsResult] = await Promise.all([
+  const [
+    filteredListingsResult,
+    allListingsResult,
+    ratingsResult,
+    aiListingCoachEnabled,
+  ] = await Promise.all([
     listingsQuery.limit(100),
     supabaseAdmin
       .from('listings')
@@ -2265,6 +2279,7 @@ export async function getMyListings(
       .from('reviews')
       .select('rating')
       .eq('seller_id', sellerId),
+    isSettingEnabled(AI_LISTING_COACH_SETTING_KEY, true),
   ]);
 
   if (filteredListingsResult.error) {
@@ -2365,6 +2380,9 @@ export async function getMyListings(
 
   return {
     filters,
+    features: {
+      aiListingCoachEnabled,
+    },
     statusCounts,
     sellerStats: {
       totalSalesAmount,

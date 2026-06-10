@@ -1,3 +1,6 @@
+'use client';
+
+import { useState, useRef, useEffect } from 'react';
 import styles from './ReMarketVerifiedBadge.module.css';
 
 interface ReMarketVerifiedBadgeProps {
@@ -18,14 +21,57 @@ export default function ReMarketVerifiedBadge({
   compact = false,
   className,
 }: ReMarketVerifiedBadgeProps) {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const containerRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setShowTooltip(false);
+      }
+    }
+
+    if (showTooltip) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showTooltip]);
+
   return (
     <span
-      className={[styles.badge, compact ? styles.compact : '', className ?? ''].filter(Boolean).join(' ')}
-      title="ReMarket Verified"
-      aria-label="ReMarket Verified"
+      ref={containerRef}
+      className={[styles.badgeContainer, className ?? ''].filter(Boolean).join(' ')}
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
+      onClick={(e) => {
+        // Toggle on click (essential for mobile devices)
+        setShowTooltip(prev => !prev);
+      }}
     >
-      <ShieldCheckIcon />
-      {!compact && <span>ReMarket Verified</span>}
+      <span
+        className={[styles.badge, compact ? styles.compact : ''].filter(Boolean).join(' ')}
+        title="Click to view verification details"
+        aria-label="ReMarket Verified"
+      >
+        <ShieldCheckIcon />
+        {!compact && <span>ReMarket Verified</span>}
+      </span>
+      
+      {showTooltip && (
+        <span className={styles.tooltip} onClick={(e) => e.stopPropagation()}>
+          <span className={styles.tooltipHeader}>
+            <ShieldCheckIcon />
+            <span>ReMarket Verified</span>
+          </span>
+          <span className={styles.tooltipBody}>
+            This seller has completed identity verification by submitting official, 
+            government-issued documentation (such as a passport or ID card) for manual admin review.
+            This ensures a higher level of trust and transaction safety in the marketplace.
+          </span>
+        </span>
+      )}
     </span>
   );
 }

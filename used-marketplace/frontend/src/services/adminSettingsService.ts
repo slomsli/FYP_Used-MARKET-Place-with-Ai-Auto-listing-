@@ -7,6 +7,7 @@ export interface PlatformSettings {
   platform_announcement?: string;
   ai_assistant_enabled?: boolean;
   ai_listing_autofill_enabled?: boolean;
+  ai_listing_coach_enabled?: boolean;
   auto_negotiation_enabled?: boolean;
   max_reports_threshold?: number;
   [key: string]: PlatformSettingValue | undefined;

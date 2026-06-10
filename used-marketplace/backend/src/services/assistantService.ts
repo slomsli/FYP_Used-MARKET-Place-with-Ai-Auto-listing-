@@ -41,7 +41,7 @@ import { getPublicStorageUrl } from '../utils/storage';
 import { logAssistantToolCall } from '../utils/assistantAudit';
 
 const DEFAULT_ASSISTANT_MODEL =
-  process.env.GEMINI_ASSISTANT_MODEL?.trim() || 'gemini-2.5-flash';
+  process.env.GEMINI_ASSISTANT_MODEL?.trim() || 'gemini-2.5-pro';
 const ADMIN_ANALYTICS_MODEL =
   process.env.GEMINI_ASSISTANT_ADMIN_ANALYTICS_MODEL?.trim() || null;
 const MARKETPLACE_TIME_ZONE = 'Asia/Kuala_Lumpur';
@@ -58,7 +58,7 @@ const SAFE_MEMBER_ROUTES = {
   offers: '/dashboard/offers',
   settings: '/dashboard/settings',
   browse: '/browse',
-  support: '/support',
+  support: '/dashboard/support',
   report: '/dashboard/report',
 } as const;
 const SAFE_ADMIN_ROUTES = {
@@ -174,6 +174,11 @@ interface ReportOrderOption {
   listingId: string;
   title: string;
   perspective: ReportScope;
+}
+
+interface SupportTicketDraft {
+  subject: string;
+  details: string;
 }
 
 interface AssistantContext {
@@ -742,6 +747,122 @@ function normalizeMessageForRouting(message: string): string {
     .trim();
 }
 
+function getRecentHistoryText(
+  history: AssistantHistoryEntry[],
+  limit = 6
+): string {
+  return history
+    .slice(-limit)
+    .map((entry) => entry.message)
+    .join(' ');
+}
+
+function hasNavigationVerb(message: string): boolean {
+  return /\b(open|go to|take me to|show|bring me to|send me to|visit|launch|pen|tae me to)\b/.test(
+    message
+  );
+}
+
+function isSupportNavigationMessage(message: string): boolean {
+  const asksForSupportPage =
+    hasNavigationVerb(message) &&
+    /\b(support|suppor|help center|help page|support page)\b/.test(message);
+  const asksToContactAdmin =
+    /\b(message|massage|contact|reach|talk to|speak to)\b.*\b(admin|administrator|support|team)\b/.test(
+      message
+    ) ||
+    /\b(admin|administrator|support|team)\b.*\b(message|massage|contact|reach|talk to|speak to)\b/.test(
+      message
+    );
+
+  return asksForSupportPage || asksToContactAdmin;
+}
+
+function messageMentionsListingCreation(message: string): boolean {
+  return (
+    /\b(add|adding|create|creating|new|post|posting|submit|submitting|publish|publishing)\b.*\blisting\b/.test(
+      message
+    ) ||
+    /\blisting\b.*\b(add|adding|create|creating|new|post|posting|submit|submitting|publish|publishing)\b/.test(
+      message
+    )
+  );
+}
+
+function messageMentionsIssue(message: string): boolean {
+  return /\b(cannot|can not|can t|cant|unable|not able|trouble|problem|issue|error|failed|fail|fails|not work|does not work|doesnt work|stuck)\b/.test(
+    message
+  );
+}
+
+function isListingCreationSupportIssue(context: AssistantContext): boolean {
+  const message = normalizeMessageForRouting(context.message);
+
+  if (messageMentionsListingCreation(message) && messageMentionsIssue(message)) {
+    return true;
+  }
+
+  if (
+    /\b(sorry|soory|meant|ment|i mean)\b/.test(message) &&
+    messageMentionsListingCreation(message)
+  ) {
+    const recent = normalizeMessageForRouting(getRecentHistoryText(context.history));
+    return (
+      /\b(support|suppor|admin|administrator|message|massage)\b/.test(recent) ||
+      messageMentionsIssue(recent)
+    );
+  }
+
+  return false;
+}
+
+function isSupportDraftRequest(message: string): boolean {
+  return (
+    /\b(write|draft|prepare|type|fill|prefill)\b.*\b(message|ticket|request|note)\b/.test(
+      message
+    ) &&
+    /\b(admin|administrator|support|team)\b/.test(message)
+  );
+}
+
+function isRecentSupportDraftContext(context: AssistantContext): boolean {
+  const recent = normalizeMessageForRouting(getRecentHistoryText(context.history));
+
+  return (
+    /\b(admin|administrator|support|support page|support ticket)\b/.test(recent) &&
+    /\b(write|draft|message|ticket|what issue|what is the issue|tell me about the issue)\b/.test(
+      recent
+    )
+  );
+}
+
+function inferSupportTicketDraft(context: AssistantContext): SupportTicketDraft | null {
+  const normalizedMessage = normalizeMessageForRouting(context.message);
+
+  if (isListingCreationSupportIssue(context)) {
+    return {
+      subject: 'Cannot add a new listing',
+      details:
+        "Hi Admin, I'm having trouble adding a new listing. When I try to create or submit the listing, it does not work. Could you please help me check the issue? Thank you.",
+    };
+  }
+
+  if (!isRecentSupportDraftContext(context) || !messageMentionsIssue(normalizedMessage)) {
+    return null;
+  }
+
+  const subject = /\b(login|log in|password|sign in)\b/.test(normalizedMessage)
+    ? 'Login problem'
+    : /\blisting\b/.test(normalizedMessage)
+      ? 'Listing problem'
+      : 'Support request';
+
+  return {
+    subject,
+    details: `Hi Admin, I need help with this issue: ${context.message.trim()}. Could you please check it? Thank you.`,
+  };
+}
+
 function isAffirmativeMessage(message: string): boolean {
   return /^(yes|yep|yeah|sure|ok|okay|please do|do it|go ahead|continue|proceed|open it|open that)\b/.test(
     normalizeMessageForRouting(message)
@@ -778,6 +899,22 @@ function buildReportPageTarget(option: ReportOrderOption): string {
   });
 
   return `${SAFE_MEMBER_ROUTES.report}?${params.toString()}`;
+}
+
+function buildSupportPageTarget(context: AssistantContext): string {
+  const draft = inferSupportTicketDraft(context);
+
+  if (!draft) {
+    return SAFE_MEMBER_ROUTES.support;
+  }
+
+  const params = new URLSearchParams({
+    newTicket: '1',
+    subject: draft.subject,
+    details: draft.details,
+  });
+
+  return `${SAFE_MEMBER_ROUTES.support}?${params.toString()}`;
 }
 
 function createNavigatePendingAction(
@@ -849,6 +986,14 @@ function detectDeterministicIntent(context: AssistantContext): AssistantIntent {
     return 'show_my_orders';
   }
 
+  if (
+    isSupportNavigationMessage(message) ||
+    isListingCreationSupportIssue(context) ||
+    inferSupportTicketDraft(context)
+  ) {
+    return 'open_support';
+  }
+
   if (/\b(open|go to|take me to)\b.*\b(messages?|chat)\b/.test(message)) {
     return 'open_messages';
   }
@@ -871,10 +1016,6 @@ function detectDeterministicIntent(context: AssistantContext): AssistantIntent {
 
   if (/\b(open|go to|take me to)\b.*\b(browse|marketplace)\b/.test(message)) {
     return 'open_browse';
-  }
-
-  if (/\b(open|go to|take me to)\b.*\b(support|help center)\b/.test(message)) {
-    return 'open_support';
   }
 
   if (
@@ -996,6 +1137,144 @@ function getLatestCompletedAssistantToolName(history: AssistantHistoryEntry[]): 
   }
 
   return null;
+}
+
+function isPurchasePriceFeedbackMessage(message: string): boolean {
+  const normalizedMessage = normalizeMessageForRouting(message);
+
+  return (
+    /\b(price|prices|paid|pay|worth|deal|fair|reasonable|cheap|expensive|overpriced|rate|rating)\b/.test(
+      normalizedMessage
+    ) &&
+    /\b(good|fair|reasonable|worth|rate|rating|think|opinion|okay|ok|overpriced|cheap|expensive)\b/.test(
+      normalizedMessage
+    )
+  );
+}
+
+function extractLatestPurchaseCards(
+  history: AssistantHistoryEntry[]
+): AssistantOrderCard[] {
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const entry = history[index];
+
+    if (entry.role !== 'assistant' || !entry.response) {
+      continue;
+    }
+
+    const loadedPurchases = entry.response.toolCalls.some(
+      (toolCall) => toolCall.name === 'getMyPurchases' && toolCall.status === 'completed'
+    );
+
+    if (!loadedPurchases) {
+      continue;
+    }
+
+    const orderBlock = entry.response.blocks.find(
+      (block): block is Extract<AssistantResponseBlock, { type: 'order_cards' }> =>
+        block.type === 'order_cards'
+    );
+
+    if (orderBlock?.items.length) {
+      return orderBlock.items.filter((item) =>
+        item.priceLabel.toLowerCase().includes('paid')
+      );
+    }
+  }
+
+  return [];
+}
+
+function parseCurrencyAmount(price: string): number | null {
+  const normalized = price.replace(/,/g, '');
+  const match = normalized.match(/-?\d+(?:\.\d+)?/);
+
+  if (!match) {
+    return null;
+  }
+
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function ratePurchaseCardPrice(card: AssistantOrderCard): string {
+  const title = card.title.trim() || 'This item';
+  const price = card.price;
+  const amount = parseCurrencyAmount(price);
+  const normalizedTitle = normalizeMessageForRouting(title);
+
+  if (amount === null) {
+    return `- ${title} at ${price}: I would need the exact price to judge it properly.`;
+  }
+
+  if (/\b(pen|gel pen|ball pen|stationery)\b/.test(normalizedTitle)) {
+    if (amount <= 5) {
+      return `- ${title} at ${price}: good price for a basic gel pen if it is new or writes smoothly.`;
+    }
+    if (amount <= 8) {
+      return `- ${title} at ${price}: fair, but I would compare similar pens first.`;
+    }
+    return `- ${title} at ${price}: a bit high unless it is a multi-pack or a special model.`;
+  }
+
+  if (/\b(brush|hair brush|detangling)\b/.test(normalizedTitle)) {
+    if (amount <= 8) {
+      return `- ${title} at ${price}: good low price for a basic detangling brush.`;
+    }
+    if (amount <= 15) {
+      return `- ${title} at ${price}: fair if the condition is clean and sturdy.`;
+    }
+    return `- ${title} at ${price}: on the high side unless it is a premium brand.`;
+  }
+
+  if (/\bbrand\b/.test(normalizedTitle)) {
+    return `- ${title} at ${price}: harder to judge from the title alone; it is fair if the item and condition matched what you expected.`;
+  }
+
+  if (amount <= 10) {
+    return `- ${title} at ${price}: looks low-risk and generally reasonable.`;
+  }
+
+  if (amount <= 30) {
+    return `- ${title} at ${price}: probably reasonable if the item condition is good.`;
+  }
+
+  return `- ${title} at ${price}: worth comparing with similar listings before buying again.`;
+}
+
+function buildPurchasePriceFeedbackResponse(
+  context: AssistantContext
+): AssistantResponse | null {
+  if (context.actualRole !== 'user' || !isPurchasePriceFeedbackMessage(context.message)) {
+    return null;
+  }
+
+  const purchaseCards = extractLatestPurchaseCards(context.history).slice(0, USER_TOOL_LIMIT);
+
+  if (purchaseCards.length === 0) {
+    return null;
+  }
+
+  const note = buildRequestedRoleNote(context);
+  const lines = purchaseCards.map(ratePurchaseCardPrice);
+  const text = combineText(
+    note,
+    [
+      'Based on the purchase prices already shown, they mostly look reasonable:',
+      ...lines,
+      'I do not have live market comparisons here, so treat this as a practical estimate rather than a real-time price check.',
+    ].join('\n')
+  );
+
+  return createAssistantResponse({
+    context,
+    model: DEFAULT_ASSISTANT_MODEL,
+    route: 'direct',
+    blocks: [createTextBlock(text), createQuickActionsBlock(context.actualRole, context.selectedEntityContext)],
+    toolCalls: [],
+    lastIntent: 'show_my_purchases',
+    message: text,
+  });
 }
 
 function buildSalesToolCallFromWindow(window: QueryDateWindow): AssistantToolCallRequest {
@@ -1120,6 +1399,44 @@ function buildNavigationPromptResponse(
     requiresConfirmation: true,
     pendingAction,
     lastIntent: intent,
+    message: text,
+  });
+}
+
+function buildSupportDraftClarificationResponse(
+  context: AssistantContext
+): AssistantResponse | null {
+  const message = normalizeMessageForRouting(context.message);
+
+  if (!isSupportDraftRequest(message) || inferSupportTicketDraft(context)) {
+    return null;
+  }
+
+  const note = buildRequestedRoleNote(context);
+  const text = combineText(
+    note,
+    'I can help with that. What issue should I write to the admin about?'
+  );
+
+  return createAssistantResponse({
+    context,
+    model: DEFAULT_ASSISTANT_MODEL,
+    route: 'direct',
+    blocks: [createTextBlock(text), createQuickActionsBlock(context.actualRole, context.selectedEntityContext)],
+    toolCalls: [],
+    quickReplies: createQuickReplies([
+      {
+        id: 'support-draft-listing',
+        label: 'Adding listing',
+        message: 'I cannot add a new listing.',
+      },
+      {
+        id: 'support-draft-other',
+        label: 'Other issue',
+        message: 'I need help with another issue.',
+      },
+    ]),
+    lastIntent: 'open_support',
     message: text,
   });
 }
@@ -1520,14 +1837,18 @@ async function resolveDeterministicIntentResponse(
         SAFE_MEMBER_ROUTES.browse,
         'I can open the marketplace browse page. Do you want me to continue?'
       );
-    case 'open_support':
+    case 'open_support': {
+      const supportDraft = inferSupportTicketDraft(context);
       return buildNavigationPromptResponse(
         context,
         intent,
         'the support page',
-        SAFE_MEMBER_ROUTES.support,
-        'I can open the support page for you. Do you want me to continue?'
+        buildSupportPageTarget(context),
+        supportDraft
+          ? 'I can open the support page and prefill a message to the admin. Do you want me to continue?'
+          : 'I can open the support page for you. Do you want me to continue?'
       );
+    }
     case 'open_admin_analytics':
       return buildNavigationPromptResponse(
         context,
@@ -1734,7 +2055,7 @@ async function generateAssistantContent(params: {
   for (const candidateModel of modelsToTry) {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-  const response = await geminiClient.models.generateContent({
+        const response = await geminiClient.models.generateContent({
           model: candidateModel,
           contents: params.contents as any,
           config: {
@@ -1868,6 +2189,8 @@ Role guidance:
 Direct-response guidance:
 - For user education questions like listing actions, offer actions, chat actions, or writing a listing, direct text is fine if no tool is required.
 - When answering directly, be concise and action oriented.
+- If the user asks whether a shown price is good, give a cautious practical opinion from the visible item, condition, and price. Mention when you do not have live market comparisons, but do not stop at a refusal.
+- If the user asks to message or contact an admin, guide them to the support ticket workspace or offer to open support. Do not say there is no way unless support is genuinely unavailable.
 `.trim();
 }
 
@@ -4191,6 +4514,16 @@ export async function chatWithAssistant(input: {
         lastIntent: 'report_problem',
       });
     }
+  }
+
+  const purchasePriceFeedbackResponse = buildPurchasePriceFeedbackResponse(context);
+  if (purchasePriceFeedbackResponse) {
+    return purchasePriceFeedbackResponse;
+  }
+
+  const supportDraftClarificationResponse = buildSupportDraftClarificationResponse(context);
+  if (supportDraftClarificationResponse) {
+    return supportDraftClarificationResponse;
   }
 
   const deterministicIntentResponse = await resolveDeterministicIntentResponse(context, currentIntent);

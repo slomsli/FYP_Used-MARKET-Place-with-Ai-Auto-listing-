@@ -13,7 +13,10 @@ import {
   uploadSellerListingImage,
   updateSellerListing,
 } from '../controllers/listingController';
-import { generateListingFromImageHandler } from '../controllers/aiController';
+import {
+  generateListingCoachHandler,
+  generateListingFromImageHandler,
+} from '../controllers/aiController';
 import {
   getFavorites,
   toggleFavoriteHandler,
@@ -167,6 +170,9 @@ router.get('/listings/metadata', getListingFormMetadata);
 
 // POST /api/dashboard/listings/generate
 router.post('/listings/generate', listingGenerationLimiter, generateListingFromImageHandler);
+
+// POST /api/dashboard/listings/coach
+router.post('/listings/coach', listingGenerationLimiter, generateListingCoachHandler);
 
 // GET /api/dashboard/listings
 router.get('/listings', getSellerListings);

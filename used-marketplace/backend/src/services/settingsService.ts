@@ -2,6 +2,7 @@ import { supabaseAdmin as supabase } from '../config/supabase';
 
 export const AI_ASSISTANT_SETTING_KEY = 'ai_assistant_enabled';
 export const AI_LISTING_AUTOFILL_SETTING_KEY = 'ai_listing_autofill_enabled';
+export const AI_LISTING_COACH_SETTING_KEY = 'ai_listing_coach_enabled';
 
 export interface PlatformSetting {
   key: string;

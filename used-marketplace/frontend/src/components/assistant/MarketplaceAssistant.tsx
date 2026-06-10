@@ -1618,6 +1618,14 @@ export default function MarketplaceAssistant() {
                 <textarea
                   value={inputValue}
                   onChange={(event) => setInputValue(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault();
+                      if (!isSending && !isThreadActionBusy && (inputValue.trim() || attachedImage)) {
+                        void submitMessage(inputValue);
+                      }
+                    }
+                  }}
                   onPaste={(event) => {
                     // Check if the clipboard contains an image
                     const items = event.clipboardData?.items;

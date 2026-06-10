@@ -19,9 +19,11 @@ import {
   getListingMetadata,
   uploadListingImage,
   updateListing,
+  generateListingCoach,
   generateListingMetadataFromImages,
 } from '@/src/services/listingService';
 import type {
+  ListingCoachResult,
   ListingAreaOption,
   ListingCondition,
   ListingMetadata,
@@ -235,12 +237,47 @@ async function readFileAsBase64(file: File): Promise<string> {
   });
 }
 
+async function readBlobAsDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('Failed to read remote image'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function buildAiImagePayloads(
+  imageItems: ListingImageItem[],
+  limit = 3
+): Promise<Array<{ base64Data: string; contentType: string }>> {
+  const payloads: Array<{ base64Data: string; contentType: string }> = [];
+
+  for (const image of imageItems.slice(0, limit)) {
+    if (image.source === 'local' && image.file) {
+      const base64Data = await readFileAsBase64(image.file);
+      payloads.push({ base64Data, contentType: image.file.type });
+      continue;
+    }
+
+    if (image.source === 'remote' && image.preview) {
+      const response = await fetch(image.preview);
+      const blob = await response.blob();
+      const base64Data = await readBlobAsDataUrl(blob);
+      payloads.push({ base64Data, contentType: blob.type || 'image/jpeg' });
+    }
+  }
+
+  return payloads;
+}
+
 export default function AddListingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, token, loading } = useRequireAuth();
   const { isSuspended } = useDashboardAccount();
   const listingId = searchParams.get('listingId');
+  const shouldAutoRunCoach = searchParams.get('coach') === 'true';
   const isEditMode = Boolean(listingId);
 
   const [metadata, setMetadata] = useState<ListingMetadata | null>(null);
@@ -252,6 +289,8 @@ export default function AddListingPage() {
   const [existingListing, setExistingListing] = useState<ListingSummary | null>(null);
   const [listingLoading, setListingLoading] = useState(false);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [isGeneratingCoach, setIsGeneratingCoach] = useState(false);
+  const [coachResult, setCoachResult] = useState<ListingCoachResult | null>(null);
 
   const [title, setTitle] = useState('');
   const [categoryId, setCategoryId] = useState('');
@@ -282,6 +321,7 @@ export default function AddListingPage() {
   const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const locationLookupRequestRef = useRef(0);
   const imagesRef = useRef<ListingImageItem[]>([]);
+  const coachAutoRunRef = useRef(false);
 
   useEffect(() => {
     imagesRef.current = images;
@@ -778,6 +818,7 @@ export default function AddListingPage() {
 
   const displayedAreas = stateId ? areas : [];
   const aiListingAutofillEnabled = metadata?.features?.aiListingAutofillEnabled !== false;
+  const aiListingCoachEnabled = metadata?.features?.aiListingCoachEnabled !== false;
   const isPausedListing = existingListing?.status === 'archived';
   const isPendingReviewListing = existingListing?.status === 'rejected';
   const listingModerationReason = existingListing?.moderationReason?.trim() || null;
@@ -790,6 +831,14 @@ export default function AddListingPage() {
     isGeneratingAI ||
     isPendingReviewListing;
   const aiGenerateDisabled = disabled || !aiListingAutofillEnabled;
+  const aiCoachDisabled =
+    metadataLoading ||
+    listingLoading ||
+    submittingStatus !== null ||
+    isSuspended ||
+    isPendingReviewListing ||
+    isGeneratingCoach ||
+    !aiListingCoachEnabled;
 
   const handleGenerateAI = useCallback(async () => {
     if (!token) {
@@ -810,25 +859,7 @@ export default function AddListingPage() {
 
     setIsGeneratingAI(true);
     try {
-      const payloads = [];
-      // Use up to 3 images for context
-      for (const img of imagesToUse.slice(0, 3)) {
-        if (img.source === 'local' && img.file) {
-          const base64Data = await readFileAsBase64(img.file);
-          payloads.push({ base64Data, contentType: img.file.type });
-        } else if (img.source === 'remote' && img.preview) {
-          // fetch the remote image and convert to base64
-          const res = await fetch(img.preview);
-          const blob = await res.blob();
-          const base64Data = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result as string);
-            reader.onerror = () => reject(new Error('Failed to read remote image'));
-            reader.readAsDataURL(blob);
-          });
-          payloads.push({ base64Data, contentType: blob.type });
-        }
-      }
+      const payloads = await buildAiImagePayloads(imagesToUse, 3);
 
       const response = await generateListingMetadataFromImages(token, payloads);
 
@@ -864,6 +895,106 @@ export default function AddListingPage() {
       setIsGeneratingAI(false);
     }
   }, [aiListingAutofillEnabled, images, token, showToast]);
+
+  const handleGenerateCoach = useCallback(async () => {
+    if (!token) {
+      showToast('Authentication required to use AI Coach.');
+      return;
+    }
+
+    if (!aiListingCoachEnabled) {
+      showToast('AI Listing Coach is currently paused by admin.');
+      return;
+    }
+
+    if (!title.trim() && !description.trim() && images.length === 0) {
+      showToast('Add a title, description, or photo before asking the coach.');
+      return;
+    }
+
+    setIsGeneratingCoach(true);
+
+    try {
+      const imagePayloads = await buildAiImagePayloads(images, 3);
+      const parsedPrice = Number(price);
+      const response = await generateListingCoach(token, {
+        title: title.trim(),
+        description: description.trim() || undefined,
+        brand: brand.trim() || undefined,
+        categoryName: selectedCategory?.name ?? null,
+        parentCategoryName: selectedParentCategory?.name ?? null,
+        condition: selectedCondition?.label ?? (condition || null),
+        price: price.trim() && Number.isFinite(parsedPrice) ? parsedPrice : null,
+        currency: metadata?.currencies[0] || 'MYR',
+        negotiable: openToOffers,
+        stateName: selectedState?.name ?? null,
+        areaName: selectedArea?.name ?? null,
+        imageCount: images.length,
+        images: imagePayloads,
+      });
+
+      if (!response.data) {
+        showToast(response.error || 'AI Coach could not review this listing.');
+        return;
+      }
+
+      setCoachResult(response.data);
+      showToast('AI Coach reviewed your listing.');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'AI Coach could not review this listing.');
+    } finally {
+      setIsGeneratingCoach(false);
+    }
+  }, [
+    aiListingCoachEnabled,
+    areaId,
+    brand,
+    categoryId,
+    condition,
+    description,
+    images,
+    metadata?.currencies,
+    openToOffers,
+    price,
+    selectedArea,
+    selectedCategory,
+    selectedCondition,
+    selectedParentCategory,
+    selectedState,
+    showToast,
+    title,
+    token,
+  ]);
+
+  useEffect(() => {
+    if (
+      !shouldAutoRunCoach ||
+      coachAutoRunRef.current ||
+      metadataLoading ||
+      listingLoading ||
+      !aiListingCoachEnabled ||
+      isPendingReviewListing
+    ) {
+      return;
+    }
+
+    if (!title.trim() && !description.trim() && images.length === 0) {
+      return;
+    }
+
+    coachAutoRunRef.current = true;
+    void handleGenerateCoach();
+  }, [
+    aiListingCoachEnabled,
+    description,
+    handleGenerateCoach,
+    images.length,
+    isPendingReviewListing,
+    listingLoading,
+    metadataLoading,
+    shouldAutoRunCoach,
+    title,
+  ]);
 
   const openFilePicker = useCallback(() => {
     if (disabled) {
@@ -1121,17 +1252,31 @@ export default function AddListingPage() {
               : 'Create a real marketplace listing with categories, states, areas, and photos saved through the backend.'}
           </p>
         </div>
-        {aiListingAutofillEnabled && (
-          <button
-            className={styles.aiButton}
-            id="ai-generate-btn"
-            type="button"
-            onClick={handleGenerateAI}
-            disabled={aiGenerateDisabled}
-          >
-            <SparklesIcon /> {isGeneratingAI ? 'Auto-filling...' : 'Auto-fill from Photos'}
-          </button>
-        )}
+        <div className={styles.headerActions}>
+          {aiListingCoachEnabled && (
+            <button
+              className={styles.coachButton}
+              id="ai-coach-btn"
+              type="button"
+              onClick={handleGenerateCoach}
+              disabled={aiCoachDisabled}
+            >
+              <SparklesIcon /> {isGeneratingCoach ? 'Coaching...' : 'Run Listing Coach'}
+            </button>
+          )}
+
+          {aiListingAutofillEnabled && (
+            <button
+              className={styles.aiButton}
+              id="ai-generate-btn"
+              type="button"
+              onClick={handleGenerateAI}
+              disabled={aiGenerateDisabled}
+            >
+              <SparklesIcon /> {isGeneratingAI ? 'Auto-filling...' : 'Auto-fill from Photos'}
+            </button>
+          )}
+        </div>
       </section>
 
       {metadataError && (
@@ -1671,6 +1816,99 @@ export default function AddListingPage() {
               </div>
             </div>
           </div>
+
+          {aiListingCoachEnabled && (
+            <div className={styles.coachCard}>
+              <div className={styles.coachHeader}>
+                <div>
+                  <p className={styles.coachEyebrow}>AI Listing Coach</p>
+                  <h3 className={styles.coachTitle}>Listing quality check</h3>
+                </div>
+
+                <button
+                  type="button"
+                  className={styles.coachMiniButton}
+                  onClick={handleGenerateCoach}
+                  disabled={aiCoachDisabled}
+                >
+                  {isGeneratingCoach ? 'Checking...' : 'Review'}
+                </button>
+              </div>
+
+              {isGeneratingCoach ? (
+                <div className={styles.coachLoading}>
+                  <span className={styles.aiAnalyzingDot} />
+                  Checking title, details, price, and photos...
+                </div>
+              ) : coachResult ? (
+                <>
+                  <div className={styles.coachScoreRow}>
+                    <div className={styles.coachScore}>
+                      {coachResult.score}
+                      <span>/100</span>
+                    </div>
+                    <div>
+                      <span className={`${styles.coachVerdict} ${styles[`coachVerdict${coachResult.verdict}`]}`}>
+                        {coachResult.verdict.replace('_', ' ')}
+                      </span>
+                      <p className={styles.coachSummary}>{coachResult.summary}</p>
+                    </div>
+                  </div>
+
+                  <div className={styles.coachPriority}>
+                    <strong>Priority fix</strong>
+                    <span>{coachResult.priorityFix}</span>
+                  </div>
+
+                  {coachResult.titleSuggestion && (
+                    <div className={styles.coachSuggestion}>
+                      <strong>Suggested title</strong>
+                      <span>{coachResult.titleSuggestion}</span>
+                      <button
+                        type="button"
+                        className={styles.coachApplyButton}
+                        onClick={() => setTitle(coachResult.titleSuggestion || '')}
+                        disabled={disabled}
+                      >
+                        Use title
+                      </button>
+                    </div>
+                  )}
+
+                  <div className={styles.coachAdviceGrid}>
+                    <div>
+                      <strong>Price</strong>
+                      <span>{coachResult.priceFeedback}</span>
+                    </div>
+                    <div>
+                      <strong>Photos</strong>
+                      <span>{coachResult.photoFeedback}</span>
+                    </div>
+                  </div>
+
+                  <div className={styles.coachListBlock}>
+                    <strong>Missing details</strong>
+                    <ul>
+                      {coachResult.missingDetails.slice(0, 4).map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className={styles.coachKeywords}>
+                    {coachResult.keywordSuggestions.slice(0, 6).map((keyword) => (
+                      <span key={keyword}>{keyword}</span>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p className={styles.coachEmpty}>
+                  Get a score and practical suggestions before publishing. The coach checks your
+                  title, description, price, condition, and photos.
+                </p>
+              )}
+            </div>
+          )}
 
         </div>
       </div>

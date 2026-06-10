@@ -49,6 +49,7 @@ export interface ListingMetadata {
   currencies: string[];
   features: {
     aiListingAutofillEnabled: boolean;
+    aiListingCoachEnabled: boolean;
   };
 }
 
@@ -155,6 +156,9 @@ export interface MyListingsResponse {
   filters: {
     status: ListingFilterStatus;
     sort: ListingSortOption;
+  };
+  features: {
+    aiListingCoachEnabled: boolean;
   };
   statusCounts: {
     all: number;
@@ -281,4 +285,38 @@ export interface GeneratedListingData {
   color: string | null;
   model: string | null;
   material: string | null;
+}
+
+export interface ListingCoachImageInput {
+  base64Data: string;
+  contentType: string;
+}
+
+export interface ListingCoachRequest {
+  title: string;
+  description?: string;
+  brand?: string;
+  categoryName?: string | null;
+  parentCategoryName?: string | null;
+  condition?: string | null;
+  price?: number | null;
+  currency?: string;
+  negotiable?: boolean;
+  stateName?: string | null;
+  areaName?: string | null;
+  imageCount?: number;
+  images?: ListingCoachImageInput[];
+}
+
+export interface ListingCoachResult {
+  score: number;
+  verdict: 'excellent' | 'good' | 'needs_work';
+  summary: string;
+  titleSuggestion: string | null;
+  priceFeedback: string;
+  photoFeedback: string;
+  missingDetails: string[];
+  keywordSuggestions: string[];
+  improvementTips: string[];
+  priorityFix: string;
 }

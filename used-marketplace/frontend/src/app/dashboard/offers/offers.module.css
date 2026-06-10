@@ -92,6 +92,114 @@
   background: rgba(255, 255, 255, 0.5);
 }
 
+.productFilterPanel {
+  margin-bottom: 1.25rem;
+  padding: 1.2rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 1.25rem;
+  background: #ffffff;
+  box-shadow: 0 14px 30px rgba(17, 24, 39, 0.045);
+}
+
+.filterHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.filterEyebrow {
+  display: block;
+  margin-bottom: 0.3rem;
+  color: #2563eb;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.filterTitle {
+  margin: 0;
+  color: #0f172a;
+  font-size: 1.2rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.filterSummary {
+  margin: 0.35rem 0 0;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.clearFilterButton {
+  min-height: 42px;
+  padding: 0.65rem 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 0.8rem;
+  background: #0f172a;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 800;
+  transition: background 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+}
+
+.clearFilterButton:hover:not(:disabled) {
+  background: #1e293b;
+  transform: translateY(-1px);
+}
+
+.clearFilterButton:disabled {
+  background: #e2e8f0;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.filterControls {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr);
+  gap: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.filterControl {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.productSearchInput,
+.productSelect {
+  width: 100%;
+  min-height: 46px;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #dbe3ef;
+  border-radius: 0.85rem;
+  background: #f8fafc;
+  color: #0f172a;
+  font-size: 0.95rem;
+  font-weight: 650;
+  outline: none;
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.productSearchInput:focus,
+.productSelect:focus {
+  border-color: #60a5fa;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
+}
+
+.filteredEmptyState {
+  margin-top: 0;
+}
+
 /* ── Content Area ────────────────────────────────────────── */
 
 .emptyState {
@@ -766,6 +874,17 @@
 }
 
 @media (max-width: 640px) {
+  .filterHeader,
+  .filterControls {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .clearFilterButton {
+    width: 100%;
+  }
+
   .offerCard {
     flex-direction: column;
   }

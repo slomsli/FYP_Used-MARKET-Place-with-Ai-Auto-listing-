@@ -567,6 +567,24 @@ export default function AdminSettingsPage() {
             <div className={styles.settingRow}>
               <span className={`${styles.settingDot} ${styles.settingDotGreen}`}><SparklesIcon /></span>
               <div className={styles.settingContent}>
+                <span className={styles.settingLabel}>AI Listing Coach</span>
+                <span className={styles.settingHint}>Lets sellers score a listing draft and receive suggestions for title, details, price, photos, and keywords.</span>
+              </div>
+              <div className={styles.settingControl}>
+                <select
+                  className={styles.fieldSelect}
+                  value={String(platformSettings.ai_listing_coach_enabled !== false)}
+                  onChange={(e) => handleSettingChange('ai_listing_coach_enabled', e.target.value === 'true')}
+                >
+                  <option value="true">Enabled</option>
+                  <option value="false">Paused</option>
+                </select>
+              </div>
+            </div>
+
+            <div className={styles.settingRow}>
+              <span className={`${styles.settingDot} ${styles.settingDotGreen}`}><SparklesIcon /></span>
+              <div className={styles.settingContent}>
                 <span className={styles.settingLabel}>Auto-Negotiation System</span>
                 <span className={styles.settingHint}>Allows AI to negotiate prices automatically on behalf of sellers who enable it.</span>
               </div>

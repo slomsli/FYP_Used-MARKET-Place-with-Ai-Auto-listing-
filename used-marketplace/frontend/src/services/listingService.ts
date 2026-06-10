@@ -2,6 +2,8 @@ import type {
   CreateListingPayload,
   DeleteListingResult,
   ListingImageUploadPayload,
+  ListingCoachRequest,
+  ListingCoachResult,
   ListingCondition,
   ListingSaleBuyerCandidate,
   ListingMetadata,
@@ -39,6 +41,7 @@ interface ListingMetadataPayload {
   currencies?: unknown;
   features?: {
     aiListingAutofillEnabled?: unknown;
+    aiListingCoachEnabled?: unknown;
   };
   lookups?: {
     categories?: unknown;
@@ -269,6 +272,7 @@ function normalizeListingMetadata(raw: unknown): ListingMetadata {
     currencies: normalizeCurrencies(payload.currencies),
     features: {
       aiListingAutofillEnabled: payload.features?.aiListingAutofillEnabled !== false,
+      aiListingCoachEnabled: payload.features?.aiListingCoachEnabled !== false,
     },
   };
 }
@@ -574,5 +578,15 @@ export async function generateListingMetadataFromImages(
   return authorizedRequest<GeneratedListingData>('/api/dashboard/listings/generate', token, {
     method: 'POST',
     body: JSON.stringify({ images }),
+  });
+}
+
+export async function generateListingCoach(
+  token: string,
+  payload: ListingCoachRequest
+): Promise<ServiceResponse<ListingCoachResult>> {
+  return authorizedRequest<ListingCoachResult>('/api/dashboard/listings/coach', token, {
+    method: 'POST',
+    body: JSON.stringify(payload),
   });
 }
