@@ -271,6 +271,13 @@ export default function ListingDetailClient({ listingId }: ListingDetailClientPr
     { label: 'Last Updated', value: formatDateTime(listing.updatedAt) },
     { label: 'Pricing Mode', value: listing.negotiable ? 'Negotiable' : 'Fixed price' },
   ];
+  const primaryImage = gallery[0] ?? null;
+  const reviewStats = [
+    { label: 'Views', value: listing.viewsCount },
+    { label: 'Favorites', value: metrics.favoritesCount },
+    { label: 'Offers', value: metrics.offerCount },
+    { label: 'Reports', value: metrics.reportCount },
+  ];
 
   return (
     <div className={styles.page}>
@@ -304,27 +311,64 @@ export default function ListingDetailClient({ listingId }: ListingDetailClientPr
       </section>
 
       <section className={styles.mainGrid}>
-        <article className={styles.galleryCard}>
-          <div className={styles.galleryHeader}>
-            <div className={styles.badgeRow}>
-              <span className={`${styles.statusPill} ${getStatusTone(listing.status)}`}>
-                {listing.statusLabel}
-              </span>
-              <span className={styles.softPill}>{listing.conditionLabel}</span>
-              <span className={styles.softPill}>
-                {listing.negotiable ? 'Negotiable price' : 'Fixed price'}
-              </span>
-            </div>
-            <p className={styles.galleryNote}>Updated {formatDateTime(listing.updatedAt)}</p>
-          </div>
+        <div className={styles.leftColumn}>
+          <article className={styles.galleryCard}>
+          <div className={styles.reviewTop}>
+            <div className={styles.reviewSummary}>
+              <div className={styles.galleryHeader}>
+                <div className={styles.badgeRow}>
+                  <span className={`${styles.statusPill} ${getStatusTone(listing.status)}`}>
+                    {listing.statusLabel}
+                  </span>
+                  <span className={styles.softPill}>{listing.conditionLabel}</span>
+                  <span className={styles.softPill}>
+                    {listing.negotiable ? 'Negotiable price' : 'Fixed price'}
+                  </span>
+                </div>
+                <p className={styles.galleryNote}>Updated {formatDateTime(listing.updatedAt)}</p>
+              </div>
 
-          {gallery.length === 0 && (
-            <div className={styles.heroPlaceholder}>
-              <PhotoIcon />
-              <strong>{getInitials(listing.title)}</strong>
-              <p>No seller photos were uploaded for this listing.</p>
+              <div className={styles.pricePanel}>
+                <span>Seller price</span>
+                <strong>{formatCurrency(listing.price, listing.currency)}</strong>
+                <p>{listing.category?.name ?? 'Uncategorized'} - {listing.locationLabel}</p>
+              </div>
+
+              <div className={styles.reviewStats}>
+                {reviewStats.map((stat) => (
+                  <div key={stat.label} className={styles.reviewStat}>
+                    <span>{stat.label}</span>
+                    <strong>{stat.value}</strong>
+                  </div>
+                ))}
+              </div>
             </div>
-          )}
+
+            <div className={styles.mediaPanel}>
+              {primaryImage ? (
+                <button
+                  type="button"
+                  className={styles.primaryImageButton}
+                  onClick={() => {
+                    setLightboxSrc(primaryImage);
+                  }}
+                  title="Click to enlarge"
+                >
+                  <img
+                    src={primaryImage}
+                    alt={`${listing.title} main view`}
+                    className={styles.primaryImage}
+                  />
+                </button>
+              ) : (
+                <div className={styles.heroPlaceholder}>
+                  <PhotoIcon />
+                  <strong>{getInitials(listing.title)}</strong>
+                  <p>No seller photos were uploaded for this listing.</p>
+                </div>
+              )}
+            </div>
+          </div>
 
           {gallery.length > 0 && (
             <div className={styles.galleryRail}>
@@ -349,7 +393,105 @@ export default function ListingDetailClient({ listingId }: ListingDetailClientPr
               ))}
             </div>
           )}
-        </article>
+          </article>
+
+          <section className={styles.contentGrid}>
+            <article className={styles.contentCard}>
+              <p className={styles.sectionEyebrow}>Listing Description</p>
+              <h2>What the seller currently submitted</h2>
+              {descriptionParagraphs.map((paragraph) => (
+                <p key={paragraph} className={styles.bodyText}>
+                  {paragraph}
+                </p>
+              ))}
+              {listing.brand?.trim() && (
+                <div className={styles.inlineNote}>
+                  <span>Brand</span>
+                  <strong>{listing.brand}</strong>
+                </div>
+              )}
+              {listing.soldTo && (
+                <div className={styles.inlineNote}>
+                  <span>Buyer</span>
+                  <strong>{listing.soldTo.displayName}</strong>
+                </div>
+              )}
+            </article>
+
+            <article className={styles.contentCard}>
+              <p className={styles.sectionEyebrow}>Marketplace Signals</p>
+              <h2>Engagement and moderation risk</h2>
+              <div className={styles.signalGrid}>
+                <div className={styles.signalItem}>
+                  <span>Views</span>
+                  <strong>{listing.viewsCount}</strong>
+                </div>
+                <div className={styles.signalItem}>
+                  <span>Favorites</span>
+                  <strong>{metrics.favoritesCount}</strong>
+                </div>
+                <div className={styles.signalItem}>
+                  <span>Offers</span>
+                  <strong>{metrics.offerCount}</strong>
+                </div>
+                <div className={styles.signalItem}>
+                  <span>Pending Offers</span>
+                  <strong>{metrics.pendingOfferCount}</strong>
+                </div>
+                <div className={styles.signalItem}>
+                  <span>Chats</span>
+                  <strong>{metrics.conversationCount}</strong>
+                </div>
+                <div className={styles.signalItem}>
+                  <span>Reports</span>
+                  <strong>{metrics.reportCount}</strong>
+                </div>
+                <div className={styles.signalItem}>
+                  <span>Open Reports</span>
+                  <strong>{metrics.openReportCount}</strong>
+                </div>
+                <div className={styles.signalItem}>
+                  <span>Pending Reports</span>
+                  <strong>{metrics.pendingReportCount}</strong>
+                </div>
+              </div>
+            </article>
+
+            <article className={styles.contentCard}>
+              <p className={styles.sectionEyebrow}>Recent Reports</p>
+              <h2>Complaint history for this listing</h2>
+              {recentReports.length === 0 ? (
+                <p className={styles.bodyText}>
+                  No reports have been filed against this listing so far.
+                </p>
+              ) : (
+                <div className={styles.reportList}>
+                  {recentReports.map((report) => (
+                    <div key={report.id} className={styles.reportItem}>
+                      <div className={styles.reportTop}>
+                        <div className={styles.reportBadges}>
+                          <span className={styles.reportReason}>{report.reasonLabel}</span>
+                          <span className={`${styles.reportStatus} ${getReportTone(report.status)}`}>
+                            {report.statusLabel}
+                          </span>
+                        </div>
+                        <span className={styles.reportTime}>{formatDateTime(report.createdAt)}</span>
+                      </div>
+                      <strong className={styles.reportReporter}>
+                        {report.reporter.fullName} (@{report.reporter.username})
+                      </strong>
+                      <p className={styles.reportMeta}>{report.reporter.locationLabel}</p>
+                      <p className={styles.bodyText}>
+                        {report.details?.trim() ||
+                          'No extra notes were submitted with this report.'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </article>
+          </section>
+        </div>
 
         <aside className={styles.sidebar}>
           <article className={styles.sideCard}>
@@ -406,103 +548,6 @@ export default function ListingDetailClient({ listingId }: ListingDetailClientPr
             </div>
           </article>
         </aside>
-      </section>
-
-      <section className={styles.contentGrid}>
-        <article className={styles.contentCard}>
-          <p className={styles.sectionEyebrow}>Listing Description</p>
-          <h2>What the seller currently submitted</h2>
-          {descriptionParagraphs.map((paragraph) => (
-            <p key={paragraph} className={styles.bodyText}>
-              {paragraph}
-            </p>
-          ))}
-          {listing.brand?.trim() && (
-            <div className={styles.inlineNote}>
-              <span>Brand</span>
-              <strong>{listing.brand}</strong>
-            </div>
-          )}
-          {listing.soldTo && (
-            <div className={styles.inlineNote}>
-              <span>Buyer</span>
-              <strong>{listing.soldTo.displayName}</strong>
-            </div>
-          )}
-        </article>
-
-        <article className={styles.contentCard}>
-          <p className={styles.sectionEyebrow}>Marketplace Signals</p>
-          <h2>Engagement and moderation risk</h2>
-          <div className={styles.signalGrid}>
-            <div className={styles.signalItem}>
-              <span>Views</span>
-              <strong>{listing.viewsCount}</strong>
-            </div>
-            <div className={styles.signalItem}>
-              <span>Favorites</span>
-              <strong>{metrics.favoritesCount}</strong>
-            </div>
-            <div className={styles.signalItem}>
-              <span>Offers</span>
-              <strong>{metrics.offerCount}</strong>
-            </div>
-            <div className={styles.signalItem}>
-              <span>Pending Offers</span>
-              <strong>{metrics.pendingOfferCount}</strong>
-            </div>
-            <div className={styles.signalItem}>
-              <span>Chats</span>
-              <strong>{metrics.conversationCount}</strong>
-            </div>
-            <div className={styles.signalItem}>
-              <span>Reports</span>
-              <strong>{metrics.reportCount}</strong>
-            </div>
-            <div className={styles.signalItem}>
-              <span>Open Reports</span>
-              <strong>{metrics.openReportCount}</strong>
-            </div>
-            <div className={styles.signalItem}>
-              <span>Pending Reports</span>
-              <strong>{metrics.pendingReportCount}</strong>
-            </div>
-          </div>
-        </article>
-
-        <article className={styles.contentCard}>
-          <p className={styles.sectionEyebrow}>Recent Reports</p>
-          <h2>Complaint history for this listing</h2>
-          {recentReports.length === 0 ? (
-            <p className={styles.bodyText}>
-              No reports have been filed against this listing so far.
-            </p>
-          ) : (
-            <div className={styles.reportList}>
-              {recentReports.map((report) => (
-                <div key={report.id} className={styles.reportItem}>
-                  <div className={styles.reportTop}>
-                    <div className={styles.reportBadges}>
-                      <span className={styles.reportReason}>{report.reasonLabel}</span>
-                      <span className={`${styles.reportStatus} ${getReportTone(report.status)}`}>
-                        {report.statusLabel}
-                      </span>
-                    </div>
-                    <span className={styles.reportTime}>{formatDateTime(report.createdAt)}</span>
-                  </div>
-                  <strong className={styles.reportReporter}>
-                    {report.reporter.fullName} (@{report.reporter.username})
-                  </strong>
-                  <p className={styles.reportMeta}>{report.reporter.locationLabel}</p>
-                  <p className={styles.bodyText}>
-                    {report.details?.trim() ||
-                      'No extra notes were submitted with this report.'}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </article>
       </section>
 
       <ImageLightbox

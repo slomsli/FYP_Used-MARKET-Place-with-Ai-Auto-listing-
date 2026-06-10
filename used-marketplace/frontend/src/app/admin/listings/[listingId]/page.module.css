@@ -1,13 +1,13 @@
 .page {
   display: grid;
-  gap: 2rem;
+  gap: 1.25rem;
 }
 
 .hero {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 1.5rem;
+  gap: 1rem;
 }
 
 .heroCopy {
@@ -45,18 +45,18 @@
 }
 
 .title {
-  font-size: clamp(1.6rem, 3.5vw, 2.4rem);
+  font-size: 2rem;
   line-height: 1.1;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
   color: var(--admin-primary, #1A237E);
   font-family: var(--admin-font-head, 'Manrope', sans-serif);
 }
 
 .subtitle {
-  max-width: 780px;
+  max-width: 700px;
   color: var(--admin-neutral, #45474F);
-  line-height: 1.75;
-  font-size: 1.04rem;
+  line-height: 1.6;
+  font-size: 0.98rem;
   opacity: 0.86;
 }
 
@@ -73,8 +73,8 @@
   align-items: center;
   justify-content: center;
   gap: 0.7rem;
-  padding: 1rem 1.3rem;
-  border-radius: 14px;
+  padding: 0.85rem 1rem;
+  border-radius: 8px;
   text-decoration: none;
   font-weight: 700;
   font-family: var(--admin-font-body, 'Inter', sans-serif);
@@ -102,14 +102,14 @@
 .galleryCard,
 .sideCard,
 .contentCard {
-  border-radius: 24px;
+  border-radius: 8px;
   background: var(--admin-surface, #ffffff);
   border: 1px solid rgba(0, 0, 0, 0.05);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.05);
 }
 
 .stateCard {
-  padding: 2rem;
+  padding: 1.25rem;
   display: grid;
   gap: 0.75rem;
 }
@@ -128,15 +128,22 @@
 
 .mainGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.9fr);
-  gap: 1.5rem;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.72fr);
+  gap: 1rem;
   align-items: start;
 }
 
-.galleryCard {
-  padding: 1.5rem;
+.leftColumn {
+  min-width: 0;
   display: grid;
-  gap: 1.25rem;
+  gap: 1rem;
+  align-content: start;
+}
+
+.galleryCard {
+  padding: 1rem;
+  display: grid;
+  gap: 0.9rem;
 }
 
 .galleryHeader {
@@ -196,16 +203,126 @@
   color: var(--admin-neutral, #45474F);
   opacity: 0.78;
   text-align: right;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.reviewTop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.reviewSummary {
+  min-width: 0;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.pricePanel {
+  padding: 1rem;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid rgba(26, 35, 126, 0.08);
+}
+
+.pricePanel span {
+  display: block;
+  color: var(--admin-neutral, #45474F);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+.pricePanel strong {
+  display: block;
+  margin-top: 0.45rem;
+  color: var(--admin-primary, #1A237E);
+  font-family: var(--admin-font-head, 'Manrope', sans-serif);
+  font-size: 1.85rem;
+  line-height: 1;
+}
+
+.pricePanel p {
+  margin: 0.55rem 0 0;
+  color: var(--admin-neutral, #45474F);
+  line-height: 1.45;
+}
+
+.reviewStats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.reviewStat {
+  min-height: 78px;
+  padding: 0.8rem;
+  border-radius: 8px;
+  background: var(--admin-bg, #F0F2F6);
+  border: 1px solid rgba(0, 0, 0, 0.03);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.reviewStat span {
+  color: var(--admin-neutral, #45474F);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.reviewStat strong {
+  color: var(--admin-primary, #1A237E);
+  font-family: var(--admin-font-head, 'Manrope', sans-serif);
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.mediaPanel {
+  min-height: 260px;
+  max-height: 300px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid rgba(26, 35, 126, 0.08);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+.primaryImageButton {
+  width: 100%;
+  height: 100%;
+  min-height: 260px;
+  border: none;
+  padding: 0;
+  background: transparent;
+  cursor: zoom-in;
+  display: grid;
+  place-items: center;
+}
+
+.primaryImage {
+  display: block;
+  max-width: 100%;
+  max-height: 300px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
 }
 
 .heroMedia {
-  height: 360px;
-  max-height: 420px;
+  height: 280px;
+  max-height: 300px;
   padding: 1rem;
-  border-radius: 24px;
-  background:
-    radial-gradient(circle at top left, rgba(77, 128, 118, 0.14), transparent 36%),
-    linear-gradient(145deg, #f8fafc, #eef2ff);
+  border-radius: 8px;
+  background: #f8fafc;
   border: 1px solid rgba(0, 0, 0, 0.04);
   overflow: hidden;
   display: grid;
@@ -219,7 +336,7 @@
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
-  border-radius: 18px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.8);
 }
 
@@ -243,19 +360,21 @@
 
 .galleryRail {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(124px, 1fr));
-  gap: 0.85rem;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 104px));
+  gap: 0.65rem;
+  justify-content: start;
 }
 
 .thumbnailButton {
   border: 1px solid rgba(26, 35, 126, 0.08);
-  border-radius: 16px;
-  padding: 0.65rem;
+  border-radius: 8px;
+  padding: 0.45rem;
   background: #ffffff;
   display: grid;
-  gap: 0.55rem;
+  gap: 0.4rem;
   cursor: pointer;
   font-weight: 700;
+  font-size: 0.78rem;
   color: var(--admin-primary, #1A237E);
 }
 
@@ -268,34 +387,34 @@
   width: 100%;
   aspect-ratio: 1 / 1;
   object-fit: cover;
-  border-radius: 12px;
+  border-radius: 6px;
   background: var(--admin-bg, #F0F2F6);
 }
 
 .sidebar {
   display: grid;
-  gap: 1rem;
+  gap: 0.85rem;
 }
 
 .sideCard,
 .contentCard {
-  padding: 1.5rem;
+  padding: 1rem;
   display: grid;
-  gap: 1rem;
+  gap: 0.85rem;
 }
 
 .detailGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.85rem;
+  gap: 0.65rem;
 }
 
 .detailItem,
 .signalItem,
 .inlineNote,
 .reasonPanel {
-  padding: 0.95rem 1rem;
-  border-radius: 16px;
+  padding: 0.8rem;
+  border-radius: 8px;
   background: var(--admin-bg, #F0F2F6);
   border: 1px solid rgba(0, 0, 0, 0.03);
 }
@@ -317,10 +436,10 @@
 .inlineNote strong,
 .reasonPanel strong {
   display: block;
-  margin-top: 0.5rem;
+  margin-top: 0.4rem;
   color: var(--admin-primary, #1A237E);
   font-family: var(--admin-font-head, 'Manrope', sans-serif);
-  font-size: 1rem;
+  font-size: 0.95rem;
   line-height: 1.45;
 }
 
@@ -331,9 +450,9 @@
 }
 
 .avatarShell {
-  width: 72px;
-  height: 72px;
-  border-radius: 18px;
+  width: 58px;
+  height: 58px;
+  border-radius: 8px;
   overflow: hidden;
   display: grid;
   place-items: center;
@@ -361,15 +480,16 @@
 .bodyText,
 .reportMeta {
   color: var(--admin-neutral, #45474F);
-  line-height: 1.7;
+  line-height: 1.6;
   opacity: 0.84;
 }
 
 .sellerStats {
   display: grid;
-  gap: 0.6rem;
+  gap: 0.5rem;
   color: var(--admin-primary, #1A237E);
   font-weight: 700;
+  font-size: 0.9rem;
 }
 
 .moderationSummary {
@@ -382,8 +502,13 @@
 
 .contentGrid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1.25rem;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.contentCard:first-child {
+  grid-row: span 2;
 }
 
 .bodyText {
@@ -393,7 +518,7 @@
 .signalGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.85rem;
+  gap: 0.65rem;
 }
 
 .reportList {
@@ -402,8 +527,8 @@
 }
 
 .reportItem {
-  padding: 1rem;
-  border-radius: 18px;
+  padding: 0.85rem;
+  border-radius: 8px;
   background: var(--admin-bg, #F0F2F6);
   border: 1px solid rgba(0, 0, 0, 0.03);
   display: grid;
@@ -460,6 +585,10 @@
   .contentGrid {
     grid-template-columns: 1fr;
   }
+
+  .contentCard:first-child {
+    grid-row: auto;
+  }
 }
 
 @media (max-width: 900px) {
@@ -471,12 +600,30 @@
     align-items: flex-start;
   }
 
+  .title {
+    font-size: 1.65rem;
+  }
+
   .heroActions {
     justify-content: flex-start;
   }
 
+  .reviewTop {
+    grid-template-columns: 1fr;
+  }
+
+  .mediaPanel,
+  .primaryImageButton {
+    min-height: 220px;
+  }
+
+  .primaryImage {
+    max-height: 260px;
+  }
+
   .detailGrid,
-  .signalGrid {
+  .signalGrid,
+  .reviewStats {
     grid-template-columns: 1fr;
   }
 
@@ -492,11 +639,11 @@
   .sideCard,
   .contentCard,
   .stateCard {
-    padding: 1.2rem;
+    padding: 0.85rem;
   }
 
   .galleryRail {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .sellerRow {

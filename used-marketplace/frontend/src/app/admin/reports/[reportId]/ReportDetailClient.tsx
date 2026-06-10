@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ROUTES } from '@/src/config/routes';
 import ReMarketVerifiedBadge from '@/src/components/identity/ReMarketVerifiedBadge';
+import ImageLightbox from '@/src/components/ui/ImageLightbox';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import {
   ensureAdminModerationThread,
@@ -274,6 +275,7 @@ export default function ReportDetailClient({ reportId }: ReportDetailClientProps
     'pause' | 'resume' | 'approve' | 'reject' | null
   >(null);
   const [messagingSeller, setMessagingSeller] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) {
@@ -570,38 +572,180 @@ export default function ReportDetailClient({ reportId }: ReportDetailClientProps
       )}
 
       <section className={styles.mainGrid}>
-        <article className={styles.mediaCard}>
-          <div className={styles.mediaShell}>
-            {report.listing.coverImagePath ? (
-              <img
-                src={report.listing.coverImagePath}
-                alt={report.listing.title}
-                className={styles.mediaImage}
-              />
-            ) : (
-              <div className={styles.mediaFallback}>{getInitials(report.listing.title)}</div>
-            )}
-          </div>
+        <div className={styles.leftColumn}>
+          <article className={styles.mediaCard}>
+            <div className={styles.mediaShell}>
+              {report.listing.coverImagePath ? (
+                <button
+                  type="button"
+                  className={styles.mediaButton}
+                  onClick={() => setLightboxSrc(report.listing.coverImagePath)}
+                  title="Click to enlarge"
+                >
+                  <img
+                    src={report.listing.coverImagePath}
+                    alt={report.listing.title}
+                    className={styles.mediaImage}
+                  />
+                </button>
+              ) : (
+                <div className={styles.mediaFallback}>{getInitials(report.listing.title)}</div>
+              )}
+            </div>
 
-          <div className={styles.metaGrid}>
-            <div className={styles.metaCard}>
-              <span className={styles.metaLabel}>Price</span>
-              <strong>{formatCurrency(report.listing.price, report.listing.currency)}</strong>
+            <div className={styles.metaGrid}>
+              <div className={styles.metaCard}>
+                <span className={styles.metaLabel}>Price</span>
+                <strong>{formatCurrency(report.listing.price, report.listing.currency)}</strong>
+              </div>
+              <div className={styles.metaCard}>
+                <span className={styles.metaLabel}>Location</span>
+                <strong>{report.listing.locationLabel}</strong>
+              </div>
+              <div className={styles.metaCard}>
+                <span className={styles.metaLabel}>Submitted</span>
+                <strong>{formatDateTime(report.createdAt)}</strong>
+              </div>
+              <div className={styles.metaCard}>
+                <span className={styles.metaLabel}>Updated</span>
+                <strong>{formatDateTime(report.updatedAt)}</strong>
+              </div>
             </div>
-            <div className={styles.metaCard}>
-              <span className={styles.metaLabel}>Location</span>
-              <strong>{report.listing.locationLabel}</strong>
-            </div>
-            <div className={styles.metaCard}>
-              <span className={styles.metaLabel}>Submitted</span>
-              <strong>{formatDateTime(report.createdAt)}</strong>
-            </div>
-            <div className={styles.metaCard}>
-              <span className={styles.metaLabel}>Updated</span>
-              <strong>{formatDateTime(report.updatedAt)}</strong>
-            </div>
-          </div>
-        </article>
+          </article>
+
+          <section className={styles.contentGrid}>
+            <article className={styles.contentCard}>
+              <p className={styles.sectionEyebrow}>
+                {report.deliveryIssue ? 'Delivery Dispute' : 'Reporter Notes'}
+              </p>
+              <h2>{report.deliveryIssue ? 'Buyer statement and proof' : 'Submitted complaint details'}</h2>
+              <p className={styles.bodyCopy}>{reportNarrative}</p>
+
+              {report.deliveryIssue && (
+                <>
+                  <div className={styles.tokenRow}>
+                    {report.deliveryIssue.agreedPriceLabel && (
+                      <span className={styles.token}>{report.deliveryIssue.agreedPriceLabel}</span>
+                    )}
+                    {report.deliveryIssue.paymentReference && (
+                      <span className={styles.token}>
+                        Payment ref: {report.deliveryIssue.paymentReference}
+                      </span>
+                    )}
+                    <span className={styles.token}>
+                      {report.deliveryIssue.proofUrls.length} proof file(s)
+                    </span>
+                  </div>
+
+                  {report.deliveryIssue.proofUrls.length > 0 ? (
+                    <div className={styles.proofGrid}>
+                      {report.deliveryIssue.proofUrls.map((proofUrl, index) => (
+                        <a
+                          key={proofUrl}
+                          href={proofUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={styles.proofLink}
+                        >
+                          <ProofIcon />
+                          <span>Open proof {index + 1}</span>
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className={styles.bodyCopy}>No proof files were attached to this delivery report.</p>
+                  )}
+                </>
+              )}
+            </article>
+
+            <article className={styles.contentCard}>
+              <p className={styles.sectionEyebrow}>Report Actions</p>
+              <h2>Move the case through moderation</h2>
+              <div className={styles.actionGroup}>
+                <button
+                  type="button"
+                  className={styles.reviewButton}
+                  onClick={() => void handleReportAction('review')}
+                  disabled={busyReportAction !== null}
+                >
+                  {busyReportAction === 'review' ? 'Saving...' : 'Mark Reviewing'}
+                </button>
+
+                <button
+                  type="button"
+                  className={styles.resolveButton}
+                  onClick={() => void handleReportAction('resolve')}
+                  disabled={busyReportAction !== null}
+                >
+                  {busyReportAction === 'resolve' ? 'Saving...' : 'Resolve Report'}
+                </button>
+
+                <button
+                  type="button"
+                  className={styles.dismissButton}
+                  onClick={() => void handleReportAction('dismiss')}
+                  disabled={busyReportAction !== null}
+                >
+                  {busyReportAction === 'dismiss' ? 'Saving...' : 'Dismiss Report'}
+                </button>
+              </div>
+            </article>
+
+            <article className={styles.contentCard}>
+              <p className={styles.sectionEyebrow}>Listing Actions</p>
+              <h2>Control the seller listing</h2>
+              <div className={styles.actionGroup}>
+                {(report.listing.status === 'active' ||
+                  report.listing.status === 'reserved' ||
+                  report.listing.status === 'archived') && (
+                  <button
+                    type="button"
+                    className={styles.pauseButton}
+                    onClick={() => void handleListingModerationAction(
+                      report.listing.status === 'archived' ? 'resume' : 'pause'
+                    )}
+                    disabled={busyListingAction !== null}
+                  >
+                    {busyListingAction === 'resume'
+                      ? 'Resuming...'
+                      : busyListingAction === 'pause'
+                        ? 'Pausing...'
+                        : report.listing.status === 'archived'
+                          ? 'Resume Listing'
+                          : 'Pause Listing'}
+                  </button>
+                )}
+
+                {report.listing.status === 'rejected' && (
+                  <>
+                    <button
+                      type="button"
+                      className={styles.resolveButton}
+                      onClick={() => void handleListingModerationAction('approve')}
+                      disabled={busyListingAction !== null}
+                    >
+                      {busyListingAction === 'approve' ? 'Approving...' : 'Approve Listing'}
+                    </button>
+
+                    <button
+                      type="button"
+                      className={styles.dismissButton}
+                      onClick={() => void handleListingModerationAction('reject')}
+                      disabled={busyListingAction !== null}
+                    >
+                      {busyListingAction === 'reject' ? 'Rejecting...' : 'Reject Again'}
+                    </button>
+                  </>
+                )}
+              </div>
+              <p className={styles.bodyCopy}>
+                Use listing controls when the problem requires the item to be hidden, resumed, or pushed
+                back into the approval queue.
+              </p>
+            </article>
+          </section>
+        </div>
 
         <aside className={styles.sidebar}>
           <article className={styles.sideCard}>
@@ -650,143 +794,11 @@ export default function ReportDetailClient({ reportId }: ReportDetailClientProps
         </aside>
       </section>
 
-      <section className={styles.contentGrid}>
-        <article className={styles.contentCard}>
-          <p className={styles.sectionEyebrow}>
-            {report.deliveryIssue ? 'Delivery Dispute' : 'Reporter Notes'}
-          </p>
-          <h2>{report.deliveryIssue ? 'Buyer statement and proof' : 'Submitted complaint details'}</h2>
-          <p className={styles.bodyCopy}>{reportNarrative}</p>
-
-          {report.deliveryIssue ? (
-            <>
-              <div className={styles.tokenRow}>
-                {report.deliveryIssue.agreedPriceLabel && (
-                  <span className={styles.token}>{report.deliveryIssue.agreedPriceLabel}</span>
-                )}
-                {report.deliveryIssue.paymentReference && (
-                  <span className={styles.token}>
-                    Payment ref: {report.deliveryIssue.paymentReference}
-                  </span>
-                )}
-                <span className={styles.token}>
-                  {report.deliveryIssue.proofUrls.length} proof file(s)
-                </span>
-              </div>
-
-              {report.deliveryIssue.proofUrls.length > 0 ? (
-                <div className={styles.proofGrid}>
-                  {report.deliveryIssue.proofUrls.map((proofUrl, index) => (
-                    <a
-                      key={proofUrl}
-                      href={proofUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className={styles.proofLink}
-                    >
-                      <ProofIcon />
-                      <span>Open proof {index + 1}</span>
-                    </a>
-                  ))}
-                </div>
-              ) : (
-                <p className={styles.bodyCopy}>No proof files were attached to this delivery report.</p>
-              )}
-            </>
-          ) : (
-            <p className={styles.bodyCopy}>
-              {report.details?.trim()
-                || 'No extra notes were provided. The reason label above is the only complaint on file.'}
-            </p>
-          )}
-        </article>
-
-        <article className={styles.contentCard}>
-          <p className={styles.sectionEyebrow}>Report Actions</p>
-          <h2>Move the case through moderation</h2>
-          <div className={styles.actionGroup}>
-            <button
-              type="button"
-              className={styles.reviewButton}
-              onClick={() => void handleReportAction('review')}
-              disabled={busyReportAction !== null}
-            >
-              {busyReportAction === 'review' ? 'Saving...' : 'Mark Reviewing'}
-            </button>
-
-            <button
-              type="button"
-              className={styles.resolveButton}
-              onClick={() => void handleReportAction('resolve')}
-              disabled={busyReportAction !== null}
-            >
-              {busyReportAction === 'resolve' ? 'Saving...' : 'Resolve Report'}
-            </button>
-
-            <button
-              type="button"
-              className={styles.dismissButton}
-              onClick={() => void handleReportAction('dismiss')}
-              disabled={busyReportAction !== null}
-            >
-              {busyReportAction === 'dismiss' ? 'Saving...' : 'Dismiss Report'}
-            </button>
-          </div>
-        </article>
-
-        <article className={styles.contentCard}>
-          <p className={styles.sectionEyebrow}>Listing Actions</p>
-          <h2>Control the seller listing</h2>
-          <div className={styles.actionGroup}>
-            {(report.listing.status === 'active' ||
-              report.listing.status === 'reserved' ||
-              report.listing.status === 'archived') && (
-              <button
-                type="button"
-                className={styles.pauseButton}
-                onClick={() => void handleListingModerationAction(
-                  report.listing.status === 'archived' ? 'resume' : 'pause'
-                )}
-                disabled={busyListingAction !== null}
-              >
-                {busyListingAction === 'resume'
-                  ? 'Resuming...'
-                  : busyListingAction === 'pause'
-                    ? 'Pausing...'
-                    : report.listing.status === 'archived'
-                      ? 'Resume Listing'
-                      : 'Pause Listing'}
-              </button>
-            )}
-
-            {report.listing.status === 'rejected' && (
-              <>
-                <button
-                  type="button"
-                  className={styles.resolveButton}
-                  onClick={() => void handleListingModerationAction('approve')}
-                  disabled={busyListingAction !== null}
-                >
-                  {busyListingAction === 'approve' ? 'Approving...' : 'Approve Listing'}
-                </button>
-
-                <button
-                  type="button"
-                  className={styles.dismissButton}
-                  onClick={() => void handleListingModerationAction('reject')}
-                  disabled={busyListingAction !== null}
-                >
-                  {busyListingAction === 'reject' ? 'Rejecting...' : 'Reject Again'}
-                </button>
-              </>
-            )}
-          </div>
-          <p className={styles.bodyCopy}>
-            Use listing controls when the problem requires the item to be hidden, resumed, or pushed
-            back into the approval queue.
-          </p>
-        </article>
-      </section>
+      <ImageLightbox
+        src={lightboxSrc}
+        alt={report.listing.title}
+        onClose={() => setLightboxSrc(null)}
+      />
     </div>
   );
 }
