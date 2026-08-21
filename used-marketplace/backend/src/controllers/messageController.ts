@@ -174,6 +174,22 @@ export async function updateSupportTicketStatus(req: AuthenticatedRequest, res: 
   }
 }
 
+export async function deleteSupportTicket(req: AuthenticatedRequest, res: Response): Promise<void> {
+  const userId = ensureAuthenticatedUser(req, res);
+  if (!userId || !req.user) {
+    return;
+  }
+
+  const { conversationId } = req.params;
+
+  try {
+    const result = await messageService.deleteSupportTicket(req.user, conversationId);
+    sendSuccess(res, result);
+  } catch (error) {
+    handleMessageError(res, error, 'Internal server error while deleting the support ticket');
+  }
+}
+
 export async function markAsRead(req: AuthenticatedRequest, res: Response): Promise<void> {
   const userId = ensureAuthenticatedUser(req, res);
   if (!userId) {

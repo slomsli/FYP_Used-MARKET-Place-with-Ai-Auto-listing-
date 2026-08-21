@@ -3,6 +3,7 @@
   display: inline-flex;
   cursor: pointer;
   user-select: none;
+  outline: none;
 }
 
 .badge {
@@ -32,6 +33,10 @@
   transform: translateY(-1px);
 }
 
+.badgeContainer:focus-visible .badge {
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.22);
+}
+
 .compact {
   width: 24px;
   height: 24px;
@@ -43,12 +48,10 @@
 /* Tooltip styles */
 .tooltip {
   display: block;
-  position: absolute;
-  bottom: calc(100% + 10px);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 100;
+  position: fixed;
+  z-index: 10000;
   width: 280px;
+  box-sizing: border-box;
   padding: 1rem;
   border-radius: 1rem;
   background: rgba(255, 255, 255, 0.95);
@@ -65,7 +68,7 @@
   line-height: 1.5;
   white-space: normal;
   text-align: left;
-  animation: tooltipFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: tooltipFadeIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: auto;
 }
 
@@ -73,12 +76,20 @@
 .tooltip::after {
   content: '';
   position: absolute;
-  top: 100%;
-  left: 50%;
+  left: var(--tooltip-arrow-left, 50%);
   transform: translateX(-50%);
   border-width: 6px;
   border-style: solid;
+}
+
+.tooltipTop::after {
+  top: 100%;
   border-color: rgba(255, 255, 255, 0.95) transparent transparent transparent;
+}
+
+.tooltipBottom::after {
+  bottom: 100%;
+  border-color: transparent transparent rgba(255, 255, 255, 0.95) transparent;
 }
 
 .tooltipHeader {
@@ -102,10 +113,10 @@
 @keyframes tooltipFadeIn {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(6px) scale(0.95);
+    transform: scale(0.97);
   }
   to {
     opacity: 1;
-    transform: translateX(-50%) translateY(0) scale(1);
+    transform: scale(1);
   }
 }

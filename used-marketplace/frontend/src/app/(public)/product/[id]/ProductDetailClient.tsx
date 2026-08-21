@@ -28,6 +28,8 @@ interface ProductDetailClientProps {
 }
 
 const toneClasses = ['toneSeafoam', 'toneInk', 'toneLinen', 'toneCopper'] as const;
+const OWN_LISTING_ACTION_NOTICE =
+  'This product is yours. You cannot buy or make an offer on your own item.';
 
 function SearchIcon() {
   return (
@@ -286,13 +288,23 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
   const isAdminViewer = resolvedViewerRole === 'admin';
   const memberAccessResolved = !user || resolvedViewerRole !== null;
   const showMemberActions = !user || resolvedViewerRole === 'user';
+  const isOwnerOfLoadedListing = Boolean(user && response?.seller.id === user.id);
   const accountHubRoute = isAdminViewer ? ROUTES.ADMIN : ROUTES.DASHBOARD;
   const notificationRoute = isAdminViewer ? ROUTES.ADMIN_NOTIFICATIONS : ROUTES.NOTIFICATIONS;
   const inboxRoute = isAdminViewer ? ROUTES.ADMIN_MESSAGES : ROUTES.MESSAGES;
 
   // Check favorite status when user is authenticated
   useEffect(() => {
-    if (!user || !session?.access_token || !response || resolvedViewerRole !== 'user') return;
+    if (
+      !user ||
+      !session?.access_token ||
+      !response ||
+      resolvedViewerRole !== 'user' ||
+      isOwnerOfLoadedListing
+    ) {
+      return;
+    }
+
     let cancelled = false;
 
     async function checkStatus() {
@@ -304,7 +316,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
 
     checkStatus();
     return () => { cancelled = true; };
-  }, [listingId, resolvedViewerRole, response, session, user]);
+  }, [isOwnerOfLoadedListing, listingId, resolvedViewerRole, response, session, user]);
 
   useEffect(() => {
     if (!toast) {
@@ -367,6 +379,12 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
 
     if (resolvedViewerRole !== 'user') {
       setToast('Admin accounts cannot place offers or purchase requests.');
+      return;
+    }
+
+    if (user.id === response.seller.id) {
+      setShowOfferModal(null);
+      setToast(OWN_LISTING_ACTION_NOTICE);
       return;
     }
 
@@ -446,7 +464,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
   }
 
   const { listing, seller, related } = response;
-  const isSeller = user && user.id === seller.id;
+  const isSeller = Boolean(user && user.id === seller.id);
   const gallery = buildGallery(listing);
   const activeImage = gallery[activeIndex] ?? null;
   const toneClass = styles[getToneClass(listing)];
@@ -475,7 +493,9 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
     listing.brand?.trim()
       ? `The seller listed this piece under ${listing.brand.trim()} and marked it as ${listing.conditionLabel.toLowerCase()}.`
       : `The seller marked this item as ${listing.conditionLabel.toLowerCase()} and published it from ${listing.locationLabel}.`,
-    isAdminViewer
+    isSeller
+      ? 'You are viewing your own listing. Buyer actions are hidden here, and you can manage the item from your listing dashboard.'
+      : isAdminViewer
       ? 'Administrators can review this listing and seller history here, but offers, favorites, and direct marketplace actions stay disabled in admin mode.'
       : isSoldOut
         ? 'This listing is now sold out. Buyers can still review the listing history here, but new offers and messages are closed.'
@@ -567,7 +587,7 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
                   <span className={styles.badgeSoft}>{availabilityLabel}</span>
                   <span className={styles.badgeMint}>{listing.conditionLabel}</span>
                 </div>
-                {showMemberActions && (
+                {showMemberActions && !isSeller && (
                   <button
                     type="button"
                     className={`${styles.saveButton} ${isFavorited ? styles.saveButtonActive : ''}`}
@@ -642,8 +662,16 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
                 </span>
               </div>
               <p className={styles.titleNote}>
-                Sold by {seller.displayName} in {listing.locationLabel}.
+                {isSeller
+                  ? `Listed by you in ${listing.locationLabel}.`
+                  : `Sold by ${seller.displayName} in ${listing.locationLabel}.`}
               </p>
+              {isSeller && (
+                <div className={styles.soldOutBanner}>
+                  <strong>Your listing</strong>
+                  <span>{OWN_LISTING_ACTION_NOTICE}</span>
+                </div>
+              )}
               {isSoldOut && (
                 <div className={styles.soldOutBanner}>
                   <strong>{availabilityLabel}</strong>
@@ -715,6 +743,13 @@ export default function ProductDetailClient({ listingId }: ProductDetailClientPr
                     <strong>Admin view only.</strong> You can inspect listings and seller history here,
                     but favorites, offers, and purchase requests are disabled for administrator
                     accounts. Seller outreach stays inside the admin console listing-management flow.
+                  </div>
+                ) : isSeller ? (
+                  <div className={styles.statusNotice}>
+                    <strong>Your listing.</strong> {OWN_LISTING_ACTION_NOTICE}
+                    <Link href={ROUTES.MY_LISTINGS} className={styles.statusNoticeLink}>
+                      Manage this listing
+                    </Link>
                   </div>
                 ) : (
                 <>

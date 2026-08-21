@@ -133,6 +133,13 @@ function ResetPasswordForm() {
   return (
     <div className={styles.formPanel}>
       <div className={styles.formContainer}>
+        <div className={styles.mobileBrand}>
+          <Link href={ROUTES.HOME} className={styles.mobileBrandLink}>
+            ReMarket
+          </Link>
+          <span>Trusted local marketplace</span>
+        </div>
+
         <h2 className={styles.formTitle}>Reset Password</h2>
         <p className={styles.formSubtitle}>
           Enter the 8-digit code from your email, then choose a new password.
@@ -230,7 +237,10 @@ export default function ResetPasswordPage() {
     <div className={styles.page}>
       <div className={styles.heroPanel}>
         <div className={styles.heroBrand}>
-          <img src="/assets/images/remarket_logo white for login or any page the has blue background.png" alt="ReMarket" style={{ height: '150px', width: 'auto' }} />
+          <Link href={ROUTES.HOME} className={styles.heroBrandLink} aria-label="ReMarket home">
+            <span className={styles.heroBrandName}>ReMarket</span>
+            <span className={styles.heroBrandMeta}>Trusted local marketplace</span>
+          </Link>
         </div>
 
         <div className={styles.heroContent}>

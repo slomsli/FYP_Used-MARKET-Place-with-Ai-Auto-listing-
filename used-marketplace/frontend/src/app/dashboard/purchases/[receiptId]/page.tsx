@@ -267,32 +267,32 @@ export default function PurchaseReceiptDetailPage() {
 
       <div className={styles.toolbar}>
         <Link href={ROUTES.PURCHASES} className={styles.toolbarLink}>
-          Back to Purchase History
+          ← Back to Purchase History
         </Link>
         <div className={styles.toolbarActions}>
           <Link href={messageHref} className={styles.secondaryButton}>
-            Message {isBuyer ? 'Seller' : 'Buyer'}
+            ✉ Message {isBuyer ? 'Seller' : 'Buyer'}
           </Link>
           <Link href={reportHref} className={styles.reportButton}>
-            File Report
+            ⚑ File Report
           </Link>
           <button
             type="button"
             className={styles.primaryButton}
             onClick={() => window.print()}
           >
-            Print / Save PDF
+            🖨 Print / Save PDF
           </button>
         </div>
       </div>
 
       <section className={styles.hero}>
         <div>
-          <p className={styles.eyebrow}>Receipt</p>
+          <p className={styles.eyebrow}>⬥ Transaction Receipt</p>
           <h1 className={styles.title}>{receipt.receiptNumber}</h1>
           <p className={styles.subtitle}>
-            Printable sale record for <strong>{receipt.listing.title}</strong>. Use this as the
-            buyer/seller confirmation sheet for the transaction.
+            Official receipt for <strong>{receipt.listing.title}</strong>. This document serves as
+            the buyer/seller confirmation record for this transaction.
           </p>
         </div>
         <div className={styles.heroMeta}>
@@ -316,10 +316,10 @@ export default function PurchaseReceiptDetailPage() {
         <article className={styles.sheet}>
           <header className={styles.sheetHeader}>
             <div>
-              <span className={styles.brandMark}>ReMarket</span>
+              <span className={styles.brandMark}>⬢ ReMarket</span>
               <h2 className={styles.sheetTitle}>Marketplace Receipt</h2>
               <p className={styles.sheetText}>
-                Buyer and seller summary with manual payment confirmation.
+                Transaction summary with payment and delivery tracking.
               </p>
             </div>
             <div className={styles.sheetMeta}>
@@ -482,7 +482,7 @@ export default function PurchaseReceiptDetailPage() {
                 : 'You can verify the buyer payment after they mark the receipt as paid, then watch the delivery status.'}
             </p>
             <Link href={reportHref} className={styles.reportButton}>
-              File Report
+              ⚑ File Report
             </Link>
           </div>
 
@@ -525,7 +525,7 @@ export default function PurchaseReceiptDetailPage() {
                 onClick={handleMarkPaid}
                 disabled={actionLoading === 'mark-paid'}
               >
-                {actionLoading === 'mark-paid' ? 'Saving...' : 'I Have Paid'}
+                {actionLoading === 'mark-paid' ? 'Saving...' : '✓ I Have Paid'}
               </button>
             </div>
           )}
@@ -545,7 +545,7 @@ export default function PurchaseReceiptDetailPage() {
               >
                 {actionLoading === 'confirm-payment'
                   ? 'Confirming...'
-                  : 'Seller Confirmed Payment'}
+                  : '✓ Seller Confirmed Payment'}
               </button>
             </div>
           )}
@@ -566,12 +566,12 @@ export default function PurchaseReceiptDetailPage() {
                       onClick={handleMarkReceived}
                       disabled={actionLoading === 'mark-received'}
                     >
-                      {actionLoading === 'mark-received' ? 'Saving...' : 'Item Received'}
+                      {actionLoading === 'mark-received' ? 'Saving...' : '✓ Item Received'}
                     </button>
                   )}
                   {receipt.canBuyerReportNotReceived && (
                     <Link href={deliveryIssueHref} className={styles.dangerButton}>
-                      Item Not Received
+                      ✗ Item Not Received
                     </Link>
                   )}
                 </div>

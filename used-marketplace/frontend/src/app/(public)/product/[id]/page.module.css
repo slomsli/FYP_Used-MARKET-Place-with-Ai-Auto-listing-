@@ -963,6 +963,18 @@
   font-weight: 800;
 }
 
+.statusNoticeLink {
+  display: inline-flex;
+  margin-left: 0.4rem;
+  color: #182247;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.statusNoticeLink:hover {
+  text-decoration: underline;
+}
+
 /* ── Offer Modal ── */
 .modalOverlay {
   position: fixed;

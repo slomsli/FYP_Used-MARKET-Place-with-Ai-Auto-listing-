@@ -631,6 +631,17 @@
   border-color: #e11d48;
 }
 
+.modalActionDelete {
+  background: #fee2e2;
+  border-color: rgba(185, 28, 28, 0.2);
+  color: #b91c1c;
+}
+
+.modalActionDelete:hover:not(:disabled) {
+  background: #fecaca;
+  border-color: #b91c1c;
+}
+
 /* ── Modal Issue Strip ── */
 .modalIssueStrip {
   display: flex;

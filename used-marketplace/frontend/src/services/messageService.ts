@@ -355,6 +355,30 @@ export async function updateSupportTicketStatus(
   }
 }
 
+export async function deleteSupportTicket(
+  token: string,
+  conversationId: string
+): Promise<{ error: string | null }> {
+  try {
+    const res = await fetch(`${MESSAGE_API_URL}/${conversationId}/support-ticket`, {
+      method: 'DELETE',
+      headers: {
+        ...getAuthHeaders(token),
+      },
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      return { error: errorData.error || 'Failed to delete support ticket' };
+    }
+
+    return { error: null };
+  } catch (error) {
+    console.error('Error deleting support ticket:', error);
+    return { error: 'Network error while deleting support ticket' };
+  }
+}
+
 /**
  * Mark a conversation as read
  */

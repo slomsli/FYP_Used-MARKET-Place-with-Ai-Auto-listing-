@@ -79,20 +79,21 @@ export default function LoginPage() {
     <div className={styles.page}>
       {/* ── Left Hero ── */}
       <div className={styles.heroPanel}>
-        {/* Logo pinned to top-left corner */}
         <div className={styles.heroBrand}>
-          <img src="/assets/images/remarket_logo white for login or any page the has blue background.png" alt="ReMarket" style={{ height: '150px', width: 'auto' }} />
+          <Link href={ROUTES.HOME} className={styles.heroBrandLink} aria-label="ReMarket home">
+            <span className={styles.heroBrandName}>ReMarket</span>
+            <span className={styles.heroBrandMeta}>Trusted local marketplace</span>
+          </Link>
         </div>
 
         <div className={styles.heroContent}>
           <div className={styles.heroTagline}>
             <h1 className={styles.heroTitle}>
-              Curated items,<br />trusted by experts.
+              Sign in to trade<br />with confidence.
             </h1>
             <p className={styles.heroDescription}>
-              Join a community where quality meets security.<br />
-              Every item on ReMarket is verified for<br />
-              authenticity and condition.
+              Keep track of trusted sellers, verified listings, and secure
+              conversations in one simple marketplace.
             </p>
           </div>
         </div>
@@ -112,9 +113,16 @@ export default function LoginPage() {
       {/* ── Right Form ── */}
       <div className={styles.formPanel}>
         <div className={styles.formContainer}>
+          <div className={styles.mobileBrand}>
+            <Link href={ROUTES.HOME} className={styles.mobileBrandLink}>
+              ReMarket
+            </Link>
+            <span>Trusted local marketplace</span>
+          </div>
+
           <h2 className={styles.formTitle}>Welcome back</h2>
           <p className={styles.formSubtitle}>
-            Enter your credentials to access your dashboard.
+            Sign in to continue buying and selling with confidence.
           </p>
 
           <form onSubmit={handleSubmit}>

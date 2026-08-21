@@ -1333,7 +1333,12 @@ export default function MessagesPage() {
           <div className={styles.conversationList}>
             {filteredConversationThreads.length === 0 ? (
               <div className={styles.emptyConversations}>
-                <div className={styles.emptyConversationsIcon}>Chat</div>
+                <div className={styles.emptyConversationsIcon}>
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    <path d="M8 10h.01M12 10h.01M16 10h.01" />
+                  </svg>
+                </div>
                 <div className={styles.emptyConversationsTitle}>
                   {filterTab === 'archived' ? 'No archived conversations' : 'No conversations found'}
                 </div>

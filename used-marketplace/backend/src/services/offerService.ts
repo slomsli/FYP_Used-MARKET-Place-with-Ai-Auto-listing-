@@ -1212,7 +1212,10 @@ export async function createOffer(
   }
 
   if (listing.seller_id === buyerId) {
-    throw new OfferServiceError('You cannot make an offer on your own listing', 422);
+    throw new OfferServiceError(
+      'This product is yours. You cannot buy or make an offer on your own item.',
+      422
+    );
   }
 
   // Check for existing pending offer from same buyer on same listing

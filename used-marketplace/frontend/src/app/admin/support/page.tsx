@@ -6,6 +6,7 @@ import { ROUTES } from '@/src/config/routes';
 import { useRequireAuth } from '@/src/hooks/useRequireAuth';
 import { scheduleEffectWork } from '@/src/utils/effectScheduling';
 import {
+  deleteSupportTicket,
   fetchConversations,
   fetchMessages,
   MAX_MESSAGE_ATTACHMENTS,
@@ -225,6 +226,9 @@ function ResolveIcon() {
 function ReopenIcon() {
   return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>;
 }
+function TrashIcon() {
+  return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>;
+}
 
 /* ─────────────────────────────────────────────
    Stat Icons
@@ -257,6 +261,7 @@ export default function AdminSupportPage() {
   const [pendingAttachments, setPendingAttachments] = useState<PendingMessageAttachment[]>([]);
   const [sendingReply, setSendingReply]     = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState<SupportTicketStatus | null>(null);
+  const [deletingTicketId, setDeletingTicketId] = useState<string | null>(null);
 
   /* Refs */
   const messagesEndRef         = useRef<HTMLDivElement>(null);
@@ -429,6 +434,36 @@ export default function AdminSupportPage() {
     if (!res.data) { setPageError(res.error || 'Unable to update ticket.'); return; }
     setMessagesByTicket((cur) => ({ ...cur, [openTicket.id]: [...(cur[openTicket.id] ?? []), res.data!.message] }));
     await loadTickets(openTicket.id);
+  }
+
+  async function handleDeleteTicket() {
+    if (!token || !openTicket || deletingTicketId) return;
+
+    const confirmed = window.confirm(
+      `Delete support ticket "${openTicket.title}" permanently? This removes the conversation and messages from the database.`
+    );
+
+    if (!confirmed) return;
+
+    const ticketId = openTicket.id;
+    setDeletingTicketId(ticketId);
+    setPageError(null);
+
+    const res = await deleteSupportTicket(token, ticketId);
+    setDeletingTicketId(null);
+
+    if (res.error) {
+      setPageError(res.error || 'Unable to delete support ticket.');
+      return;
+    }
+
+    setOpenTicketId(null);
+    setSupportConversations((cur) => cur.filter((conversation) => conversation.id !== ticketId));
+    setMessagesByTicket((cur) => {
+      const next = { ...cur };
+      delete next[ticketId];
+      return next;
+    });
   }
 
   async function handleReply() {
@@ -702,11 +737,20 @@ export default function AdminSupportPage() {
                     type="button"
                     className={`${styles.modalActionBtn} ${styles.modalActionDanger}`}
                     onClick={() => void handleStatusUpdate('closed')}
-                    disabled={Boolean(updatingStatus)}
+                    disabled={Boolean(updatingStatus) || deletingTicketId === openTicket.id}
                   >
                     <CloseIcon /> {updatingStatus === 'closed' ? 'Closing...' : 'Close ticket'}
                   </button>
                 )}
+
+                <button
+                  type="button"
+                  className={`${styles.modalActionBtn} ${styles.modalActionDelete}`}
+                  onClick={() => void handleDeleteTicket()}
+                  disabled={deletingTicketId === openTicket.id || Boolean(updatingStatus)}
+                >
+                  <TrashIcon /> {deletingTicketId === openTicket.id ? 'Deleting...' : 'Delete'}
+                </button>
               </div>
             </div>
 

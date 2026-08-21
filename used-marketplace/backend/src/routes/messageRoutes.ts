@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   archiveConversation,
   createSupportConversation,
+  deleteSupportTicket,
   getArchivedConversations,
   getConversations,
   getMessages,
@@ -12,6 +13,7 @@ import {
   updateSupportTicketStatus,
 } from '../controllers/messageController';
 import { authenticate } from '../middleware/authenticate';
+import { requireAdmin } from '../middleware/requireAdmin';
 
 const router = Router();
 
@@ -28,5 +30,6 @@ router.delete('/:conversationId/archive', unarchiveConversation);
 router.post('/:conversationId/reply', sendReply);
 router.put('/:conversationId/read', markAsRead);
 router.put('/:conversationId/support-status', updateSupportTicketStatus);
+router.delete('/:conversationId/support-ticket', requireAdmin, deleteSupportTicket);
 
 export default router;

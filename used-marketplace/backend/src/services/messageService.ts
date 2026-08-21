@@ -102,6 +102,12 @@ export interface SupportTicketStatusResult {
   message: ChatMessage;
 }
 
+export interface DeleteSupportTicketResult {
+  conversation_id: string;
+  listing_id: string;
+  deleted_messages: number;
+}
+
 interface RawProfile {
   id: string;
   full_name: string | null;
@@ -180,6 +186,17 @@ interface RawConversationNotificationContext {
   listings:
     | Pick<RawListing, 'title' | 'brand' | 'status' | 'description'>
     | Pick<RawListing, 'title' | 'brand' | 'status' | 'description'>[]
+    | null;
+}
+
+interface RawSupportTicketConversation {
+  id: string;
+  listing_id: string;
+  buyer_id: string;
+  seller_id: string;
+  listings:
+    | Pick<RawListing, 'brand' | 'title' | 'deleted_at'>
+    | Pick<RawListing, 'brand' | 'title' | 'deleted_at'>[]
     | null;
 }
 
@@ -655,6 +672,22 @@ function mapMessageRow(message: RawMessageRow): ChatMessage {
     is_read: message.is_read,
     created_at: message.created_at,
   };
+}
+
+function extractMessageAttachmentPaths(messages: Array<{ body: string | null }>): string[] {
+  const paths = new Set<string>();
+
+  for (const message of messages) {
+    const envelope = parseStoredMessageBody(message.body ?? '');
+
+    for (const attachment of envelope.attachments ?? []) {
+      if (attachment.path) {
+        paths.add(attachment.path);
+      }
+    }
+  }
+
+  return Array.from(paths);
 }
 
 function toSingleLineNotificationText(value: string, fallback: string): string {
@@ -1670,6 +1703,177 @@ export async function updateSupportTicketStatus(
     conversation_id: conversationId,
     status,
     message,
+  };
+}
+
+export async function deleteSupportTicket(
+  sender: MessagingActor,
+  conversationId: string
+): Promise<DeleteSupportTicketResult> {
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from('profiles')
+    .select('role')
+    .eq('id', sender.id)
+    .maybeSingle();
+
+  if (profileError) {
+    throw new MessageServiceError('Unable to verify admin access', 500);
+  }
+
+  if (profile?.role !== 'admin') {
+    throw new MessageServiceError('Admin access required', 403);
+  }
+
+  const { data: conversation, error: conversationError } = await supabaseAdmin
+    .from('conversations')
+    .select(`
+      id,
+      listing_id,
+      buyer_id,
+      seller_id,
+      listings (
+        title,
+        brand,
+        deleted_at
+      )
+    `)
+    .eq('id', conversationId)
+    .maybeSingle();
+
+  if (conversationError) {
+    console.error('[Messages] Failed to inspect support ticket before deletion:', conversationError);
+    throw new MessageServiceError('Unable to inspect this support ticket', 500);
+  }
+
+  if (!conversation) {
+    throw new MessageServiceError('Support ticket was not found', 404);
+  }
+
+  const supportConversation = conversation as RawSupportTicketConversation;
+  const listing = unwrapRelation(supportConversation.listings);
+
+  if (!listing || listing.deleted_at !== null) {
+    throw new MessageServiceError('Support ticket was not found', 404);
+  }
+
+  if (!isSupportListing(listing)) {
+    throw new MessageServiceError('This action is only available for support tickets', 403);
+  }
+
+  const { data: messages, error: messagesError } = await supabaseAdmin
+    .from('messages')
+    .select('body')
+    .eq('conversation_id', conversationId);
+
+  if (messagesError) {
+    console.error('[Messages] Failed to load support ticket messages before deletion:', messagesError);
+    throw new MessageServiceError('Unable to inspect support ticket messages', 500);
+  }
+
+  const { data: listingImages, error: listingImagesError } = await supabaseAdmin
+    .from('listing_images')
+    .select('storage_path')
+    .eq('listing_id', supportConversation.listing_id);
+
+  if (listingImagesError) {
+    console.error('[Messages] Failed to inspect support ticket images before deletion:', listingImagesError);
+    throw new MessageServiceError('Unable to inspect support ticket images', 500);
+  }
+
+  const messageRows = (messages ?? []) as Array<{ body: string | null }>;
+  const messageAttachmentPaths = extractMessageAttachmentPaths(messageRows);
+  const listingImagePaths = ((listingImages ?? []) as Array<{ storage_path: string | null }>).map(
+    (image) => image.storage_path
+  );
+
+  try {
+    await Promise.all([
+      removeStorageObjects(MESSAGE_ATTACHMENT_BUCKET, messageAttachmentPaths),
+      removeStorageObjects(LISTING_IMAGE_BUCKET, listingImagePaths),
+    ]);
+  } catch (storageError) {
+    console.error('[Messages] Failed to remove support ticket images during deletion:', storageError);
+  }
+
+  const deleteSteps: Array<[string, PromiseLike<{ error: unknown }>]> = [
+    [
+      'conversation archives',
+      supabaseAdmin
+        .from('conversation_archives')
+        .delete()
+        .eq('conversation_id', conversationId),
+    ],
+    [
+      'messages',
+      supabaseAdmin
+        .from('messages')
+        .delete()
+        .eq('conversation_id', conversationId),
+    ],
+    [
+      'conversation',
+      supabaseAdmin
+        .from('conversations')
+        .delete()
+        .eq('id', conversationId),
+    ],
+    [
+      'favorites',
+      supabaseAdmin
+        .from('favorites')
+        .delete()
+        .eq('listing_id', supportConversation.listing_id),
+    ],
+    [
+      'listing daily views',
+      supabaseAdmin
+        .from('listing_daily_views')
+        .delete()
+        .eq('listing_id', supportConversation.listing_id),
+    ],
+    [
+      'listing images',
+      supabaseAdmin
+        .from('listing_images')
+        .delete()
+        .eq('listing_id', supportConversation.listing_id),
+    ],
+    [
+      'reports',
+      supabaseAdmin
+        .from('reports')
+        .delete()
+        .eq('listing_id', supportConversation.listing_id),
+    ],
+    [
+      'reviews',
+      supabaseAdmin
+        .from('reviews')
+        .delete()
+        .eq('listing_id', supportConversation.listing_id),
+    ],
+    [
+      'support listing',
+      supabaseAdmin
+        .from('listings')
+        .delete()
+        .eq('id', supportConversation.listing_id),
+    ],
+  ];
+
+  for (const [scope, deleteStep] of deleteSteps) {
+    const { error } = await deleteStep;
+
+    if (error) {
+      console.error(`[Messages] Failed to delete support ticket ${scope}:`, error);
+      throw new MessageServiceError('Unable to delete this support ticket', 500);
+    }
+  }
+
+  return {
+    conversation_id: conversationId,
+    listing_id: supportConversation.listing_id,
+    deleted_messages: messageRows.length,
   };
 }
 
